@@ -73,13 +73,13 @@ async def computer_history(computer_id: int, _: AdminUser, session: DB) -> Compu
         select(Booking).where(Booking.computer_id == comp.id).order_by(Booking.booked_at.desc())
     )).unique().all()
     active = next((b for b in bookings if b.status == "active"), None)
-    events = await inventory.list_events(session, computer_id=comp.id, limit=200)
+    events, _ = await inventory.list_events(session, computer_id=comp.id, limit=200)
     return ComputerHistoryOut(
         computer=inventory._row(comp, active),
         attributes=comp.attributes or {},
         bookings=[BookingOut.model_validate(b) for b in bookings],
         events=[EventOut.model_validate(e) for e in events],
-    )
+)
 
 
 @router.patch("/computers/{computer_id}", response_model=InventoryRow)
