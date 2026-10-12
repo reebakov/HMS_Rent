@@ -9,7 +9,7 @@ from app.models.enums import ComputerStatus, Tier
 
 FIELDS = (
     "name", "hostname", "cpu", "cpu_cores", "ram", "storage", "gpu", "os",
-    "location", "serial_number", "ip_address", "status", "tier",
+    "location", "serial_number", "ip_address", "status", "tier", "gateway"
 )
 
 
@@ -162,6 +162,15 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         same = from_specs and parse_size_gb(from_specs) == parse_int(storage)
         storage = from_specs if same else f"{storage} ГБ"
 
+    gateway = get("gateway")
+    location = "-" # По умолчанию
+    if gateway:
+        gw_lower = gateway.lower()
+        if "aut-gz" in gw_lower:
+            location = "Godzen"
+        elif "aut-sib" in gw_lower:
+            location = "Sib"    
+
     return ComputerData(
         name=get("name") or obj.label,
         hostname=get("hostname"),
@@ -173,7 +182,7 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         storage_gb=parse_size_gb(storage),
         gpu=get("gpu"),
         os=get("os"),
-        location=get("location"),
+        location=get("location") or location,
         serial_number=get("serial_number"),
         ip_address=get("ip_address"),
         insight_status=insight_status,

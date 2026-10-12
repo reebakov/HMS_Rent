@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, CircleAlert, Download, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
 import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -208,6 +208,12 @@ export function InventoryPage() {
                     <td className="px-3 py-3">
                       <p className="font-semibold">{c.name}</p>
                       <p className="font-mono text-xs text-muted-foreground">{c.insight_key}</p>
+                      {c.location && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {c.location}
+                        </p>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       {c.pool ? (

@@ -23,6 +23,7 @@ attributes:
   os: "OS"
   ip_address: "IP Address"
   status: "Status"
+  gateway: "Gateway"
   # location: "Data Center"
 
 # Запасной источник: если отдельные атрибуты пустые, характеристики берутся из Comment
