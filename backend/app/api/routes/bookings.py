@@ -1,0 +1,23 @@
+from fastapi import APIRouter, status
+
+from app.api.deps import DB, CurrentUser
+from app.models import Booking
+from app.schemas.booking import BookingCreate, BookingOut, BookingReturn
+from app.services import bookings as service
+
+router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+
+@router.post("", response_model=BookingOut, status_code=status.HTTP_201_CREATED)
+async def create_booking(data: BookingCreate, user: CurrentUser, session: DB) -> Booking:
+    return await service.create_booking(session, user, data)
+
+
+@router.get("/my", response_model=list[BookingOut])
+async def my_bookings(user: CurrentUser, session: DB) -> list[Booking]:
+    return await service.list_user_bookings(session, user)
+
+
+@router.post("/{booking_id}/return", response_model=BookingOut)
+async def return_booking(booking_id: int, data: BookingReturn, user: CurrentUser, session: DB) -> Booking:
+    return await service.return_booking(session, user, booking_id, data.comment)

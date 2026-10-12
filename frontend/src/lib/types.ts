@@ -1,0 +1,234 @@
+// Типы ответов API (зеркало pydantic-схем из backend/app/schemas)
+
+export type Tier = 'weak' | 'medium' | 'powerful' | 'vm'
+export type ComputerStatus = 'available' | 'booked' | 'in_use' | 'maintenance' | 'retired' | 'unknown'
+export type BookingStatus = 'active' | 'returned' | 'cancelled'
+
+export interface User {
+  id: number
+  username: string
+  display_name: string
+  email: string | null
+  avatar_url: string | null
+  auth_source: 'google' | 'local' | 'dev'
+  role: 'user' | 'admin'
+}
+
+export interface Session {
+  user: User
+  app_name: string
+  insight_mode: 'mock' | 'live'
+}
+
+export interface AuthConfig {
+  app_name: string
+  google_enabled: boolean
+  google_domains: string[]
+  local_enabled: boolean
+  dev_enabled: boolean
+}
+
+export interface Ref {
+  id: number
+  name: string
+}
+
+export interface UserShort {
+  id: number
+  username: string
+  display_name: string
+}
+
+export interface Computer {
+  id: number
+  name: string
+  hostname: string | null
+  insight_key: string | null
+  is_virtual: boolean
+  tier: Tier
+  cpu: string | null
+  cpu_cores: number | null
+  ram_gb: number | null
+  storage: string | null
+  storage_gb: number | null
+  gpu: string | null
+  os: string | null
+  location: string | null
+  status: ComputerStatus
+  insight_status: string | null
+  department: Ref | null
+  synced_at: string | null
+}
+
+export interface ComputerDetail extends Computer {
+  serial_number: string | null
+  ip_address: string | null
+  note: string | null
+  attributes: Record<string, string>
+}
+
+export interface TierSummary {
+  tier: Tier
+  available: number
+  total: number
+  min_ram_gb: number | null
+  max_ram_gb: number | null
+}
+
+export interface Department {
+  id: number
+  name: string
+  code: string | null
+  head_name: string | null
+  is_active: boolean
+}
+
+export interface ComputerShort {
+  id: number
+  name: string
+  tier: Tier
+  is_virtual: boolean
+  cpu: string | null
+  ram_gb: number | null
+  storage: string | null
+  gpu: string | null
+}
+
+export interface Booking {
+  id: number
+  status: BookingStatus
+  computer: ComputerShort
+  department: Ref
+  user: UserShort
+  requester_name: string
+  requester_nick: string
+  purpose: string | null
+  booked_at: string
+  expected_return_at: string | null
+  returned_at: string | null
+  returned_by: UserShort | null
+  return_comment: string | null
+}
+
+export interface BookingCreate {
+  computer_id: number
+  department_id: number
+  requester_name: string
+  requester_nick: string
+  purpose?: string
+  expected_return_at?: string | null
+}
+
+// ---------- Админка ----------
+
+export interface SyncRun {
+  id: number
+  started_at: string
+  finished_at: string | null
+  status: 'running' | 'success' | 'failed'
+  mode: 'mock' | 'live'
+  total: number
+  created: number
+  updated: number
+  archived: number
+  error: string | null
+}
+
+export interface TierStat {
+  tier: Tier
+  total: number
+  available: number
+  booked: number
+}
+
+export interface Stats {
+  total: number
+  by_status: Partial<Record<ComputerStatus, number>>
+  by_tier: TierStat[]
+  in_pools: number
+  active_bookings: number
+  departments_using: number
+  overdue: number
+  issues: number
+  last_sync: SyncRun | null
+}
+
+export interface InventoryRow extends Computer {
+  serial_number: string | null
+  is_archived: boolean
+  tier_override: Tier | null
+  note: string | null
+  writeback_error: string | null
+  pool: PoolShort | null
+  booking: {
+    id: number
+    requester_name: string
+    requester_nick: string
+    booked_at: string
+    expected_return_at: string | null
+    user: UserShort
+  } | null
+  issues: string[]
+}
+
+export interface DepartmentUsage {
+  department_id: number
+  name: string
+  code: string | null
+  head_name: string | null
+  is_active: boolean
+  active: number
+  by_tier: Partial<Record<Tier, number>>
+  total_bookings: number
+  last_booked_at: string | null
+}
+
+export interface AssetEvent {
+  id: number
+  computer: Ref
+  booking_id: number | null
+  event_type: string
+  from_status: string | null
+  to_status: string | null
+  message: string
+  actor: UserShort | null
+  created_at: string
+}
+
+export interface ComputerHistory {
+  computer: InventoryRow
+  attributes: Record<string, string>
+  bookings: Booking[]
+  events: AssetEvent[]
+}
+
+export interface SyncInfo {
+  mode: 'mock' | 'live'
+  jira_url: string
+  interval_sec: number
+  writeback: boolean
+  runs: SyncRun[]
+}
+
+export interface PoolShort {
+  id: number
+  name: string
+  is_published: boolean
+}
+
+export interface Pool extends PoolShort {
+  description: string | null
+  total: number
+  available: number
+  booked: number
+}
+
+export interface InventoryPage {
+  items: InventoryRow[]
+  total: number
+}
+
+export interface PoolAssignResult {
+  updated: number
+  not_found: string[]
+}

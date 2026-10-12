@@ -1,0 +1,33 @@
+from datetime import datetime
+
+from sqlalchemy import DateTime, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base, TimestampMixin
+from app.models.enums import UserRole
+
+
+class User(Base, TimestampMixin):
+    """Пользователь портала.
+
+    * Сотрудники создаются автоматически при первом входе через Google (username = рабочая почта).
+    * Администраторы — локальные учётки с паролем, создаются командой `python -m app.cli create-admin`.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    email: Mapped[str | None] = mapped_column(String(255))
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    ad_department: Mapped[str | None] = mapped_column(String(255))  # зарезервировано под отдел из каталога
+    auth_source: Mapped[str] = mapped_column(String(16), default="google")  # google / local / dev
+    password_hash: Mapped[str | None] = mapped_column(String(255))  # только у локальных учёток
+    role: Mapped[str] = mapped_column(String(16), default=UserRole.user.value)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == UserRole.admin

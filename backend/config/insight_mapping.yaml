@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Маппинг Insight → HMS Rent для jira.marvin-it.com (схема «IT Assets», id=1)
+#  Правите файл → docker compose restart backend worker
+#  Проверка без записи в базу:  python -m app.cli insight-check
+# ─────────────────────────────────────────────────────────────────────────────
+
+object_schema_id: 1
+
+# Какие объекты портал знает (всё это видят админы в «Инвентаризации»).
+# Что из этого видят сотрудники, решают ПУЛЫ в админке.
+# Guest Emulator — это эмуляторы на хост-машинах, а не компьютеры, поэтому исключены.
+# НЕ фильтруйте по Status: занятый ПК «выпадет» из выборки и уйдёт в архив.
+query: 'objectType = "Automat" AND Type IN ("Physical", "Host Emulator")'
+
+virtual_object_types: []
+
+attributes:
+  name: "Name"
+  cpu: "Процессор"
+  ram: "RAM"            # «16» — гигабайты
+  storage: "Диск"       # «224» — гигабайты; тип (SSD/NVMe) подтягивается из Comment, если он там есть
+  gpu: "Видеокарта"
+  os: "OS"
+  ip_address: "IP Address"
+  status: "Status"
+  # location: "Data Center"
+
+# Запасной источник: если отдельные атрибуты пустые, характеристики берутся из Comment
+# вида «Ryzen 7 2700 | 16GB | GTX 1650 | SSD 224GB /»
+specs_attribute: "Comment"
+
+# Статус Insight → статус портала
+#   available   — можно бронировать (если ПК в опубликованном пуле)
+#   in_use      — занят (фермой, проектом)
+#   maintenance — недоступен временно (ТО, тест, склад, доставка…)
+#   retired     — выбывает или выбыл
+status_map:
+  "Ожидает": available
+  "Используется": in_use
+  "В работе": in_use
+  "Исследования": in_use
+  "Проекты": in_use
+  "проект Events": in_use
+  "Эко": in_use
+  "ТО": maintenance
+  "Тест": maintenance
+  "Резерв": maintenance
+  "На складе": maintenance      # со склада не выдаём
+  "Доставка": maintenance
+  "На регистрации": maintenance
+  "Frozen": maintenance
+  "К закрытию": retired
+  "Закрывается": retired
+  "Закрыто": retired
+  "Списано": retired
+  "Неизвестно": unknown
+
+default_status: unknown
+
+# Обратная запись в Insight (включается INSIGHT_WRITEBACK=true в .env).
+# Портал меняет ТОЛЬКО атрибут Status: бронь → «Используется», возврат → «Ожидает».
+# Exploitation Status и прочие атрибуты не трогаем и в расчёт не берём.
+writeback:
+  status_attribute: "Status"
+  status_values:
+    booked: "Используется"
+    available: "Ожидает"

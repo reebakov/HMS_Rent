@@ -1,0 +1,58 @@
+# Маппинг для ДЕМО-данных (INSIGHT_MODE=mock, файл seed/mock_computers.json).
+# Для настоящего Insight используется insight_mapping.yaml.
+
+# ID схемы объектов (Insight → Схемы объектов → в адресной строке ...objectSchemaId=1)
+object_schema_id: 1
+
+# IQL/AQL-запрос, который выбирает все компьютеры и виртуалки
+query: 'objectType IN ("Компьютер", "Виртуальная машина")'
+
+# Объекты этих типов попадают в категорию «Виртуальные машины»
+virtual_object_types:
+  - "Виртуальная машина"
+
+# поле портала: имя атрибута в Insight (регистр важен, как в Insight)
+attributes:
+  name: "Name"                # если пусто — берётся label объекта
+  hostname: "Hostname"
+  cpu: "Процессор"
+  cpu_cores: "Ядра"
+  ram: "ОЗУ"                  # «16», «16 GB», «16384 MB» — всё распознаётся
+  storage: "Накопитель"       # «SSD 512 GB», «SSD 1 TB + HDD 2 TB»
+  gpu: "Видеокарта"
+  os: "ОС"
+  location: "Расположение"
+  serial_number: "Серийный номер"
+  ip_address: "IP-адрес"
+  status: "Статус"
+  # tier: "Класс"             # если в Insight уже есть своя категория мощности — раскомментируйте
+
+# Значения поля tier (если включено выше) → категория портала: weak / medium / powerful / vm
+tier_values:
+  "Слабый": weak
+  "Средний": medium
+  "Мощный": powerful
+
+# Статус в Insight → статус портала.
+#   available   — показываем в каталоге, можно бронировать
+#   in_use      — занят (выдан мимо портала)
+#   maintenance — ремонт / резерв, в каталоге не показываем
+#   retired     — списан
+status_map:
+  "Свободен": available
+  "В использовании": in_use
+  "В ремонте": maintenance
+  "Резерв": maintenance
+  "Списан": retired
+
+# Если статус не найден в таблице выше
+default_status: unknown
+
+# Обратная запись в Insight (работает при INSIGHT_WRITEBACK=true в .env)
+writeback:
+  status_attribute: "Статус"
+  status_values:
+    booked: "В использовании"   # что ставить в Insight при бронировании
+    available: "Свободен"       # что ставить при возврате
+  department_attribute: "Отдел"         # текст или ссылка на объект-отдел (ищется по имени)
+  owner_attribute: "Пользователь"       # логин пользователя (для атрибута типа User)

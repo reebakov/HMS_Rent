@@ -1,0 +1,165 @@
+"""Служебные команды. Запуск:  docker compose exec backend python -m app.cli <команда>
+
+  create-admin <логин> [--name "Имя Фамилия"]   — создать локального администратора (пароль спросит)
+  set-password <логин>                           — сменить пароль локальной учётке
+  users                                          — список пользователей портала
+  disable <логин> / enable <логин>               — заблокировать / разблокировать
+  insight-check [--sample 5] [--query IQL]       — проверить подключение к Insight и маппинг
+  insight-check --breakdown Type                 — сколько объектов с каждым значением атрибута
+"""
+import argparse
+import asyncio
+import getpass
+import json
+import sys
+
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.core.security import hash_password
+from app.db.session import SessionLocal
+from app.models import User, UserRole
+
+
+def ask_password() -> str:
+    while True:
+        first = getpass.getpass("Пароль (мин. 10 символов): ")
+        if len(first) < 10:
+            print("Слишком короткий пароль")
+            continue
+        if first != getpass.getpass("Повторите пароль: "):
+            print("Пароли не совпали")
+            continue
+        return first
+
+
+async def create_admin(username: str, name: str | None) -> None:
+    username = username.strip().lower()
+    async with SessionLocal() as session:
+        if await session.scalar(select(User).where(User.username == username)):
+            sys.exit(f"Пользователь «{username}» уже есть. Сменить пароль: set-password {username}")
+        session.add(User(
+            username=username, display_name=name or username, auth_source="local",
+            password_hash=hash_password(ask_password()), role=UserRole.admin.value,
+        ))
+        await session.commit()
+    print(f"✓ Администратор «{username}» создан. Вход: форма «Вход для администраторов».")
+
+
+async def set_password(username: str) -> None:
+    async with SessionLocal() as session:
+        user = await session.scalar(select(User).where(User.username == username.lower()))
+        if user is None or user.auth_source != "local":
+            sys.exit("Локальная учётка не найдена (пароли есть только у локальных администраторов)")
+        user.password_hash = hash_password(ask_password())
+        await session.commit()
+    print("✓ Пароль обновлён")
+
+
+async def set_active(username: str, active: bool) -> None:
+    async with SessionLocal() as session:
+        user = await session.scalar(select(User).where(User.username == username.lower()))
+        if user is None:
+            sys.exit("Пользователь не найден")
+        user.is_active = active
+        await session.commit()
+    print(f"✓ {username}: {'активен' if active else 'заблокирован'}")
+
+
+async def list_users() -> None:
+    async with SessionLocal() as session:
+        users = (await session.scalars(select(User).order_by(User.role, User.username))).all()
+    for u in users:
+        last = f"{u.last_login_at:%d.%m.%Y %H:%M}" if u.last_login_at else "—"
+        print(f"{u.username:40} {u.auth_source:7} {u.role:6} {'on ' if u.is_active else 'OFF'}  вход: {last}")
+
+
+async def insight_check(sample: int, query: str | None, breakdown: str | None) -> None:
+    from collections import Counter
+
+    from app.integrations.insight.client import InsightClient
+    from app.integrations.insight.mapping import load_mapping, map_object
+    from app.services.tiering import classify
+
+    path = settings.path(settings.insight_mapping_file or "config/insight_mapping.yaml")
+    mapping = load_mapping(path)
+    query = query or mapping.query
+    client = InsightClient(settings, mapping)
+    print(f"Jira: {settings.jira_url}   маппинг: {path.name}")
+    try:
+        print("Учётка:", await client.whoami())
+        if not breakdown:
+            schemas = (await client.get("/objectschema/list")).get("objectschemas", [])
+            print("\nСхемы объектов:")
+            for s in schemas:
+                print(f"  id={s['id']:<4} {s['name']}  (объектов: {s.get('objectCount', '?')})")
+            if mapping.schema_id:
+                types = await client.get(f"/objectschema/{mapping.schema_id}/objecttypes/flat", includeObjectCounts="true")
+                print(f"\nТипы объектов схемы {mapping.schema_id}:")
+                for t in sorted(types, key=lambda t: -(t.get("objectCount") or 0)):
+                    print(f"  id={t['id']:<5} {t['name']}  (объектов: {t.get('objectCount', '?')})")
+                statuses = await client.get("/config/statustype", objectSchemaId=mapping.schema_id)
+                print("\nСтатусы:", ", ".join(sorted({s["name"] for s in statuses})))
+
+        print(f"\nЗапрос: {query}")
+        print(f"Найдено объектов: {await client.count(query):,}".replace(",", " "))
+
+        if breakdown:
+            # точные количества по значениям атрибута (значения берутся из первых 1000 объектов)
+            objects = await client.fetch_objects(limit=1000, query=query)
+            values = Counter(o.attributes.get(breakdown, "") for o in objects)
+            print(f"\nРазбивка по «{breakdown}»:")
+            for value, _ in values.most_common():
+                if not value:
+                    print(f"  (пусто)  — встречается в выборке: {values[value]}")
+                    continue
+                n = await client.count(f'({query}) AND "{breakdown}" = "{value}"')
+                print(f"  {value}: {n:,}".replace(",", " "))
+            return
+
+        objects = await client.fetch_objects(limit=sample, query=query)
+        if objects:
+            attrs = await client._type_attributes(objects[0].object_type_id)
+            print(f"Атрибуты типа «{objects[0].object_type}»: " + ", ".join(a["name"] for a in attrs.values()))
+        for obj in objects:
+            data = map_object(obj, mapping)
+            tier = data.tier or classify(is_virtual=data.is_virtual, ram_gb=data.ram_gb, gpu=data.gpu)
+            print(f"\n— {obj.key} {obj.label} [{obj.object_type}]")
+            print("  в Insight:", json.dumps(obj.attributes, ensure_ascii=False))
+            print(f"  на портале: CPU={data.cpu} | ОЗУ={data.ram_gb} ГБ | GPU={data.gpu} | диск={data.storage} | "
+                  f"статус «{data.insight_status}» → {data.status} | категория {tier}")
+        if not objects:
+            print("Запрос ничего не вернул — проверьте query и права учётки на схему.")
+    finally:
+        await client.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="python -m app.cli", description="Служебные команды HMS Rent")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("create-admin")
+    p.add_argument("username")
+    p.add_argument("--name")
+    sub.add_parser("set-password").add_argument("username")
+    sub.add_parser("disable").add_argument("username")
+    sub.add_parser("enable").add_argument("username")
+    sub.add_parser("users")
+    p = sub.add_parser("insight-check")
+    p.add_argument("--sample", type=int, default=5, help="сколько объектов показать")
+    p.add_argument("--query", help="свой IQL-запрос вместо query из маппинга")
+    p.add_argument("--breakdown", metavar="АТРИБУТ", help="посчитать объекты по значениям атрибута, например Type")
+    args = parser.parse_args()
+
+    commands = {
+        "create-admin": lambda: create_admin(args.username, args.name),
+        "set-password": lambda: set_password(args.username),
+        "disable": lambda: set_active(args.username, False),
+        "enable": lambda: set_active(args.username, True),
+        "users": list_users,
+        "insight-check": lambda: insight_check(args.sample, args.query, args.breakdown),
+    }
+    asyncio.run(commands[args.cmd]())
+
+
+if __name__ == "__main__":
+    main()

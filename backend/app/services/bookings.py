@@ -1,0 +1,127 @@
+"""Бронирование и возврат компьютеров."""
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.errors import Conflict, Forbidden, NotFound
+from app.integrations.insight.factory import get_mapping
+from app.integrations.notify import notify
+from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, User
+from app.schemas.booking import BookingCreate
+from app.services.events import add_event
+
+
+async def get_booking(session: AsyncSession, booking_id: int) -> Booking:
+    booking = await session.scalar(
+        select(Booking).where(Booking.id == booking_id).execution_options(populate_existing=True)
+    )
+    if booking is None:
+        raise NotFound("Бронирование не найдено")
+    return booking
+
+
+def status_after_return(comp: Computer) -> str:
+    """Во что превращается ПК после возврата — решает статус в Insight."""
+    mapping = get_mapping()
+    insight = mapping.status_map.get((comp.insight_status or "").lower(), mapping.default_status)
+    if insight == ComputerStatus.in_use and settings.insight_writeback:
+        return ComputerStatus.available.value  # «занят» в Insight поставили мы сами — сейчас вернём «свободен»
+    return insight
+
+
+async def create_booking(session: AsyncSession, user: User, data: BookingCreate) -> Booking:
+    # FOR UPDATE: два человека не смогут одновременно забронировать один ПК
+    comp = await session.scalar(
+        select(Computer).where(Computer.id == data.computer_id).with_for_update(of=Computer)
+    )
+    if comp is None or comp.is_archived:
+        raise NotFound("Компьютер не найден")
+    if comp.pool is None or not comp.pool.is_published:
+        raise NotFound("Этот компьютер сейчас не выдаётся")
+    if comp.status != ComputerStatus.available:
+        raise Conflict(f"{comp.name} уже занят или недоступен")
+    dept = await session.get(Department, data.department_id)
+    if dept is None or not dept.is_active:
+        raise NotFound("Отдел не найден")
+
+    booking = Booking(
+        computer_id=comp.id,
+        department_id=dept.id,
+        user_id=user.id,
+        requester_name=data.requester_name.strip(),
+        requester_nick=data.requester_nick.strip(),
+        purpose=(data.purpose or "").strip() or None,
+        expected_return_at=data.expected_return_at,
+        status=BookingStatus.active.value,
+    )
+    session.add(booking)
+    comp.status = ComputerStatus.booked.value
+    comp.department_id = dept.id
+    comp.writeback_pending = settings.insight_writeback
+    try:
+        await session.flush()
+        add_event(
+            session,
+            computer_id=comp.id,
+            booking_id=booking.id,
+            actor_id=user.id,
+            event_type=EventType.booked,
+            from_status=ComputerStatus.available.value,
+            to_status=ComputerStatus.booked.value,
+            message=f"Закреплён за отделом «{dept.name}»: {booking.requester_name} ({booking.requester_nick})",
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise Conflict(f"{comp.name} только что забронировали") from exc
+
+    await notify(f"🖥 **{comp.name}** забронирован: {dept.name}, {booking.requester_name} ({booking.requester_nick})")
+    return await get_booking(session, booking.id)
+
+
+async def return_booking(session: AsyncSession, user: User, booking_id: int, comment: str | None) -> Booking:
+    booking = await session.scalar(
+        select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
+    )
+    if booking is None:
+        raise NotFound("Бронирование не найдено")
+    if booking.user_id != user.id and not user.is_admin:
+        raise Forbidden("Вернуть ПК может тот, кто его бронировал, или администратор")
+    if booking.status != BookingStatus.active:
+        raise Conflict("Бронирование уже закрыто")
+    comp = await session.scalar(
+        select(Computer).where(Computer.id == booking.computer_id).with_for_update(of=Computer)
+    )
+
+    booking.status = BookingStatus.returned.value
+    booking.returned_at = datetime.now(timezone.utc)
+    booking.returned_by_id = user.id
+    booking.return_comment = (comment or "").strip() or None
+    new_status = status_after_return(comp)
+    add_event(
+        session,
+        computer_id=comp.id,
+        booking_id=booking.id,
+        actor_id=user.id,
+        event_type=EventType.returned,
+        from_status=comp.status,
+        to_status=new_status,
+        message=f"Возвращён отделом «{booking.department.name}»" + (f": {booking.return_comment}" if booking.return_comment else ""),
+    )
+    comp.status = new_status
+    comp.department_id = None
+    comp.writeback_pending = settings.insight_writeback
+    await session.commit()
+
+    await notify(f"↩️ **{comp.name}** возвращён ({booking.department.name})")
+    return await get_booking(session, booking.id)
+
+
+async def list_user_bookings(session: AsyncSession, user: User) -> list[Booking]:
+    rows = await session.scalars(
+        select(Booking).where(Booking.user_id == user.id).order_by(Booking.booked_at.desc()).limit(200)
+    )
+    return list(rows.unique().all())

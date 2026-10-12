@@ -1,0 +1,115 @@
+"""Все настройки приложения. Читаются из переменных окружения / файла .env."""
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parents[2]  # папка backend/
+
+
+def _split(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+class Settings(BaseSettings):
+    # .env ищется в корне проекта (локальный запуск из backend/) и рядом; в Docker переменные приходят из env_file
+    model_config = SettingsConfigDict(env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore")
+
+    # --- Общее ---
+    app_name: str = "HMS Rent"
+    environment: Literal["dev", "prod"] = "dev"
+    public_url: str = "http://localhost:8080"  # адрес портала в браузере (нужен для redirect из Google)
+    api_prefix: str = "/api/v1"
+    cors_origins: str = "http://localhost:5173"
+    display_timezone: str = "Europe/Moscow"
+
+    # --- База данных ---
+    database_url: str = "postgresql+asyncpg://hmsrent:hmsrent@localhost:5432/hmsrent"
+
+    # --- Сессии ---
+    secret_key: str = "change-me-please"
+    session_ttl_hours: int = 12
+    cookie_name: str = "hmsrent_session"
+    cookie_secure: bool = False
+
+    # --- Вход ---
+    # Сотрудники: Google SSO (рабочая почта). Администраторы: локальные учётки (python -m app.cli create-admin)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_allowed_domains: str = "deeplay.io"  # домены рабочей почты через запятую
+    admins_file: str = "config/admins.txt"  # почты администраторов, по одной в строке
+    auth_local_enabled: bool = True  # форма «Вход для администраторов»
+    auth_dev_enabled: bool = False  # вход любым логином без пароля — ТОЛЬКО для локальной разработки
+    login_max_attempts: int = 5  # после стольких неудачных попыток вход по логину блокируется…
+    login_lock_minutes: int = 10  # …на столько минут
+
+    # --- Jira / Insight ---
+    insight_mode: Literal["mock", "live"] = "mock"
+    jira_url: str = "https://jira.marvin-it.com"
+    insight_token: str = ""  # Personal Access Token сервисной учётки (Bearer)
+    insight_username: str = ""  # либо логин/пароль сервисной учётки (Basic); пусто — без авторизации
+    insight_password: str = ""
+    insight_verify_ssl: bool = True
+    insight_api: Literal["iql", "aql"] = "iql"
+    insight_page_size: int = 200
+    insight_max_objects: int = 0  # 0 — без ограничения; >0 — пробная синхронизация первых N объектов
+    insight_mapping_file: str = ""  # пусто — config/insight_mapping.yaml (live) или .mock.yaml (mock)
+    insight_sync_interval_sec: int = 600
+    insight_writeback: bool = False
+    mock_data_file: str = "seed/mock_computers.json"
+
+    # --- Категории мощности (если в Insight нет своего поля) ---
+    tier_medium_min_ram_gb: int = 15  # «15GB» в Insight — это 16 ГБ минус память под встройку
+    tier_powerful_min_ram_gb: int = 32
+    tier_medium_gpu: str = "1050,1060,1650,RX 5"
+    tier_powerful_gpu: str = "RTX,1660,1070,1080,RX 6,RX 7,A4000,A5000"
+
+    # --- Уведомления ---
+    mattermost_webhook_url: str = ""
+
+    # --- Справочник отделов по умолчанию (создаётся, если таблица пустая) ---
+    default_departments: str = "Разработка,Тестирование (QA),Аналитика,Дизайн,Маркетинг,Поддержка"
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def google_domains(self) -> list[str]:
+        return [d.lower() for d in _split(self.google_allowed_domains)]
+
+    @property
+    def cors_list(self) -> list[str]:
+        return _split(self.cors_origins)
+
+    @property
+    def medium_gpu_patterns(self) -> list[str]:
+        return _split(self.tier_medium_gpu)
+
+    @property
+    def powerful_gpu_patterns(self) -> list[str]:
+        return _split(self.tier_powerful_gpu)
+
+    @property
+    def default_department_list(self) -> list[str]:
+        return _split(self.default_departments)
+
+    @property
+    def mapping_path(self) -> Path:
+        name = self.insight_mapping_file or (
+            "config/insight_mapping.mock.yaml" if self.insight_mode == "mock" else "config/insight_mapping.yaml"
+        )
+        return self.path(name)
+
+    def path(self, relative: str) -> Path:
+        p = Path(relative)
+        return p if p.is_absolute() else BASE_DIR / p
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
