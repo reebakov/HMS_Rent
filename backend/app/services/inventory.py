@@ -75,7 +75,14 @@ async def list_inventory(
     stmt = select(Computer)
     if not include_archived:
         stmt = stmt.where(Computer.is_archived.is_(False))
-    if status:
+    if status == "unavailable":
+        stmt = stmt.where(Computer.status.in_([
+            ComputerStatus.maintenance.value, 
+            ComputerStatus.in_use.value, 
+            ComputerStatus.retired.value, 
+            ComputerStatus.unknown.value
+        ]))
+    elif status:
         stmt = stmt.where(Computer.status == status)
     if tier:
         stmt = stmt.where(Computer.tier == tier)
@@ -209,11 +216,42 @@ async def list_journal(
     return list((await session.scalars(stmt.limit(limit))).unique().all())
 
 
-async def list_events(session: AsyncSession, *, computer_id: int | None = None, limit: int = 100) -> list[AssetEvent]:
-    stmt = select(AssetEvent).order_by(AssetEvent.created_at.desc(), AssetEvent.id.desc()).limit(limit)
+async def list_events(
+    session: AsyncSession, 
+    *, 
+    computer_id: int | None = None,
+    event_type: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    q: str | None = None,
+    limit: int = 100,
+    offset: int = 0
+) -> tuple[list[AssetEvent], int]:
+    stmt = select(AssetEvent).join(Computer, Computer.id == AssetEvent.computer_id)
+    
     if computer_id:
         stmt = stmt.where(AssetEvent.computer_id == computer_id)
-    return list((await session.scalars(stmt)).unique().all())
+    if event_type:
+        stmt = stmt.where(AssetEvent.event_type == event_type)
+    if date_from:
+        stmt = stmt.where(AssetEvent.created_at >= datetime.combine(date_from, time.min, timezone.utc))
+    if date_to:
+        stmt = stmt.where(AssetEvent.created_at <= datetime.combine(date_to, time.max, timezone.utc))
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(
+            Computer.name.ilike(like), 
+            AssetEvent.message.ilike(like)
+        ))
+
+    total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
+    
+    stmt = stmt.order_by(AssetEvent.created_at.desc(), AssetEvent.id.desc())
+    if limit:
+        stmt = stmt.limit(limit).offset(offset)
+        
+    items = list((await session.scalars(stmt)).unique().all())
+    return items, total or 0
 
 
 def inventory_csv(rows: list[InventoryRow]) -> str:

@@ -33,12 +33,14 @@ export function AdminOverviewPage() {
             tone="primary"
             hint={`${s.departments_using} отделов пользуются`}
           />
-          <StatCard
-            label="Недоступно"
-            value={(s.by_status.maintenance ?? 0) + (s.by_status.in_use ?? 0) + (s.by_status.retired ?? 0)}
-            tone="warning"
-            hint="ремонт, резерв, заняты мимо портала"
-          />
+          <Link to="/admin/inventory?status=unavailable" className="block transition-opacity hover:opacity-90">
+            <StatCard
+              label="Недоступно"
+              value={(s.by_status.maintenance ?? 0) + (s.by_status.in_use ?? 0) + (s.by_status.retired ?? 0)}
+              tone="warning"
+              hint="ремонт, резерв, заняты мимо портала"
+            />
+          </Link>
           <Link to="/admin/inventory?issues=1" className="block transition-opacity hover:opacity-90">
             <StatCard
               label="Требуют внимания"
@@ -142,12 +144,12 @@ export function AdminOverviewPage() {
         <CardHeader
           title="Последние события"
           action={
-            <Link to="/admin/journal" className="text-[13px] font-medium text-primary hover:underline">
-              Журнал
+            <Link to="/admin/events" className="text-[13px] font-medium text-primary hover:underline">
+              Все логи
             </Link>
           }
         />
-        <div className="p-5">{events.data ? <EventTimeline events={events.data} /> : <Skeleton className="h-40" />}</div>
+        <div className="p-5">{events.data ? <EventTimeline events={events.data.items} /> : <Skeleton className="h-40" />}</div>
       </Card>
     </>
   )

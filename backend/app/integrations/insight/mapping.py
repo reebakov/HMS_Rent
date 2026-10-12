@@ -163,7 +163,7 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         storage = from_specs if same else f"{storage} ГБ"
 
     gateway = get("gateway")
-    location = "-" # По умолчанию
+    location = "" # По умолчанию
     if gateway:
         gw_lower = gateway.lower()
         if "aut-gz" in gw_lower:

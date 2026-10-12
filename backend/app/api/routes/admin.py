@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from app.schemas.admin import EventPage
 
 from app.api.deps import DB, AdminUser
 from app.core.config import settings
@@ -172,9 +173,20 @@ async def journal(
     )
 
 
-@router.get("/events", response_model=list[EventOut])
-async def events(_: AdminUser, session: DB, limit: int = 50) -> list[AssetEvent]:
-    return await inventory.list_events(session, limit=min(limit, 500))
+@router.get("/events", response_model=EventPage)
+async def events(
+    _: AdminUser, session: DB, 
+    limit: int = 50, offset: int = 0,
+    event_type: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    q: str | None = None
+) -> EventPage:
+    items, total = await inventory.list_events(
+        session, limit=limit, offset=offset, 
+        event_type=event_type, date_from=date_from, date_to=date_to, q=q
+    )
+    return EventPage(items=[EventOut.model_validate(e) for e in items], total=total)
 
 
 # ---------- Отделы ----------

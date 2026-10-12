@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
 import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -104,6 +104,7 @@ export function InventoryPage() {
           </Select>
           <Select className="w-40" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
             <option value="">Все статусы</option>
+            <option value="unavailable">⚠️ Недоступные</option> {/* <-- ДОБАВИТЬ ЭТУ СТРОКУ */}
             {(Object.keys(STATUSES) as ComputerStatus[]).map((s) => (
               <option key={s} value={s}>
                 {STATUSES[s].label}
@@ -275,18 +276,59 @@ export function InventoryPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
+                <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
           <span className={cn(isFetching && 'animate-pulse')}>
-            {total ? `${from}–${to} из ${total.toLocaleString('ru-RU')}` : ''}
+            {total ? `${from}–${to} из ${total.toLocaleString('ru-RU')}` : '0 записей'}
           </span>
-          <div className="flex gap-1">
-            <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="outline" disabled={to >= total} onClick={() => setPage((p) => p + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          
+          {total > 0 && (() => {
+            const totalPages = Math.ceil(total / PAGE)
+            // Логика отображения максимум 5 кнопок страниц (скользящее окно)
+            let start = Math.max(0, page - 2)
+            let end = Math.min(totalPages - 1, page + 2)
+            if (end - start < 4) {
+              if (start === 0) end = Math.min(totalPages - 1, 4)
+              else if (end === totalPages - 1) start = Math.max(0, totalPages - 5)
+            }
+            const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i)
+
+            return (
+              <div className="flex items-center gap-1">
+                {/* В самое начало */}
+                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)} title="На первую страницу">
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                {/* Назад */}
+                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {/* Номера страниц */}
+                <div className="hidden items-center gap-1 px-2 sm:flex">
+                  {pages.map((p) => (
+                    <Button
+                      key={p}
+                      size="sm"
+                      variant={page === p ? 'primary' : 'ghost'}
+                      className={cn('w-8 px-0', page !== p && 'text-muted-foreground')}
+                      onClick={() => setPage(p)}
+                    >
+                      {p + 1}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Вперед */}
+                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                {/* В самый конец */}
+                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="На последнюю страницу">
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )
+          })()}
         </div>
       </Card>
 

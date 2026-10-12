@@ -147,3 +147,7 @@ class ComputerHistoryOut(BaseModel):
     attributes: dict[str, Any]
     bookings: list[BookingOut]
     events: list[EventOut]
+
+class EventPage(BaseModel):
+    items: list[EventOut]
+    total: int    

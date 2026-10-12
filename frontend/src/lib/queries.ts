@@ -88,6 +88,15 @@ export interface JournalFilters {
   date_to?: string
 }
 
+export interface EventFilters {
+  q?: string
+  event_type?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
+}
+
 export const useStats = () => useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api.get<Stats>('/admin/stats') })
 
 export const useInventory = (filters: InventoryFilters) =>
@@ -111,8 +120,12 @@ export const useJournal = (filters: JournalFilters) =>
     placeholderData: (prev) => prev,
   })
 
-export const useEvents = (limit = 12) =>
-  useQuery({ queryKey: ['admin', 'events', limit], queryFn: () => api.get<AssetEvent[]>('/admin/events', { limit }) })
+export const useEvents = (filters: EventFilters = { limit: 12, offset: 0 }) =>
+  useQuery({ 
+    queryKey: ['admin', 'events', filters], 
+    queryFn: () => api.get<{ items: AssetEvent[], total: number }>('/admin/events', { ...filters }),
+    placeholderData: (prev) => prev,
+  })
 
 export const useDepartmentUsage = () =>
   useQuery({ queryKey: ['admin', 'departments'], queryFn: () => api.get<DepartmentUsage[]>('/admin/departments') })

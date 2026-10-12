@@ -1,8 +1,6 @@
 import { useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import {
-  ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, X,
-} from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, X, Activity } from 'lucide-react'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
@@ -24,6 +22,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/pools', label: 'Пулы выдачи', icon: Layers },
   { to: '/admin/journal', label: 'Журнал выдачи', icon: ArrowLeftRight },
   { to: '/admin/departments', label: 'Отделы', icon: Building2 },
+  { to: '/admin/events', label: 'Логи системы', icon: Activity },
   { to: '/admin/sync', label: 'Синхронизация', icon: RefreshCw },
 ]
 
