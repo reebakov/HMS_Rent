@@ -7,6 +7,9 @@ import { CategoryCards } from '@/features/catalog/CategoryCards'
 import { ComputerList } from '@/features/catalog/ComputerList'
 import { ComputerSheet } from '@/features/catalog/ComputerSheet'
 import { BookingDialog } from '@/features/booking/BookingDialog'
+import { VmBuilderDialog } from '@/features/vms/VmBuilderDialog'
+import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
+import { useSession } from '@/auth/AuthProvider'
 import { useCatalogSummary, useComputers, type ComputerFilters } from '@/lib/queries'
 import { TIERS } from '@/lib/dictionaries'
 import type { Computer, Tier } from '@/lib/types'
@@ -26,8 +29,11 @@ export function CatalogPage() {
     sort: (params.get('sort') as ComputerFilters['sort']) || 'name',
   }
 
-  const summary = useCatalogSummary()
-  const computers = useComputers(filters)
+  const session = useSession()
+  const summary = useCatalogSummary(session.catalog_refresh_sec)
+  const computers = useComputers(filters, session.catalog_refresh_sec)
+  const [view, setView] = useViewMode('catalog')
+  const [vmOpen, setVmOpen] = useState(false)
   const [openedId, setOpenedId] = useState<number | null>(null)
   const [booking, setBooking] = useState<Computer | null>(null)
   const [search, setSearch] = useState(filters.q ?? '')
@@ -58,7 +64,7 @@ export function CatalogPage() {
         description="Выберите категорию мощности, затем подходящий компьютер или виртуальную машину"
       />
 
-      <CategoryCards summary={summary.data} value={tier} onChange={(t) => update({ tier: t })} />
+      <CategoryCards summary={summary.data} value={tier} onChange={(t) => update({ tier: t })} onBuildVm={() => setVmOpen(true)} />
 
       <div className="mb-4 mt-8 flex flex-wrap items-center gap-3">
         <div className="mr-auto">
@@ -106,11 +112,13 @@ export function CatalogPage() {
             С видеокартой
           </button>
         )}
+        <ViewToggle value={view} onChange={setView} />
       </div>
 
       <ComputerList
         computers={computers.data}
         loading={computers.isLoading}
+        compact={view === 'compact'}
         onOpen={setOpenedId}
         onBook={setBooking}
         onReset={() => {
@@ -128,6 +136,7 @@ export function CatalogPage() {
         }}
       />
       <BookingDialog computer={booking} onClose={() => setBooking(null)} />
+      <VmBuilderDialog open={vmOpen} onClose={() => setVmOpen(false)} />
     </>
   )
 }

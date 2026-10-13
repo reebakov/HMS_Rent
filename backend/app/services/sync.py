@@ -30,7 +30,10 @@ TRACKED = (
 
 async def run_sync(session: AsyncSession) -> SyncRun | None:
     started = datetime.now(timezone.utc)
-    source = create_insight_source()
+    try:
+        source = create_insight_source()
+    except Exception as exc:  # noqa: BLE001 — например, не задан JIRA_URL
+        return await _save_failed(session, settings.insight_mode, str(exc))
     limit = settings.insight_max_objects
     try:
         objects = await source.fetch_objects(limit=limit)

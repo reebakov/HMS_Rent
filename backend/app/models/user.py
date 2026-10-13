@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.models.department import Department
 from app.models.enums import UserRole
 
 
@@ -25,8 +26,11 @@ class User(Base, TimestampMixin):
     auth_source: Mapped[str] = mapped_column(String(16), default="google")  # google / local / dev
     password_hash: Mapped[str | None] = mapped_column(String(255))  # только у локальных учёток
     role: Mapped[str] = mapped_column(String(16), default=UserRole.user.value)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))  # назначает админ
     is_active: Mapped[bool] = mapped_column(default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    department: Mapped[Department | None] = relationship(lazy="joined")
 
     @property
     def is_admin(self) -> bool:

@@ -15,6 +15,7 @@ from app.integrations.auth.base import AuthError, AuthResult
 from app.integrations.auth.dev import dev_login
 from app.models import User, UserRole
 from app.schemas.auth import AuthConfigOut, LoginIn, SessionOut, UserOut
+from app.services import runtime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,7 +24,8 @@ _failed: dict[str, list[float]] = defaultdict(list)  # логин -> время 
 
 
 def _session_out(user: User) -> SessionOut:
-    return SessionOut(user=UserOut.model_validate(user), app_name=settings.app_name, insight_mode=settings.insight_mode)
+    return SessionOut(user=UserOut.model_validate(user), app_name=settings.app_name, insight_mode=settings.insight_mode,
+                      catalog_refresh_sec=runtime.current().catalog_refresh_sec)
 
 
 def _set_session(response: Response, user: User) -> None:

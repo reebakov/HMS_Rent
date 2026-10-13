@@ -1,6 +1,7 @@
-"""Фоновый воркер: периодическая синхронизация с Insight и обратная запись.
+"""Фоновый воркер: синхронизация с Insight, запись в Insight, виртуалки в vSphere.
 
 Запуск: python -m app.worker  (в docker-compose — отдельный сервис `worker`).
+Интервал синхронизации и запись в Insight берутся из настроек на сайте (Админка → «Настройки»).
 """
 import asyncio
 import logging
@@ -8,35 +9,39 @@ import time
 
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.services import runtime, vm_jobs
 from app.services.sync import run_sync
 from app.services.writeback import push_pending
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("hmsrent.worker")
 
-WRITEBACK_INTERVAL_SEC = 30
+TICK_SEC = 5  # как часто проверять очередь ВМ и запись в Insight
+
+
+async def _step(name: str, coro_factory) -> None:
+    try:
+        async with SessionLocal() as session:
+            await coro_factory(session)
+    except Exception:  # noqa: BLE001 — воркер не должен падать из-за одной ошибки
+        log.exception("%s упал", name)
 
 
 async def main() -> None:
-    log.info("Воркер запущен: insight=%s, интервал синхронизации %s с, writeback=%s",
-             settings.insight_mode, settings.insight_sync_interval_sec, settings.insight_writeback)
+    log.info("Воркер запущен: insight=%s, vSphere=%s", settings.insight_mode,
+             settings.vcenter_host if settings.vsphere_configured else "не настроен")
+    if settings.vsphere_configured:
+        await _step("Восстановление очереди ВМ", vm_jobs.recover)
     next_sync = 0.0
     while True:
+        async with SessionLocal() as session:
+            cfg = await runtime.load(session, max_age=0)
         if time.monotonic() >= next_sync:
-            try:
-                async with SessionLocal() as session:
-                    await run_sync(session)
-            except Exception:  # noqa: BLE001 — воркер не должен падать из-за одной ошибки
-                log.exception("Синхронизация упала")
-            next_sync = time.monotonic() + settings.insight_sync_interval_sec
-        try:
-            async with SessionLocal() as session:
-                pushed = await push_pending(session)
-                if pushed:
-                    log.info("Записано в Insight: %s ПК", pushed)
-        except Exception:  # noqa: BLE001
-            log.exception("Writeback упал")
-        await asyncio.sleep(WRITEBACK_INTERVAL_SEC)
+            await _step("Синхронизация", run_sync)
+            next_sync = time.monotonic() + cfg.insight_sync_interval_min * 60
+        await _step("Запись в Insight", push_pending)
+        await _step("Виртуалки", vm_jobs.run_once)
+        await asyncio.sleep(TICK_SEC)
 
 
 if __name__ == "__main__":

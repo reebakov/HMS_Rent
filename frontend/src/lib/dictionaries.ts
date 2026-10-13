@@ -40,7 +40,7 @@ export const STATUSES: Record<ComputerStatus, { label: string; tone: 'success' |
   available: { label: 'Свободен', tone: 'success' },
   booked: { label: 'Забронирован', tone: 'primary' },
   in_use: { label: 'Занят (Insight)', tone: 'warning' },
-  maintenance: { label: 'Обслуживание', tone: 'warning' },
+  maintenance: { label: 'Резерв', tone: 'warning' },
   retired: { label: 'Списан', tone: 'muted' },
   unknown: { label: 'Неизвестно', tone: 'muted' },
 }

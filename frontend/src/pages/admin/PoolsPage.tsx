@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/input'
-import { useAssignPool, useDeletePool, usePools, useSavePool } from '@/lib/queries'
+import { useAssignPool, useDeletePool, useDepartments, usePools, useSavePool } from '@/lib/queries'
 import type { Pool } from '@/lib/types'
 
-type Editing = { id?: number; name: string; description: string }
+type Editing = { id?: number; name: string; description: string; departmentIds: number[] }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Ошибка')
 
@@ -21,6 +21,7 @@ export function PoolsPage() {
   const save = useSavePool()
   const remove = useDeletePool()
   const assign = useAssignPool()
+  const departments = useDepartments()
   const [editing, setEditing] = useState<Editing | null>(null)
   const [filling, setFilling] = useState<Pool | null>(null)
   const [names, setNames] = useState('')
@@ -28,7 +29,9 @@ export function PoolsPage() {
   const submit = async () => {
     if (!editing) return
     try {
-      await save.mutateAsync({ id: editing.id, name: editing.name, description: editing.description || null })
+      await save.mutateAsync({
+        id: editing.id, name: editing.name, description: editing.description || null, department_ids: editing.departmentIds,
+      })
       toast.success(editing.id ? 'Пул обновлён' : 'Пул создан')
       setEditing(null)
     } catch (e) {
@@ -77,7 +80,7 @@ export function PoolsPage() {
         title="Пулы выдачи"
         description="Сотрудники видят в каталоге только компьютеры из опубликованных пулов. ПК без пула видят только администраторы."
         action={
-          <Button onClick={() => setEditing({ name: '', description: '' })}>
+          <Button onClick={() => setEditing({ name: '', description: '', departmentIds: [] })}>
             <Plus className="h-4 w-4" />
             Новый пул
           </Button>
@@ -102,6 +105,9 @@ export function PoolsPage() {
                 <div className="min-w-0">
                   <p className="truncate text-base font-semibold">{pool.name}</p>
                   <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">{pool.description || 'Без описания'}</p>
+                  <p className="mt-1.5 text-xs font-medium">
+                    {pool.departments.length ? `Видят: ${pool.departments.map((d) => d.name).join(', ')}` : 'Видят все сотрудники'}
+                  </p>
                 </div>
                 {pool.is_published ? <Badge tone="success" dot>В каталоге</Badge> : <Badge>Скрыт</Badge>}
               </div>
@@ -131,7 +137,7 @@ export function PoolsPage() {
                   <Button size="icon" variant="ghost" title={pool.is_published ? 'Скрыть из каталога' : 'Опубликовать'} onClick={() => togglePublished(pool)}>
                     {pool.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
-                  <Button size="icon" variant="ghost" title="Изменить" onClick={() => setEditing({ id: pool.id, name: pool.name, description: pool.description ?? '' })}>
+                  <Button size="icon" variant="ghost" title="Изменить" onClick={() => setEditing({ id: pool.id, name: pool.name, description: pool.description ?? '', departmentIds: pool.departments.map((d) => d.id) })}>
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button size="icon" variant="ghost" title="Удалить" onClick={() => destroy(pool)}>
@@ -164,7 +170,31 @@ export function PoolsPage() {
             <Field label="Название" required>
               <Input autoFocus value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Например: Аренда для отделов" />
             </Field>
-            <Field label="Описание" hint="Видно только администраторам">
+            <div>
+                  <p className="mb-1.5 text-[13px] font-medium">Кто видит пул</p>
+                  <p className="mb-2 text-xs text-muted-foreground">Ничего не отмечено — все сотрудники. Отдел человеку назначается в «Сотрудниках»</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {departments.data?.map((d) => (
+                      <label key={d.id} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[13px]">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[hsl(var(--primary))]"
+                          checked={editing.departmentIds.includes(d.id)}
+                          onChange={(e) =>
+                            setEditing({
+                              ...editing,
+                              departmentIds: e.target.checked
+                                ? [...editing.departmentIds, d.id]
+                                : editing.departmentIds.filter((x) => x !== d.id),
+                            })
+                          }
+                        />
+                        {d.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <Field label="Описание" hint="Видно только администраторам">
               <Textarea value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
             </Field>
           </div>

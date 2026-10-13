@@ -22,6 +22,8 @@ class InsightClient:
     mode = "live"
 
     def __init__(self, settings: Settings, mapping: InsightMapping):
+        if not settings.jira_url:
+            raise InsightError("Не задан адрес Jira: впишите JIRA_URL в .env")
         self.mapping = mapping
         self._api = settings.insight_api
         self._page_size = settings.insight_page_size
@@ -159,6 +161,15 @@ class InsightClient:
         if not entries:
             raise InsightError(f"В Insight не найден объект «{label}» (тип {ref_type_id})")
         return entries[0]["objectKey"]
+
+    async def get_object(self, object_id: int) -> InsightObject | None:
+        """Один объект «прямо сейчас» — для перепроверки статуса перед бронью."""
+        resp = await self._http.get(f"/object/{object_id}")
+        if resp.status_code == 404:
+            return None
+        if resp.status_code >= 400:
+            raise InsightError(f"Insight {resp.status_code}: {resp.text[:200]}")
+        return await self.to_object(resp.json())
 
     async def update_object(self, object_id: int, object_type_id: int | None, values: dict[str, str | None]) -> None:
         if object_type_id is None:

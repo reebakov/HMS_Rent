@@ -16,12 +16,14 @@ class UserOut(ORMModel):
     avatar_url: str | None
     auth_source: str
     role: str
+    department_id: int | None
 
 
 class SessionOut(BaseModel):
     user: UserOut
     app_name: str
     insight_mode: str
+    catalog_refresh_sec: int = 15
 
 
 class AuthConfigOut(BaseModel):

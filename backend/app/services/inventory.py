@@ -14,11 +14,12 @@ from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerSta
 from app.schemas.admin import (
     DepartmentUsage, InventoryBooking, InventoryRow, StatsOut, SyncRunOut, TierStat,
 )
+from app.services import runtime
 
 TIER_LABELS = {"weak": "Слабый", "medium": "Средний", "powerful": "Мощный", "vm": "Виртуальная"}
 STATUS_LABELS = {
     "available": "Свободен", "booked": "Забронирован", "in_use": "Занят (Insight)",
-    "maintenance": "Обслуживание", "retired": "Списан", "unknown": "Неизвестно",
+    "maintenance": "Резерв", "retired": "Списан", "unknown": "Неизвестно",
 }
 
 
@@ -31,7 +32,7 @@ def computer_issues(comp: Computer, booking: Booking | None) -> list[str]:
         issues.append("ПК пропал из Insight, но закреплён за отделом")
     if booking and insight in (ComputerStatus.maintenance, ComputerStatus.retired):
         issues.append(f"В Insight статус «{comp.insight_status}», но ПК закреплён за отделом")
-    if booking and settings.insight_writeback and not comp.writeback_pending and insight == ComputerStatus.available:
+    if booking and runtime.current().insight_writeback and not comp.writeback_pending and insight == ComputerStatus.available:
         issues.append("В Insight ПК числится свободным")
     if booking and booking.expected_return_at and booking.expected_return_at < date.today():
         issues.append(f"Просрочен возврат (до {booking.expected_return_at:%d.%m.%Y})")

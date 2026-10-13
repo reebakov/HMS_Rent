@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import Tier
 from app.schemas.booking import BookingOut
-from app.schemas.common import ORMModel, UserShort
+from app.schemas.common import DepartmentShort, ORMModel, UserShort
 from app.schemas.computer import ComputerOut
 
 
@@ -86,6 +86,7 @@ class InventoryPage(BaseModel):
 
 class PoolOut(PoolShort):
     description: str | None
+    departments: list[DepartmentShort] = []  # пусто — пул видят все сотрудники
     total: int = 0
     available: int = 0
     booked: int = 0
@@ -95,6 +96,7 @@ class PoolSave(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     is_published: bool | None = None
+    department_ids: list[int] | None = None  # кто видит пул; [] — все сотрудники
 
 
 class PoolAssign(BaseModel):

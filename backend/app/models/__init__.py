@@ -4,10 +4,12 @@ from app.models.computer import Computer
 from app.models.department import Department
 from app.models.enums import BookingStatus, ComputerStatus, EventType, Tier, UserRole
 from app.models.event import AssetEvent, SyncRun
-from app.models.pool import Pool
+from app.models.pool import Pool, pool_departments
 from app.models.user import User
+from app.models.vm import AppSetting, VirtualMachine
 
 __all__ = [
+    "AppSetting",
     "AssetEvent",
     "Booking",
     "BookingStatus",
@@ -20,4 +22,6 @@ __all__ = [
     "Tier",
     "User",
     "UserRole",
+    "VirtualMachine",
+    "pool_departments",
 ]

@@ -20,6 +20,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
+    extra_hosts:
+      - "vc26.ff.local:10.1.1.50"   
     volumes:
       # маппинг Insight можно править без пересборки образа
       - ./backend/config:/app/config:ro
@@ -40,6 +42,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
+    extra_hosts:
+      - "vc26.ff.local:10.1.1.50"  
     volumes:
       - ./backend/config:/app/config:ro
       - ./backend/app:/app/app:ro

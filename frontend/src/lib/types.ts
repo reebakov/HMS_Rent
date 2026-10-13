@@ -12,12 +12,14 @@ export interface User {
   avatar_url: string | null
   auth_source: 'google' | 'local' | 'dev'
   role: 'user' | 'admin'
+  department_id: number | null
 }
 
 export interface Session {
   user: User
   app_name: string
   insight_mode: 'mock' | 'live'
+  catalog_refresh_sec: number
 }
 
 export interface AuthConfig {
@@ -218,6 +220,7 @@ export interface PoolShort {
 
 export interface Pool extends PoolShort {
   description: string | null
+  departments: Ref[]
   total: number
   available: number
   booked: number
@@ -231,4 +234,87 @@ export interface InventoryPage {
 export interface PoolAssignResult {
   updated: number
   not_found: string[]
+}
+
+// ---------- Виртуалки ----------
+
+export type VmStatus = 'queued' | 'creating' | 'ready' | 'failed' | 'deleting' | 'deleted'
+
+export interface Vm {
+  id: number
+  name: string
+  cpu: number
+  ram_gb: number
+  disk_gb: number
+  status: VmStatus
+  error: string | null
+  department: Ref
+  user: UserShort
+  requester_name: string
+  requester_nick: string
+  purpose: string | null
+  expected_return_at: string | null
+  ip_address: string | null
+  power_state: string | null
+  created_at: string
+  ready_at: string | null
+  released_at: string | null
+  deleted_at: string | null
+}
+
+export interface VmOptions {
+  enabled: boolean
+  reason: string | null
+  name_prefix: string
+  template: string
+  min_cpu: number
+  max_cpu: number
+  min_ram_gb: number
+  max_ram_gb: number
+  min_disk_gb: number
+  max_disk_gb: number
+  max_per_user: number
+  used_by_me: number
+}
+
+export interface VmCreate {
+  name: string
+  cpu: number
+  ram_gb: number
+  disk_gb: number
+  department_id: number
+  requester_name: string
+  requester_nick: string
+  purpose?: string
+  expected_return_at?: string | null
+}
+
+// ---------- Настройки и сотрудники ----------
+
+export interface AppSettings {
+  insight_sync_interval_min: number
+  insight_writeback: boolean
+  vm_enabled: boolean
+  vm_max_per_user: number
+  vm_min_cpu: number
+  vm_max_cpu: number
+  vm_min_ram_gb: number
+  vm_max_ram_gb: number
+  vm_min_disk_gb: number
+  vm_max_disk_gb: number
+  catalog_refresh_sec: number
+  vsphere_configured: boolean
+  vcenter_host: string
+}
+
+export interface AdminUserRow {
+  id: number
+  username: string
+  display_name: string
+  email: string | null
+  auth_source: 'google' | 'local' | 'dev'
+  role: 'user' | 'admin'
+  is_active: boolean
+  department: Ref | null
+  last_login_at: string | null
 }

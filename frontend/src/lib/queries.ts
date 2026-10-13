@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
   Booking, BookingCreate, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
-  AssetEvent, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun, Tier, TierSummary,
+  AdminUserRow, AppSettings, AssetEvent, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
+  Tier, TierSummary, Vm, VmCreate, VmOptions,
 } from './types'
 
 export interface ComputerFilters {
@@ -15,14 +16,20 @@ export interface ComputerFilters {
   sort?: 'name' | 'ram_desc' | 'ram_asc'
 }
 
-export const useCatalogSummary = () =>
-  useQuery({ queryKey: ['catalog-summary'], queryFn: () => api.get<TierSummary[]>('/catalog/summary') })
+export const useCatalogSummary = (refreshSec = 15) =>
+  useQuery({
+    queryKey: ['catalog-summary'],
+    queryFn: () => api.get<TierSummary[]>('/catalog/summary'),
+    refetchInterval: refreshSec * 1000,
+  })
 
-export const useComputers = (filters: ComputerFilters) =>
+// каталог сам обновляется: забранный кем-то ПК исчезает из списка у всех за пару секунд
+export const useComputers = (filters: ComputerFilters, refreshSec = 15) =>
   useQuery({
     queryKey: ['computers', filters],
     queryFn: () => api.get<Computer[]>('/computers', { ...filters }),
     placeholderData: (prev) => prev,
+    refetchInterval: refreshSec * 1000,
   })
 
 export const useComputer = (id: number | null) =>
@@ -164,7 +171,7 @@ export const usePools = () => useQuery({ queryKey: ['admin', 'pools'], queryFn: 
 export function useSavePool() {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id?: number; name?: string; description?: string | null; is_published?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id?: number; name?: string; description?: string | null; is_published?: boolean; department_ids?: number[] }) =>
       id ? api.patch<Pool>(`/admin/pools/${id}`, data) : api.post<Pool>('/admin/pools', data),
     onSettled: invalidate,
   })
@@ -181,5 +188,72 @@ export function useAssignPool() {
     mutationFn: (data: { pool_id: number | null; computer_ids?: number[]; names?: string }) =>
       api.post<PoolAssignResult>('/admin/pools/assign', data),
     onSettled: invalidate,
+  })
+}
+
+// ---------- Виртуалки ----------
+
+export const useVmOptions = (enabled = true) =>
+  useQuery({ queryKey: ['vm-options'], queryFn: () => api.get<VmOptions>('/vms/options'), enabled })
+
+export const useMyVms = () =>
+  useQuery({
+    queryKey: ['my-vms'],
+    queryFn: () => api.get<Vm[]>('/vms/my'),
+    // пока ВМ создаётся или удаляется — обновляем чаще
+    refetchInterval: (q) =>
+      q.state.data?.some((v) => ['queued', 'creating', 'deleting'].includes(v.status) || (v.status === 'ready' && !v.ip_address))
+        ? 5000
+        : false,
+  })
+
+export function useCreateVm() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: VmCreate) => api.post<Vm>('/vms', data),
+    onSettled: () => Promise.all(['my-vms', 'vm-options', 'admin'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  })
+}
+
+export function useReleaseVm() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<Vm>(`/vms/${id}/release`),
+    onSettled: () => Promise.all(['my-vms', 'vm-options', 'admin'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  })
+}
+
+export const useAdminVms = (includeDeleted = false) =>
+  useQuery({
+    queryKey: ['admin', 'vms', includeDeleted],
+    queryFn: () => api.get<Vm[]>('/admin/vms', { include_deleted: includeDeleted }),
+    refetchInterval: 10_000,
+  })
+
+// ---------- Настройки и сотрудники ----------
+
+export const useAppSettings = () =>
+  useQuery({ queryKey: ['admin', 'settings'], queryFn: () => api.get<AppSettings>('/admin/settings') })
+
+export function useSaveSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Partial<AppSettings>) => api.patch<AppSettings>('/admin/settings', data),
+    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: ['admin'] }), qc.invalidateQueries({ queryKey: ['vm-options'] })]),
+  })
+}
+
+export const useVsphereCheck = () =>
+  useMutation({ mutationFn: () => api.post<Record<string, string | number | boolean>>('/admin/vsphere/check') })
+
+export const useAdminUsers = () =>
+  useQuery({ queryKey: ['admin', 'users'], queryFn: () => api.get<AdminUserRow[]>('/admin/users') })
+
+export function useSaveUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id?: number; email?: string; display_name?: string; department_id?: number | null; is_active?: boolean }) =>
+      id ? api.patch<AdminUserRow>(`/admin/users/${id}`, data) : api.post<AdminUserRow>('/admin/users', data),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   })
 }

@@ -1,17 +1,31 @@
 """Пулы выдачи: какие компьютеры видны сотрудникам в каталоге."""
 import re
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
-from app.models import Computer, ComputerStatus, EventType, Pool, User
+from app.models import Computer, ComputerStatus, Department, EventType, Pool, User
 from app.services.events import add_event
 
 
-def published_pool_ids():
-    """Подзапрос: id опубликованных пулов — только их ПК попадают в каталог."""
-    return select(Pool.id).where(Pool.is_published.is_(True))
+def visible_pool_ids(user: User):
+    """Подзапрос: пулы, чьи ПК видит сотрудник. Пул без отделов — для всех, с отделами — только им."""
+    stmt = select(Pool.id).where(Pool.is_published.is_(True))
+    if user.is_admin:
+        return stmt
+    open_to_all = ~Pool.departments.any()
+    if user.department_id:
+        return stmt.where(or_(open_to_all, Pool.departments.any(Department.id == user.department_id)))
+    return stmt.where(open_to_all)
+
+
+def pool_visible(pool: Pool | None, user: User) -> bool:
+    if pool is None or not pool.is_published:
+        return False
+    if user.is_admin or not pool.departments:
+        return True
+    return any(d.id == user.department_id for d in pool.departments)
 
 
 async def pool_stats(session: AsyncSession) -> list[dict]:

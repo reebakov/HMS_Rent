@@ -8,12 +8,11 @@ from app.api.deps import DB, CurrentUser
 from app.models import Computer, ComputerStatus, Department, Tier
 from app.schemas.computer import ComputerDetail, ComputerOut, TierSummary
 from app.schemas.department import DepartmentOut
-from app.services.pools import published_pool_ids
+from app.services.pools import pool_visible, visible_pool_ids
 
 router = APIRouter(tags=["catalog"])
 
 AVAILABLE = Computer.status == ComputerStatus.available
-IN_CATALOG = Computer.pool_id.in_(published_pool_ids())  # сотрудники видят только ПК из опубликованных пулов
 
 
 def natural_key(name: str) -> list:
@@ -22,7 +21,7 @@ def natural_key(name: str) -> list:
 
 
 @router.get("/catalog/summary", response_model=list[TierSummary])
-async def catalog_summary(_: CurrentUser, session: DB) -> list[TierSummary]:
+async def catalog_summary(user: CurrentUser, session: DB) -> list[TierSummary]:
     rows = await session.execute(
         select(
             Computer.tier,
@@ -31,7 +30,7 @@ async def catalog_summary(_: CurrentUser, session: DB) -> list[TierSummary]:
             func.min(Computer.ram_gb).filter(AVAILABLE),
             func.max(Computer.ram_gb).filter(AVAILABLE),
         )
-        .where(Computer.is_archived.is_(False), IN_CATALOG)
+        .where(Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)))
         .group_by(Computer.tier)
     )
     data = {tier: (available, total, lo, hi) for tier, available, total, lo, hi in rows.all()}
@@ -44,7 +43,7 @@ async def catalog_summary(_: CurrentUser, session: DB) -> list[TierSummary]:
 
 @router.get("/computers", response_model=list[ComputerOut])
 async def list_computers(
-    _: CurrentUser,
+    user: CurrentUser,
     session: DB,
     tier: Tier | None = None,
     q: str | None = None,
@@ -53,7 +52,7 @@ async def list_computers(
     only_available: bool = True,
     sort: Literal["name", "ram_desc", "ram_asc"] = "name",
 ) -> list[Computer]:
-    stmt = select(Computer).where(Computer.is_archived.is_(False), IN_CATALOG)
+    stmt = select(Computer).where(Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)))
     if only_available:
         stmt = stmt.where(AVAILABLE)
     if tier:
@@ -79,7 +78,7 @@ async def list_computers(
 @router.get("/computers/{computer_id}", response_model=ComputerDetail)
 async def get_computer(computer_id: int, user: CurrentUser, session: DB) -> Computer:
     comp = await session.get(Computer, computer_id)
-    hidden = comp is not None and not user.is_admin and (comp.pool is None or not comp.pool.is_published)
+    hidden = comp is not None and not pool_visible(comp.pool, user)
     if comp is None or comp.is_archived or hidden:
         raise HTTPException(404, "Компьютер не найден")
     return comp

@@ -7,6 +7,7 @@ import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
 import { ComputerHistorySheet } from '@/features/admin/ComputerHistorySheet'
+import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
 import { useAssignPool, useDepartments, useInventory, usePools, type InventoryFilters } from '@/lib/queries'
 import { STATUSES, TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import { api } from '@/lib/api'
@@ -26,6 +27,7 @@ export function InventoryPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [targetPool, setTargetPool] = useState('')
   const [openedId, setOpenedId] = useState<number | null>(null)
+  const [view, setView] = useViewMode('inventory')
 
   const departments = useDepartments()
   const pools = usePools()
@@ -139,6 +141,9 @@ export function InventoryPage() {
             <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={!!filters.include_archived} onChange={(e) => set({ include_archived: e.target.checked || undefined })} />
             Удалённые из Insight
           </label>
+          <div className="ml-auto">
+            <ViewToggle value={view} onChange={setView} />
+          </div>
         </div>
 
         {/* Панель массовых действий */}
@@ -173,6 +178,61 @@ export function InventoryPage() {
           </div>
         ) : !rows.length ? (
           <EmptyState icon={Search} title="Ничего не найдено" description="Измените фильтры или строку поиска" />
+        ) : view === 'compact' ? (
+          // компактно: плотная таблица с минимальными отступами
+          <div className="scroll-thin overflow-x-auto">
+            <table className="w-full min-w-[800px] text-left text-xs">
+              <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="w-10 px-3 py-2">
+                    <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
+                  </th>
+                  <th className="px-3 py-2 font-medium">ПК</th>
+                  <th className="px-3 py-2 font-medium">Статус (Портал)</th>
+                  <th className="px-3 py-2 font-medium">В Insight</th>
+                  <th className="px-3 py-2 font-medium">Отдел / Кому выдан</th>
+                  <th className="px-3 py-2 font-medium">Пул</th>
+                  <th className="w-8 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => setOpenedId(c.id)}
+                    className={cn(
+                      'cursor-pointer transition-colors hover:bg-muted/40',
+                      selected.has(c.id) && 'bg-primary/5',
+                      c.is_archived && 'opacity-60'
+                    )}
+                  >
+                    <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                    </td>
+                    <td className="px-3 py-1.5 font-semibold text-[13px]">{c.name}</td>
+                    <td className="px-3 py-1.5">
+                      <StatusBadge status={c.status} />
+                    </td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{c.insight_status ?? '—'}</td>
+                    <td className="px-3 py-1.5">
+                      {c.department ? (
+                        <span>
+                          <span className="font-medium text-foreground">{c.department.name}</span>
+                          {c.booking && <span className="ml-1 text-muted-foreground">({c.booking.requester_nick})</span>}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{c.pool?.name ?? '—'}</td>
+                    <td className="px-3 py-1.5">
+                      {c.issues.length > 0 && <CircleAlert className="h-3.5 w-3.5 text-danger" title={c.issues.join('\n')} />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="scroll-thin overflow-x-auto">
             <table className="w-full min-w-[1100px] text-left text-[13px]">

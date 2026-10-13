@@ -59,6 +59,21 @@ class Settings(BaseSettings):
     insight_writeback: bool = False
     mock_data_file: str = "seed/mock_computers.json"
 
+    # --- vSphere: виртуалки по запросу (конструктор в каталоге) ---
+    vcenter_host: str = ""  # адрес vCenter — вписать в .env (VCENTER_HOST)
+    vcenter_user: str = ""  # сервисная учётка, например svc-hmsrent@marvin-it.com
+    vcenter_password: str = ""
+    vcenter_verify_ssl: bool = False  # у внутреннего vCenter обычно самоподписанный сертификат
+    vcenter_datacenter: str = "Godzen"
+    vcenter_cluster: str = "Automat-GZ"
+    vcenter_resource_pool: str = "Rent"  # vApp или пул ресурсов внутри кластера, куда кладём ВМ
+    vcenter_folder: str = ""  # папка VMs and Templates (путь «A/B»); пусто — корень датацентра
+    vcenter_template_windows: str = "Template_Win"  # шаблон, с которого клонируем
+    vcenter_datastore: str = ""  # пусто — тот же datastore, что у шаблона
+    vcenter_network: str = ""  # пусто — сеть как у шаблона
+    vcenter_customization_spec: str = ""  # спецификация гостевой настройки (sysprep); пусто — без неё
+    vm_name_prefix: str = "rent-"  # имя ВМ в vSphere = префикс + имя от пользователя
+
     # --- Категории мощности (если в Insight нет своего поля) ---
     tier_medium_min_ram_gb: int = 15  # «15GB» в Insight — это 16 ГБ минус память под встройку
     tier_powerful_min_ram_gb: int = 32
@@ -74,6 +89,10 @@ class Settings(BaseSettings):
     @property
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def vsphere_configured(self) -> bool:
+        return bool(self.vcenter_host and self.vcenter_user and self.vcenter_password)
 
     @property
     def google_domains(self) -> list[str]:

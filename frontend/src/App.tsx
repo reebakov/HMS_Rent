@@ -13,6 +13,9 @@ import { DepartmentsPage } from '@/pages/admin/DepartmentsPage'
 import { SyncPage } from '@/pages/admin/SyncPage'
 import { PoolsPage } from '@/pages/admin/PoolsPage'
 import { EventsPage } from '@/pages/admin/EventsPage'
+import { SettingsPage } from '@/pages/admin/SettingsPage'
+import { UsersPage } from '@/pages/admin/UsersPage'
+import { VmsPage } from '@/pages/admin/VmsPage'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth()
@@ -54,6 +57,9 @@ export default function App() {
         <Route path="admin/departments" element={<RequireAdmin><DepartmentsPage /></RequireAdmin>} />
         <Route path="admin/events" element={<RequireAdmin><EventsPage /></RequireAdmin>} />
         <Route path="admin/sync" element={<RequireAdmin><SyncPage /></RequireAdmin>} />
+        <Route path="admin/vms" element={<RequireAdmin><VmsPage /></RequireAdmin>} />
+        <Route path="admin/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
+        <Route path="admin/settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

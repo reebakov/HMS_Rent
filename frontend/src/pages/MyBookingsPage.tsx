@@ -6,6 +6,7 @@ import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { ReturnDialog } from '@/features/booking/BookingDialog'
+import { MyVms } from '@/features/vms/MyVms'
 import { useMyBookings, useReturnBooking } from '@/lib/queries'
 import type { Booking } from '@/lib/types'
 import { formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
@@ -33,10 +34,12 @@ export function MyBookingsPage() {
   return (
     <>
       <PageHeader
-        title="Мои бронирования"
-        description="Компьютеры, которые вы закрепили за отделами"
+        title="Моя аренда"
+        description="Компьютеры и виртуалки, которые вы взяли"
         action={<Button onClick={() => navigate('/')}>Забронировать ещё</Button>}
       />
+
+      <MyVms />
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2">

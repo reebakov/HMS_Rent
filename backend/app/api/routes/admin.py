@@ -19,6 +19,7 @@ from app.services import inventory, pools
 from app.services.events import add_event
 from app.services.sync import run_sync
 from app.services.tiering import classify
+from app.services import runtime
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -106,6 +107,15 @@ async def update_computer(computer_id: int, data: ComputerAdminUpdate, admin: Ad
 
 # ---------- Пулы выдачи ----------
 
+async def _departments(session, ids: list[int]) -> list[Department]:
+    if not ids:
+        return []
+    found = list((await session.scalars(select(Department).where(Department.id.in_(ids)))).all())
+    if len(found) != len(set(ids)):
+        raise HTTPException(404, "Один из отделов не найден")
+    return found
+
+
 @router.get("/pools", response_model=list[PoolOut])
 async def list_pools(_: AdminUser, session: DB) -> list[PoolOut]:
     return [
@@ -122,13 +132,14 @@ async def create_pool(data: PoolSave, _: AdminUser, session: DB) -> Pool:
         raise HTTPException(422, "Укажите название пула")
     pool = Pool(name=data.name.strip(), description=data.description,
                 is_published=True if data.is_published is None else data.is_published)
+    pool.departments = await _departments(session, data.department_ids or [])
     session.add(pool)
     try:
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(409, "Пул с таким названием уже есть") from exc
-    return pool
+    return await session.get(Pool, pool.id, populate_existing=True)
 
 
 @router.patch("/pools/{pool_id}", response_model=PoolOut)
@@ -136,7 +147,10 @@ async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -
     pool = await session.get(Pool, pool_id)
     if pool is None:
         raise HTTPException(404, "Пул не найден")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    if "department_ids" in changes:
+        pool.departments = await _departments(session, changes.pop("department_ids") or [])
+    for field, value in changes.items():
         setattr(pool, field, value.strip() if isinstance(value, str) else value)
     try:
         await session.commit()
@@ -231,8 +245,8 @@ async def sync_info(_: AdminUser, session: DB) -> SyncInfoOut:
     return SyncInfoOut(
         mode=settings.insight_mode,
         jira_url=settings.jira_url,
-        interval_sec=settings.insight_sync_interval_sec,
-        writeback=settings.insight_writeback,
+        interval_sec=(await runtime.load(session)).insight_sync_interval_min * 60,
+        writeback=runtime.current().insight_writeback,
         runs=[SyncRunOut.model_validate(r) for r in runs],
     )
 

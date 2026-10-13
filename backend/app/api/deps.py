@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.security import decode_session_token
 from app.db.session import get_session
 from app.models import User, UserRole
+from app.services import runtime
 
 DB = Annotated[AsyncSession, Depends(get_session)]
 
@@ -17,6 +18,7 @@ async def get_current_user(request: Request, session: DB) -> User:
     payload = decode_session_token(token) if token else None
     if not payload:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется вход")
+    await runtime.load(session)  # свежие настройки с сайта (кэш 5 с)
     user = await session.get(User, int(payload["sub"]))
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или отключён")

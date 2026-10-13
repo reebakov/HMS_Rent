@@ -1,0 +1,154 @@
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { UserPlus } from 'lucide-react'
+import { Card, PageHeader, Skeleton } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Dialog } from '@/components/ui/dialog'
+import { Field, Input, Select } from '@/components/ui/input'
+import { useAdminUsers, useDepartments, useSaveUser } from '@/lib/queries'
+import { formatRelative } from '@/lib/utils'
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Ошибка')
+
+/** Сотрудники и их отделы: от отдела зависит, какие пулы человек видит в каталоге */
+export function UsersPage() {
+  const { data, isLoading } = useAdminUsers()
+  const departments = useDepartments()
+  const save = useSaveUser()
+  const [adding, setAdding] = useState(false)
+  const [email, setEmail] = useState('')
+  const [deptForNew, setDeptForNew] = useState('')
+
+  const setDepartment = async (id: number, value: string) => {
+    try {
+      await save.mutateAsync({ id, department_id: value ? Number(value) : null })
+      toast.success('Отдел сохранён')
+    } catch (e) {
+      toast.error(errorText(e))
+    }
+  }
+
+  const toggleActive = async (id: number, active: boolean) => {
+    try {
+      await save.mutateAsync({ id, is_active: !active })
+    } catch (e) {
+      toast.error(errorText(e))
+    }
+  }
+
+  const addUser = async () => {
+    try {
+      await save.mutateAsync({ email, department_id: deptForNew ? Number(deptForNew) : null })
+      toast.success('Сотрудник добавлен — при первом входе через Google отдел уже будет назначен')
+      setAdding(false)
+      setEmail('')
+      setDeptForNew('')
+    } catch (e) {
+      toast.error(errorText(e))
+    }
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Сотрудники"
+        description="Назначьте отдел — от него зависит, какие пулы компьютеров человек видит в каталоге"
+        action={
+          <Button onClick={() => setAdding(true)}>
+            <UserPlus className="h-4 w-4" />
+            Добавить заранее
+          </Button>
+        }
+      />
+
+      <Card>
+        {isLoading ? (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12" />
+            ))}
+          </div>
+        ) : (
+          <div className="scroll-thin overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-[13px]">
+              <thead className="bg-muted/40 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Сотрудник</th>
+                  <th className="px-4 py-2.5 font-medium">Вход</th>
+                  <th className="px-4 py-2.5 font-medium">Отдел</th>
+                  <th className="px-4 py-2.5 font-medium">Последний вход</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data?.map((u) => (
+                  <tr key={u.id} className={u.is_active ? '' : 'opacity-60'}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">
+                        {u.display_name} {u.role === 'admin' && <Badge tone="primary">админ</Badge>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{u.email ?? u.username}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {{ google: 'Google', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Select className="h-8 w-52" value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
+                        <option value="">— без отдела —</option>
+                        {departments.data?.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{u.last_login_at ? formatRelative(u.last_login_at) : 'ещё не входил'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => toggleActive(u.id, u.is_active)}>
+                        {u.is_active ? 'Заблокировать' : 'Разблокировать'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Dialog
+        open={adding}
+        onOpenChange={(o) => !o && setAdding(false)}
+        title="Добавить сотрудника заранее"
+        description="Почта и отдел. Когда человек впервые войдёт через Google, он сразу увидит пулы своего отдела."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAdding(false)}>
+              Отмена
+            </Button>
+            <Button onClick={addUser} loading={save.isPending} disabled={!email.includes('@')}>
+              Добавить
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Рабочая почта" required>
+            <Input autoFocus value={email} onChange={(e) => setEmail(e.target.value.trim())} placeholder="name@company.com" />
+          </Field>
+          <Field label="Отдел">
+            <Select value={deptForNew} onChange={(e) => setDeptForNew(e.target.value)}>
+              <option value="">— без отдела —</option>
+              {departments.data?.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </Dialog>
+    </>
+  )
+}

@@ -32,6 +32,9 @@ class MockInsightSource:
             for item in raw
         ]
 
+    async def get_object(self, object_id: int) -> InsightObject | None:
+        return next((o for o in await self.fetch_objects() if o.id == object_id), None)
+
     async def update_object(self, object_id: int, object_type_id: int | None, values: dict[str, str | None]) -> None:
         log.info("[mock] Insight object %s <- %s", object_id, values)
 

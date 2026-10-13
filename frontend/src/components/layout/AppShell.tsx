@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, X, Activity } from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
@@ -13,7 +13,7 @@ interface NavItem {
 
 const userNav: NavItem[] = [
   { to: '/', label: 'Каталог', icon: LayoutGrid },
-  { to: '/my', label: 'Мои бронирования', icon: ClipboardList },
+  { to: '/my', label: 'Моя аренда', icon: ClipboardList },
 ]
 
 const adminNav: NavItem[] = [
@@ -21,9 +21,12 @@ const adminNav: NavItem[] = [
   { to: '/admin/inventory', label: 'Инвентаризация', icon: Boxes },
   { to: '/admin/pools', label: 'Пулы выдачи', icon: Layers },
   { to: '/admin/journal', label: 'Журнал выдачи', icon: ArrowLeftRight },
+  { to: '/admin/vms', label: 'Виртуалки', icon: Cloud },
   { to: '/admin/departments', label: 'Отделы', icon: Building2 },
+  { to: '/admin/users', label: 'Сотрудники', icon: Users },
   { to: '/admin/events', label: 'Логи системы', icon: Activity },
   { to: '/admin/sync', label: 'Синхронизация', icon: RefreshCw },
+  { to: '/admin/settings', label: 'Настройки', icon: Settings },
 ]
 
 function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem[]; onNavigate: () => void }) {

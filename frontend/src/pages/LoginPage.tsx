@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { ChevronDown, History, LockKeyhole, MonitorSmartphone, Radar, ShieldCheck, Users } from 'lucide-react'
+import { ChevronDown, Cloud, LockKeyhole, Monitor, MonitorSmartphone, ShieldCheck, Zap } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
@@ -9,9 +9,9 @@ import type { AuthConfig } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const FEATURES = [
-  { icon: Radar, title: 'Актуальные данные', text: 'Статусы и характеристики ПК подтягиваются из Insight' },
-  { icon: Users, title: 'Закрепление за отделом', text: 'Бронь в пару кликов: выбрали ПК, указали отдел' },
-  { icon: History, title: 'Прозрачный учёт', text: 'Кто, когда и какой компьютер взял и вернул' },
+  { icon: Monitor, title: 'Компьютеры', text: 'От офисных до мощных — под любые задачи' },
+  { icon: Cloud, title: 'Виртуальные машины', text: 'Соберите свою: ядра, память, диск' },
+  { icon: Zap, title: 'В пару кликов', text: 'Выбрали, нажали «Забронировать» — готово' },
 ]
 
 function GoogleIcon() {
@@ -82,10 +82,10 @@ export function LoginPage() {
 
         <div className="relative mt-auto max-w-md">
           <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-white">
-            Рабочие компьютеры для вашей команды
+            Компьютеры и виртуалки для работы
           </h1>
           <p className="mt-4 text-[15px] leading-relaxed text-sidebar-muted">
-            Подберите свободный ПК или виртуальную машину нужной мощности и закрепите за своим отделом.
+            Берите нужную мощность, когда нужно, и возвращайте, когда закончили.
           </p>
           <div className="mt-10 space-y-5">
             {FEATURES.map(({ icon: Icon, title, text }) => (
@@ -101,7 +101,7 @@ export function LoginPage() {
             ))}
           </div>
         </div>
-        <p className="relative mt-16 text-xs text-sidebar-muted">Внутренний сервис ИТ-отдела</p>
+        <p className="relative mt-16 text-xs text-sidebar-muted">Внутренний сервис HMS</p>
       </div>
 
       {/* Правая панель — вход */}
@@ -177,7 +177,7 @@ export function LoginPage() {
           )}
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
-            Нет доступа? Напишите в ИТ-отдел.
+            Нет доступа? Напишите в HMS.
           </p>
         </div>
       </div>

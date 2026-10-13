@@ -13,12 +13,13 @@ from app.core.config import settings
 from app.integrations.insight.factory import create_insight_source
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType
 from app.services.events import add_event
+from app.services import runtime
 
 log = logging.getLogger(__name__)
 
 
 async def push_pending(session: AsyncSession, batch: int = 50) -> int:
-    if not settings.insight_writeback:
+    if not (await runtime.load(session)).insight_writeback:
         return 0
     computers = (
         await session.scalars(select(Computer).where(Computer.writeback_pending.is_(True)).limit(batch))

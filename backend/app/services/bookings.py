@@ -7,11 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import Conflict, Forbidden, NotFound
-from app.integrations.insight.factory import get_mapping
+import logging
+
+from app.integrations.insight.factory import create_insight_source, get_mapping
+from app.integrations.insight.mapping import map_object
 from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, User
 from app.schemas.booking import BookingCreate
 from app.services.events import add_event
+from app.services import runtime
+from app.services.pools import pool_visible
+
+log = logging.getLogger(__name__)
 
 
 async def get_booking(session: AsyncSession, booking_id: int) -> Booking:
@@ -27,9 +34,26 @@ def status_after_return(comp: Computer) -> str:
     """Во что превращается ПК после возврата — решает статус в Insight."""
     mapping = get_mapping()
     insight = mapping.status_map.get((comp.insight_status or "").lower(), mapping.default_status)
-    if insight == ComputerStatus.in_use and settings.insight_writeback:
+    if insight == ComputerStatus.in_use and runtime.current().insight_writeback:
         return ComputerStatus.available.value  # «занят» в Insight поставили мы сами — сейчас вернём «свободен»
     return insight
+
+
+async def _fresh_from_insight(comp: Computer):
+    """Статус ПК в Insight «прямо сейчас». None — проверить не удалось (бронь не блокируем)."""
+    if comp.insight_object_id is None or comp.writeback_pending:
+        return None  # если наши изменения ещё не доехали до Insight, его статус заведомо устаревший
+    source = None
+    try:
+        source = create_insight_source()
+        obj = await source.get_object(comp.insight_object_id)
+        return map_object(obj, source.mapping) if obj else None
+    except Exception as exc:  # noqa: BLE001 — недоступный Insight (или не задан JIRA_URL) не должен ломать бронь
+        log.warning("Не удалось перепроверить %s в Insight: %s", comp.name, exc)
+        return None
+    finally:
+        if source is not None:
+            await source.close()
 
 
 async def create_booking(session: AsyncSession, user: User, data: BookingCreate) -> Booking:
@@ -39,10 +63,16 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     )
     if comp is None or comp.is_archived:
         raise NotFound("Компьютер не найден")
-    if comp.pool is None or not comp.pool.is_published:
+    if not pool_visible(comp.pool, user):
         raise NotFound("Этот компьютер сейчас не выдаётся")
     if comp.status != ComputerStatus.available:
         raise Conflict(f"{comp.name} уже занят или недоступен")
+    fresh = await _fresh_from_insight(comp)
+    if fresh is not None and fresh.status != ComputerStatus.available:
+        # в Jira ПК успели занять руками, а синхронизация ещё не дошла — обновляем и не даём бронировать
+        comp.insight_status, comp.status = fresh.insight_status, fresh.status
+        await session.commit()
+        raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
     dept = await session.get(Department, data.department_id)
     if dept is None or not dept.is_active:
         raise NotFound("Отдел не найден")
@@ -60,7 +90,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     session.add(booking)
     comp.status = ComputerStatus.booked.value
     comp.department_id = dept.id
-    comp.writeback_pending = settings.insight_writeback
+    comp.writeback_pending = runtime.current().insight_writeback
     try:
         await session.flush()
         add_event(
@@ -113,7 +143,7 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
     )
     comp.status = new_status
     comp.department_id = None
-    comp.writeback_pending = settings.insight_writeback
+    comp.writeback_pending = runtime.current().insight_writeback
     await session.commit()
 
     await notify(f"↩️ **{comp.name}** возвращён ({booking.department.name})")

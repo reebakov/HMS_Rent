@@ -50,7 +50,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
       })
       localStorage.setItem(LAST_DEPARTMENT_KEY, departmentId)
       toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}»`, {
-        action: { label: 'Мои брони', onClick: () => navigate('/my') },
+        action: { label: 'Моя аренда', onClick: () => navigate('/my') },
       })
       onClose()
     } catch {
@@ -67,7 +67,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
       open={!!computer}
       onOpenChange={(open) => !open && onClose()}
       title={computer ? `Бронирование ${computer.name}` : ''}
-      description="Компьютер будет закреплён за вашим отделом. Вернуть его можно в разделе «Мои бронирования»."
+      description="Компьютер будет закреплён за вашим отделом. Вернуть его можно в разделе «Моя аренда»."
       className="max-w-xl"
       footer={
         <>
@@ -91,7 +91,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
             <SpecGrid computer={computer} className="xl:grid-cols-2" />
           </div>
 
-          <Field label="Отдел" required hint="Если вашего отдела нет в списке — напишите в ИТ-отдел">
+          <Field label="Отдел" required hint="Если вашего отдела нет в списке — напишите в HMS">
             <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
               <option value="" disabled>
                 {departments.isLoading ? 'Загрузка…' : 'Выберите отдел'}
