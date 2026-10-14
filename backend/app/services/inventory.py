@@ -262,8 +262,8 @@ def inventory_csv(rows: list[InventoryRow]) -> str:
     w = csv.writer(buf, delimiter=";")
     w.writerow([
         "ПК", "Ключ Insight", "Категория", "Процессор", "ОЗУ, ГБ", "Диск", "Видеокарта", "ОС", "Расположение",
-        "Серийный номер", "Статус портала", "Статус Insight", "Отдел", "Забронировал", "Ник", "С даты",
-        "Вернуть до", "Расхождения",
+        "Серийный номер", "Статус портала", "Статус Insight", "Пул выдачи", "Команда-получатель", "Номер заказа",
+        "Забронировал", "Ник", "С даты", "Срок использования", "Расхождения",
     ])
     for r in rows:
         b = r.booking
@@ -271,10 +271,10 @@ def inventory_csv(rows: list[InventoryRow]) -> str:
             r.name, r.insight_key or "", TIER_LABELS.get(r.tier, r.tier), r.cpu or "", r.ram_gb or "",
             r.storage or "", r.gpu or "", r.os or "", r.location or "", r.serial_number or "",
             STATUS_LABELS.get(r.status, r.status), r.insight_status or "",
-            r.department.name if r.department else "",
+            r.pool.name if r.pool else "", r.department.name if r.department else "", r.order_number or "",
             b.requester_name if b else "", b.requester_nick if b else "",
             f"{b.booked_at.astimezone(ZoneInfo(settings.display_timezone)):%d.%m.%Y %H:%M}" if b else "",
-            f"{b.expected_return_at:%d.%m.%Y}" if b and b.expected_return_at else "",
+            f"{r.usage_until:%d.%m.%Y}" if r.usage_until else "",
             " | ".join(r.issues),
         ])
     return buf.getvalue()

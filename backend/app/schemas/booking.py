@@ -27,6 +27,7 @@ class BookingReturn(BaseModel):
 
 class BookingOut(ORMModel):
     id: int
+    order_number: int
     status: str
     computer: ComputerShort
     department: DepartmentShort

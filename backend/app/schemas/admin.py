@@ -74,6 +74,8 @@ class InventoryRow(ComputerOut):
     tier_override: str | None
     note: str | None
     writeback_error: str | None
+    usage_until: date | None = None
+    order_number: int | None = None
     pool: PoolShort | None = None
     booking: InventoryBooking | None = None
     issues: list[str] = []

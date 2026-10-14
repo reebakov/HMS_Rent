@@ -71,6 +71,7 @@ export function JournalPage() {
             <table className="w-full min-w-[960px] text-left text-[13px]">
               <thead className="bg-muted/40 text-xs text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-2.5 font-medium">№ заказа</th>
                   <th className="px-4 py-2.5 font-medium">Компьютер</th>
                   <th className="px-4 py-2.5 font-medium">Отдел</th>
                   <th className="px-4 py-2.5 font-medium">Ответственный</th>
@@ -84,6 +85,7 @@ export function JournalPage() {
               <tbody className="divide-y">
                 {data.map((b) => (
                   <tr key={b.id} className="hover:bg-muted/40">
+                    <td className="px-4 py-3 tabular text-muted-foreground">№{b.order_number}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{b.computer.name}</span>

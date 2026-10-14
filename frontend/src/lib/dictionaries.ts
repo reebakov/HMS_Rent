@@ -51,6 +51,7 @@ export const EVENT_LABELS: Record<string, string> = {
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',
+  insight_pool_changed: 'Пул из Insight',
   admin_update: 'Правка админа',
   writeback_failed: 'Ошибка записи в Insight',
 }

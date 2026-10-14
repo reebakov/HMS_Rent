@@ -71,7 +71,7 @@ export function AppShell() {
         </div>
         <div>
           <p className="text-[15px] font-semibold leading-tight text-white">{session.app_name}</p>
-          <p className="text-[11px] text-sidebar-muted">Бронирование техники</p>
+          <p className="text-[11px] text-sidebar-muted">{session.app_subtitle}</p>
         </div>
       </div>
 

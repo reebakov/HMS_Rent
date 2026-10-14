@@ -91,14 +91,14 @@ async def list_users(_: AdminUser, session: DB) -> list[UserAdminOut]:
 
 @router.post("/users", response_model=UserAdminOut, status_code=201)
 async def add_user(data: UserCreate, _: AdminUser, session: DB) -> UserAdminOut:
-    """Заранее завести сотрудника с отделом: при первом входе через Google он сразу его получит."""
+    """Заранее завести сотрудника с отделом: при первом входе через Microsoft он сразу его получит."""
     email = data.email.strip().lower()
     if await session.scalar(select(User).where(User.username == email)):
         raise HTTPException(409, "Такой сотрудник уже есть")
     if data.department_id and await session.get(Department, data.department_id) is None:
         raise HTTPException(404, "Отдел не найден")
     user = User(username=email, email=email, display_name=data.display_name or email.split("@")[0],
-                auth_source="google", department_id=data.department_id)
+                auth_source="microsoft", department_id=data.department_id)
     session.add(user)
     await session.commit()
     return _out(await session.get(User, user.id, populate_existing=True))

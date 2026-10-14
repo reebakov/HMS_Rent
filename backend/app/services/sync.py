@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.integrations.insight.factory import create_insight_source
 from app.integrations.insight.mapping import map_object
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, SyncRun
+from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, Pool, SyncRun
 from app.services.events import add_event
 from app.services.tiering import classify
 
@@ -60,6 +60,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         booked_ids = set(
             await session.scalars(select(Booking.computer_id).where(Booking.status == BookingStatus.active))
         )
+        pools = {p.name.lower(): p for p in (await session.scalars(select(Pool))).all()}
+        departments = {d.name.lower(): d for d in (await session.scalars(select(Department))).all()}
         now = datetime.now(timezone.utc)
         run = SyncRun(
             mode=source.mode, status="success", started_at=started,
@@ -105,6 +107,10 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                 else data.status
             )
             comp.synced_at = now
+            if not comp.writeback_pending:  # наши изменения ещё не доехали до Insight — его значения устарели
+                changed |= await _pull_rental_fields(
+                    session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments
+                )
             if comp.is_archived:
                 comp.is_archived = False
                 changed = True
@@ -154,6 +160,57 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         await session.rollback()
         log.exception("Ошибка синхронизации")
         return await _save_failed(session, source.mode, str(exc))
+
+
+async def _pull_rental_fields(
+    session: AsyncSession,
+    comp: Computer,
+    data,
+    *,
+    booked: bool,
+    pools: dict[str, Pool],
+    departments: dict[str, Department],
+) -> bool:
+    """Поля аренды из Insight -> портал: «Пул выдачи», «Команда-получатель», «Срок использования», «Номер заказа».
+
+    * Пул: непустое значение в Insight определяет пул ПК. Пула с таким именем ещё нет — создаём его
+      НЕопубликованным (сотрудники его не увидят, пока админ не откроет его в «Пулах выдачи»).
+      Пустое значение в Insight пул на портале не сбрасывает: убрать ПК из пула можно на портале.
+    * Команда / срок / номер заказа: для ПК, выданных через портал, главный — портал (их ставит бронь);
+      для остальных (выданных мимо портала) повторяем то, что записано в Insight.
+    """
+    changed = False
+    if data.pool_name:
+        pool = pools.get(data.pool_name.lower())
+        if pool is None:
+            pool = Pool(name=data.pool_name, is_published=False,
+                        description="Создан автоматически из Insight — откройте пул, когда он будет готов к выдаче")
+            session.add(pool)
+            await session.flush()
+            pools[pool.name.lower()] = pool
+        if comp.pool_id != pool.id:
+            if comp.id is not None:
+                old = comp.pool.name if comp.pool else None
+                add_event(
+                    session, computer_id=comp.id, event_type=EventType.insight_pool_changed,
+                    message=f"Пул (из Insight): {old or '—'} → {pool.name}",
+                )
+            comp.pool_id = pool.id
+            changed = True
+
+    if not booked:
+        team = departments.get(data.team_name.lower()) if data.team_name else None
+        team_id = team.id if team else None
+        if comp.department_id != team_id:
+            comp.department_id = team_id
+            changed = True
+        if comp.usage_until != data.usage_until:
+            comp.usage_until = data.usage_until
+            changed = True
+        if comp.order_number != data.order_number:
+            comp.order_number = data.order_number
+            changed = True
+    return changed
 
 
 async def _save_failed(session: AsyncSession, mode: str, error: str) -> SyncRun:

@@ -219,6 +219,7 @@ export function InventoryPage() {
                         <span>
                           <span className="font-medium text-foreground">{c.department.name}</span>
                           {c.booking && <span className="ml-1 text-muted-foreground">({c.booking.requester_nick})</span>}
+                          {c.order_number && <span className="ml-1 text-muted-foreground">· заказ №{c.order_number}</span>}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -297,11 +298,12 @@ export function InventoryPage() {
                     </td>
                     <td className="px-3 py-3 text-muted-foreground">{c.insight_status ?? '—'}</td>
                     <td className="px-3 py-3">
-                      {c.booking && c.department ? (
+                      {c.department ? (
                         <>
                           <p className="font-medium">{c.department.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {c.booking.requester_name} ({c.booking.requester_nick})
+                            {c.booking ? `${c.booking.requester_name} (${c.booking.requester_nick})` : 'выдан мимо портала'}
+                            {c.order_number ? ` · заказ №${c.order_number}` : ''}
                           </p>
                         </>
                       ) : (
@@ -318,6 +320,10 @@ export function InventoryPage() {
                             </p>
                           )}
                         </>
+                      ) : c.usage_until ? (
+                        <p className={cn('text-xs', isOverdue(c.usage_until) ? 'text-danger' : 'text-muted-foreground')}>
+                          до {formatDate(c.usage_until)}
+                        </p>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

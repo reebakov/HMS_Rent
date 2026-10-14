@@ -14,6 +14,7 @@ from app.integrations.vsphere import client as vsphere
 from app.models import Department, User, VirtualMachine
 from app.schemas.vm import VmCreate, VmOptions
 from app.services import runtime
+from app.services.orders import next_order_number
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
     if dept is None or not dept.is_active:
         raise NotFound("Отдел не найден")
     vm = VirtualMachine(
+        order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
         status="queued", user_id=user.id, department_id=dept.id,
         requester_name=data.requester_name.strip(), requester_nick=data.requester_nick.strip(),

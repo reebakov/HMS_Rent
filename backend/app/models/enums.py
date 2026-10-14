@@ -31,6 +31,7 @@ class EventType(StrEnum):
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"
+    insight_pool_changed = "insight_pool_changed"
     admin_update = "admin_update"
     writeback_failed = "writeback_failed"
 

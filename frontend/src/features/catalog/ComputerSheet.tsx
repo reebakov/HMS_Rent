@@ -3,11 +3,12 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/card'
 import { SpecGrid } from './SpecGrid'
+import { useSession } from '@/auth/AuthProvider'
 import { useComputer } from '@/lib/queries'
 import type { Computer } from '@/lib/types'
 import { formatRelative } from '@/lib/utils'
 
-/** Карточка ПК справа: все характеристики + все атрибуты из Insight */
+/** Карточка ПК справа: характеристики для всех; блок «Все атрибуты Insight» — только для администраторов */
 export function ComputerSheet({
   computerId,
   onClose,
@@ -18,6 +19,7 @@ export function ComputerSheet({
   onBook: (computer: Computer) => void
 }) {
   const { data, isLoading } = useComputer(computerId)
+  const isAdmin = useSession().user.role === 'admin'
 
   return (
     <Sheet
@@ -66,17 +68,19 @@ export function ComputerSheet({
             ))}
           </dl>
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Все атрибуты Insight</p>
-            <div className="divide-y rounded-xl border">
-              {Object.entries(data.attributes).map(([key, value]) => (
-                <div key={key} className="flex gap-4 px-4 py-2.5 text-[13px]">
-                  <span className="w-40 shrink-0 text-muted-foreground">{key}</span>
-                  <span className="min-w-0 break-words font-medium">{String(value)}</span>
-                </div>
-              ))}
+          {isAdmin && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Все атрибуты Insight</p>
+              <div className="divide-y rounded-xl border">
+                {Object.entries(data.attributes).map(([key, value]) => (
+                  <div key={key} className="flex gap-4 px-4 py-2.5 text-[13px]">
+                    <span className="w-40 shrink-0 text-muted-foreground">{key}</span>
+                    <span className="min-w-0 break-words font-medium">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </Sheet>

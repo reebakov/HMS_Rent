@@ -29,8 +29,11 @@ class InsightSource(Protocol):
         """Все компьютеры/ВМ, попадающие под запрос из маппинга (limit > 0 — только первые N)."""
         ...
 
-    async def update_object(self, object_id: int, object_type_id: int | None, values: dict[str, str | None]) -> None:
-        """Записать значения атрибутов (по именам атрибутов Insight)."""
+    async def update_object(
+        self, object_id: int, object_type_id: int | None, values: dict[str, str | None],
+        optional: set[str] | None = None,
+    ) -> None:
+        """Записать значения атрибутов (по именам атрибутов Insight). Атрибуты из optional, которых нет у типа, пропускаются."""
         ...
 
     async def close(self) -> None: ...

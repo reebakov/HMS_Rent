@@ -22,15 +22,13 @@ class UserOut(ORMModel):
 class SessionOut(BaseModel):
     user: UserOut
     app_name: str
+    app_subtitle: str = "Аренда техники"
     insight_mode: str
     catalog_refresh_sec: int = 15
 
 
 class AuthConfigOut(BaseModel):
-    """Что показать на экране входа ещё до авторизации."""
-
     app_name: str
-    google_enabled: bool
-    google_domains: list[str]
+    bouncer_enabled: bool
     local_enabled: bool
     dev_enabled: bool

@@ -15,6 +15,7 @@ from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, User
 from app.schemas.booking import BookingCreate
 from app.services.events import add_event
+from app.services.orders import next_order_number
 from app.services import runtime
 from app.services.pools import pool_visible
 
@@ -77,10 +78,12 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     if dept is None or not dept.is_active:
         raise NotFound("Отдел не найден")
 
+    order_number = await next_order_number(session)  # берём номер в последнюю очередь, чтобы не плодить пропуски
     booking = Booking(
         computer_id=comp.id,
         department_id=dept.id,
         user_id=user.id,
+        order_number=order_number,
         requester_name=data.requester_name.strip(),
         requester_nick=data.requester_nick.strip(),
         purpose=(data.purpose or "").strip() or None,
@@ -90,6 +93,8 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     session.add(booking)
     comp.status = ComputerStatus.booked.value
     comp.department_id = dept.id
+    comp.usage_until = data.expected_return_at
+    comp.order_number = order_number
     comp.writeback_pending = runtime.current().insight_writeback
     try:
         await session.flush()
@@ -101,14 +106,14 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
             event_type=EventType.booked,
             from_status=ComputerStatus.available.value,
             to_status=ComputerStatus.booked.value,
-            message=f"Закреплён за отделом «{dept.name}»: {booking.requester_name} ({booking.requester_nick})",
+            message=f"Заказ №{order_number}. Закреплён за отделом «{dept.name}»: {booking.requester_name} ({booking.requester_nick})",
         )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise Conflict(f"{comp.name} только что забронировали") from exc
 
-    await notify(f"🖥 **{comp.name}** забронирован: {dept.name}, {booking.requester_name} ({booking.requester_nick})")
+    await notify(f"🖥 **{comp.name}** забронирован (заказ №{order_number}): {dept.name}, {booking.requester_name} ({booking.requester_nick})")
     return await get_booking(session, booking.id)
 
 
@@ -139,14 +144,16 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
         event_type=EventType.returned,
         from_status=comp.status,
         to_status=new_status,
-        message=f"Возвращён отделом «{booking.department.name}»" + (f": {booking.return_comment}" if booking.return_comment else ""),
+        message=f"Заказ №{booking.order_number} закрыт. Возвращён отделом «{booking.department.name}»" + (f": {booking.return_comment}" if booking.return_comment else ""),
     )
     comp.status = new_status
     comp.department_id = None
+    comp.usage_until = None
+    comp.order_number = None
     comp.writeback_pending = runtime.current().insight_writeback
     await session.commit()
 
-    await notify(f"↩️ **{comp.name}** возвращён ({booking.department.name})")
+    await notify(f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")
     return await get_booking(session, booking.id)
 
 

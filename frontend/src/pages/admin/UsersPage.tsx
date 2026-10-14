@@ -40,7 +40,7 @@ export function UsersPage() {
   const addUser = async () => {
     try {
       await save.mutateAsync({ email, department_id: deptForNew ? Number(deptForNew) : null })
-      toast.success('Сотрудник добавлен — при первом входе через Google отдел уже будет назначен')
+      toast.success('Сотрудник добавлен — при первом входе через Microsoft отдел уже будет назначен')
       setAdding(false)
       setEmail('')
       setDeptForNew('')
@@ -91,7 +91,7 @@ export function UsersPage() {
                       <p className="text-xs text-muted-foreground">{u.email ?? u.username}</p>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {{ google: 'Google', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
+                      {{ microsoft: 'Microsoft', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
                     </td>
                     <td className="px-4 py-3">
                       <Select className="h-8 w-52" value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
@@ -121,7 +121,7 @@ export function UsersPage() {
         open={adding}
         onOpenChange={(o) => !o && setAdding(false)}
         title="Добавить сотрудника заранее"
-        description="Почта и отдел. Когда человек впервые войдёт через Google, он сразу увидит пулы своего отдела."
+        description="Почта и отдел. Когда человек впервые войдёт через Microsoft, он сразу увидит пулы своего отдела."
         footer={
           <>
             <Button variant="outline" onClick={() => setAdding(false)}>

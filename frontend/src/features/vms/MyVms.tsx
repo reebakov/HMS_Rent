@@ -40,7 +40,7 @@ export function MyVms() {
 
   return (
     <Card className="mb-8">
-      <CardHeader title="Виртуальные машины" description="Созданы в конструкторе. Подключение — по RDP на IP-адрес" />
+      <CardHeader title="Виртуальные машины" description="Созданы в конструкторе. Подключение — по VNC" />
       <div className="divide-y">
         {alive.map((vm) => {
           const st = VM_STATUS[vm.status]
@@ -50,7 +50,9 @@ export function MyVms() {
                 <Cloud className="h-5 w-5" />
               </div>
               <div className="min-w-[180px] flex-1">
-                <p className="font-semibold">{vm.name}</p>
+                <p className="font-semibold">
+                  {vm.name} <span className="ml-1 text-xs font-medium text-muted-foreground">Заказ №{vm.order_number}</span>
+                </p>
                 <p className="text-[13px] text-muted-foreground">
                   {vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
                 </p>

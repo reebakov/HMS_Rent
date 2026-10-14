@@ -18,8 +18,9 @@ class Settings(BaseSettings):
 
     # --- Общее ---
     app_name: str = "HMS Rent"
+    app_subtitle: str = "Аренда техники"  # подпись под названием в сайдбаре (APP_SUBTITLE в .env)
     environment: Literal["dev", "prod"] = "dev"
-    public_url: str = "http://localhost:8080"  # адрес портала в браузере (нужен для redirect из Google)
+    public_url: str = "http://localhost:8080"  # адрес портала в браузере (из него собирается redirect URI для Microsoft)
     api_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173"
     display_timezone: str = "Europe/Moscow"
@@ -34,15 +35,15 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
 
     # --- Вход ---
-    # Сотрудники: Google SSO (рабочая почта). Администраторы: локальные учётки (python -m app.cli create-admin)
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_allowed_domains: str = "deeplay.io"  # домены рабочей почты через запятую
-    admins_file: str = "config/admins.txt"  # почты администраторов, по одной в строке
-    auth_local_enabled: bool = True  # форма «Вход для администраторов»
-    auth_dev_enabled: bool = False  # вход любым логином без пароля — ТОЛЬКО для локальной разработки
-    login_max_attempts: int = 5  # после стольких неудачных попыток вход по логину блокируется…
-    login_lock_minutes: int = 10  # …на столько минут
+    bouncer_authorize_url: str = ""
+    bouncer_token_url: str = ""
+    bouncer_client_id: str = ""
+    bouncer_client_secret: str = ""
+    admins_file: str = "config/admins.txt"
+    auth_local_enabled: bool = True
+    auth_dev_enabled: bool = False
+    login_max_attempts: int = 5
+    login_lock_minutes: int = 10
 
     # --- Jira / Insight ---
     insight_mode: Literal["mock", "live"] = "mock"
@@ -75,6 +76,7 @@ class Settings(BaseSettings):
     vm_name_prefix: str = "rent-"  # имя ВМ в vSphere = префикс + имя от пользователя
 
     # --- Категории мощности (если в Insight нет своего поля) ---
+    tier_weak_min_ram_gb: int = 8  # слабее — в каталог не попадает (слабые = от 8 ГБ до границы «средних»)
     tier_medium_min_ram_gb: int = 15  # «15GB» в Insight — это 16 ГБ минус память под встройку
     tier_powerful_min_ram_gb: int = 32
     tier_medium_gpu: str = "1050,1060,1650,RX 5"
@@ -87,16 +89,16 @@ class Settings(BaseSettings):
     default_departments: str = "Разработка,Тестирование (QA),Аналитика,Дизайн,Маркетинг,Поддержка"
 
     @property
-    def google_enabled(self) -> bool:
-        return bool(self.google_client_id and self.google_client_secret)
+    def bouncer_enabled(self) -> bool:
+        return bool(self.bouncer_client_id and self.bouncer_client_secret and self.bouncer_authorize_url)
 
     @property
     def vsphere_configured(self) -> bool:
         return bool(self.vcenter_host and self.vcenter_user and self.vcenter_password)
 
     @property
-    def google_domains(self) -> list[str]:
-        return [d.lower() for d in _split(self.google_allowed_domains)]
+    def microsoft_domains(self) -> list[str]:
+        return [d.lower().lstrip("@") for d in _split(self.microsoft_allowed_domains)]
 
     @property
     def cors_list(self) -> list[str]:

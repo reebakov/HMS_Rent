@@ -29,6 +29,8 @@ class Booking(Base, TimestampMixin):
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
 
+    order_number: Mapped[int] = mapped_column(unique=True)  # сквозной номер заказа (общий с виртуалками), с 1
+
     requester_name: Mapped[str] = mapped_column(String(255))
     requester_nick: Mapped[str] = mapped_column(String(128))
     purpose: Mapped[str | None] = mapped_column(Text)

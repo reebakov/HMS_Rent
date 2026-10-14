@@ -10,7 +10,7 @@ export interface User {
   display_name: string
   email: string | null
   avatar_url: string | null
-  auth_source: 'google' | 'local' | 'dev'
+  auth_source: 'microsoft' | 'local' | 'dev'
   role: 'user' | 'admin'
   department_id: number | null
 }
@@ -18,14 +18,14 @@ export interface User {
 export interface Session {
   user: User
   app_name: string
+  app_subtitle: string
   insight_mode: 'mock' | 'live'
   catalog_refresh_sec: number
 }
 
 export interface AuthConfig {
   app_name: string
-  google_enabled: boolean
-  google_domains: string[]
+  bouncer_enabled: boolean // <-- вместо microsoft
   local_enabled: boolean
   dev_enabled: boolean
 }
@@ -98,6 +98,7 @@ export interface ComputerShort {
 
 export interface Booking {
   id: number
+  order_number: number
   status: BookingStatus
   computer: ComputerShort
   department: Ref
@@ -161,6 +162,8 @@ export interface InventoryRow extends Computer {
   tier_override: Tier | null
   note: string | null
   writeback_error: string | null
+  usage_until: string | null
+  order_number: number | null
   pool: PoolShort | null
   booking: {
     id: number
@@ -242,6 +245,7 @@ export type VmStatus = 'queued' | 'creating' | 'ready' | 'failed' | 'deleting' |
 
 export interface Vm {
   id: number
+  order_number: number
   name: string
   cpu: number
   ram_gb: number
@@ -312,7 +316,7 @@ export interface AdminUserRow {
   username: string
   display_name: string
   email: string | null
-  auth_source: 'google' | 'local' | 'dev'
+  auth_source: 'bouncer' | 'local' | 'dev'
   role: 'user' | 'admin'
   is_active: boolean
   department: Ref | null

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, or_, select
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
 from app.models import Computer, ComputerStatus, Department, Tier
 from app.schemas.computer import ComputerDetail, ComputerOut, TierSummary
 from app.schemas.department import DepartmentOut
@@ -13,6 +14,14 @@ from app.services.pools import pool_visible, visible_pool_ids
 router = APIRouter(tags=["catalog"])
 
 AVAILABLE = Computer.status == ComputerStatus.available
+
+# В каталоге не показываем ПК слабее порога (по умолчанию 8 ГБ): «слабые» начинаются с 8 ГБ ОЗУ.
+# Виртуалки и ПК с неизвестной ОЗУ не трогаем. Админ видит все ПК в «Инвентаризации».
+RAM_FLOOR = or_(
+    Computer.is_virtual.is_(True),
+    Computer.ram_gb.is_(None),
+    Computer.ram_gb >= settings.tier_weak_min_ram_gb,
+)
 
 
 def natural_key(name: str) -> list:
@@ -30,7 +39,7 @@ async def catalog_summary(user: CurrentUser, session: DB) -> list[TierSummary]:
             func.min(Computer.ram_gb).filter(AVAILABLE),
             func.max(Computer.ram_gb).filter(AVAILABLE),
         )
-        .where(Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)))
+        .where(Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)), RAM_FLOOR)
         .group_by(Computer.tier)
     )
     data = {tier: (available, total, lo, hi) for tier, available, total, lo, hi in rows.all()}
@@ -52,7 +61,9 @@ async def list_computers(
     only_available: bool = True,
     sort: Literal["name", "ram_desc", "ram_asc"] = "name",
 ) -> list[Computer]:
-    stmt = select(Computer).where(Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)))
+    stmt = select(Computer).where(
+        Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)), RAM_FLOOR
+    )
     if only_available:
         stmt = stmt.where(AVAILABLE)
     if tier:
@@ -76,12 +87,16 @@ async def list_computers(
 
 
 @router.get("/computers/{computer_id}", response_model=ComputerDetail)
-async def get_computer(computer_id: int, user: CurrentUser, session: DB) -> Computer:
+async def get_computer(computer_id: int, user: CurrentUser, session: DB) -> ComputerDetail:
     comp = await session.get(Computer, computer_id)
     hidden = comp is not None and not pool_visible(comp.pool, user)
     if comp is None or comp.is_archived or hidden:
         raise HTTPException(404, "Компьютер не найден")
-    return comp
+    detail = ComputerDetail.model_validate(comp)
+    if not user.is_admin:
+        # «Все атрибуты Insight» — только для администраторов: обычному сотруднику не отдаём их и через API
+        detail.attributes = {}
+    return detail
 
 
 @router.get("/departments", response_model=list[DepartmentOut])

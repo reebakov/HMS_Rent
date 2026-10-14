@@ -86,7 +86,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
         name, cpu, ram_gb: ram, disk_gb: disk, department_id: Number(departmentId),
         requester_name: person, requester_nick: nick, expected_return_at: until || null,
       })
-      toast.success(`Виртуалка ${vm.name} создаётся — это займёт несколько минут`)
+      toast.success(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`)
       onClose()
       navigate('/my')
     } catch {
@@ -99,7 +99,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title="Конструктор виртуалки"
-      description={o ? `Windows 10 на основе шаблона ${o.template}. Готова через несколько минут после создания.` : ' '}
+      description={o ? 'Виртуальная машина будет создана на Windows 10. Примерное время создания — около 10 минут.' : ' '}
       className="max-w-2xl"
       footer={
         <>

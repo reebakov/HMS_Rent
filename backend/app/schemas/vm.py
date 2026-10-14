@@ -31,6 +31,7 @@ class VmCreate(BaseModel):
 
 class VmOut(ORMModel):
     id: int
+    order_number: int
     name: str
     cpu: int
     ram_gb: int

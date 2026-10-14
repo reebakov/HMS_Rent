@@ -11,7 +11,7 @@ from app.models.enums import UserRole
 class User(Base, TimestampMixin):
     """Пользователь портала.
 
-    * Сотрудники создаются автоматически при первом входе через Google (username = рабочая почта).
+    * Сотрудники создаются автоматически при первом входе через Microsoft (username = рабочая почта / UPN).
     * Администраторы — локальные учётки с паролем, создаются командой `python -m app.cli create-admin`.
     """
 
@@ -23,7 +23,7 @@ class User(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(255))
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     ad_department: Mapped[str | None] = mapped_column(String(255))  # зарезервировано под отдел из каталога
-    auth_source: Mapped[str] = mapped_column(String(16), default="google")  # google / local / dev
+    auth_source: Mapped[str] = mapped_column(String(16), default="microsoft")  # microsoft / local / dev
     password_hash: Mapped[str | None] = mapped_column(String(255))  # только у локальных учёток
     role: Mapped[str] = mapped_column(String(16), default=UserRole.user.value)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))  # назначает админ

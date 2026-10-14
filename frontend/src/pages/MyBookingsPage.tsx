@@ -71,6 +71,7 @@ export function MyBookingsPage() {
                       <p className="text-lg font-semibold tracking-tight">{b.computer.name}</p>
                       <TierBadge tier={b.computer.tier} />
                     </div>
+                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">Заказ №{b.order_number}</p>
                     <p className="mt-0.5 text-[13px] text-muted-foreground">
                       {[b.computer.cpu, b.computer.ram_gb && `${b.computer.ram_gb} ГБ`, b.computer.gpu].filter(Boolean).join(' · ')}
                     </p>
@@ -123,6 +124,7 @@ export function MyBookingsPage() {
             <table className="w-full text-left text-[13px]">
               <thead className="text-xs text-muted-foreground">
                 <tr className="border-b">
+                  <th className="px-5 py-3 font-medium">Заказ</th>
                   <th className="px-5 py-3 font-medium">Компьютер</th>
                   <th className="px-5 py-3 font-medium">Отдел</th>
                   <th className="px-5 py-3 font-medium">Взят</th>
@@ -133,6 +135,7 @@ export function MyBookingsPage() {
               <tbody className="divide-y">
                 {history.map((b) => (
                   <tr key={b.id} className="hover:bg-muted/40">
+                    <td className="px-5 py-3 tabular text-muted-foreground">№{b.order_number}</td>
                     <td className="px-5 py-3 font-medium">{b.computer.name}</td>
                     <td className="px-5 py-3">{b.department.name}</td>
                     <td className="px-5 py-3 tabular">{formatDateTime(b.booked_at)}</td>

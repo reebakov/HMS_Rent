@@ -171,7 +171,10 @@ class InsightClient:
             raise InsightError(f"Insight {resp.status_code}: {resp.text[:200]}")
         return await self.to_object(resp.json())
 
-    async def update_object(self, object_id: int, object_type_id: int | None, values: dict[str, str | None]) -> None:
+    async def update_object(
+        self, object_id: int, object_type_id: int | None, values: dict[str, str | None],
+        optional: set[str] | None = None,
+    ) -> None:
         if object_type_id is None:
             raise InsightError("Неизвестен тип объекта — выполните синхронизацию")
         by_name = {a["name"].lower(): a for a in (await self._type_attributes(object_type_id)).values()}
@@ -179,6 +182,10 @@ class InsightClient:
         for name, value in values.items():
             meta = by_name.get(name.lower())
             if meta is None:
+                if optional and name in optional:
+                    # необязательное поле (пул, команда, срок, номер заказа): опечатка в имени не должна ломать запись статуса
+                    log.warning("У типа объекта нет атрибута «%s» — пропускаю (проверьте имя в insight_mapping.yaml)", name)
+                    continue
                 raise InsightError(f"У типа объекта нет атрибута «{name}»")
             if value:
                 if meta.get("type") == ATTR_TYPE_STATUS:
@@ -188,6 +195,8 @@ class InsightClient:
             attributes.append(
                 {"objectTypeAttributeId": meta["id"], "objectAttributeValues": [{"value": value}] if value else []}
             )
+        if not attributes:
+            return
         resp = await self._http.put(
             f"/object/{object_id}", json={"objectTypeId": object_type_id, "attributes": attributes}
         )

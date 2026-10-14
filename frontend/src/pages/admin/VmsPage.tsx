@@ -55,6 +55,7 @@ export function VmsPage() {
             <table className="w-full min-w-[980px] text-left text-[13px]">
               <thead className="bg-muted/40 text-xs text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-2.5 font-medium">№ заказа</th>
                   <th className="px-4 py-2.5 font-medium">ВМ</th>
                   <th className="px-4 py-2.5 font-medium">Ресурсы</th>
                   <th className="px-4 py-2.5 font-medium">Владелец</th>
@@ -70,6 +71,7 @@ export function VmsPage() {
                   const st = VM_STATUS[vm.status]
                   return (
                     <tr key={vm.id} className="hover:bg-muted/40">
+                      <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
                       <td className="px-4 py-3 font-semibold">{vm.name}</td>
                       <td className="px-4 py-3 tabular">{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
                       <td className="px-4 py-3">

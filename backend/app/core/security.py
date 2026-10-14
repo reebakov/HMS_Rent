@@ -59,7 +59,7 @@ def verify_password(password: str, stored: str | None) -> bool:
         return False
 
 
-# ---------- Короткоживущий state для входа через Google ----------
+# ---------- Короткоживущий state для входа через Microsoft ----------
 
 def create_oauth_state(next_path: str) -> tuple[str, str, str]:
     """Возвращает (state, nonce, подписанная cookie с ними)."""

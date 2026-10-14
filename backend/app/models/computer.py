@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +53,10 @@ class Computer(Base, TimestampMixin):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     pool_id: Mapped[int | None] = mapped_column(ForeignKey("pools.id"), index=True)  # None — не выдаётся
     note: Mapped[str | None] = mapped_column(Text)
+
+    # --- Текущая аренда (зеркало полей Insight «Срок использования» и «Номер заказа») ---
+    usage_until: Mapped[date | None] = mapped_column(Date)
+    order_number: Mapped[int | None]
 
     # --- Обратная запись в Insight (очередь по принципу «отправь текущее состояние») ---
     writeback_pending: Mapped[bool] = mapped_column(default=False)

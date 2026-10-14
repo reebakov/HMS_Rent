@@ -49,7 +49,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         expected_return_at: until || null,
       })
       localStorage.setItem(LAST_DEPARTMENT_KEY, departmentId)
-      toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}»`, {
+      toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, {
         action: { label: 'Моя аренда', onClick: () => navigate('/my') },
       })
       onClose()

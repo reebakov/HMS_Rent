@@ -21,11 +21,11 @@ async def lifespan(_: FastAPI):
         raise RuntimeError("AUTH_DEV_ENABLED=true запрещён в prod")
     if settings.environment == "prod" and settings.secret_key.startswith("change-me"):
         raise RuntimeError("Задайте SECRET_KEY в .env")
-    if not settings.google_enabled:
-        log.warning("Вход через Google выключен: не заданы GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (docs/GOOGLE_SSO.md)")
+    if not settings.bouncer_enabled:
+        log.warning("Вход через Bouncer выключен: не заданы BOUNCER_AUTHORIZE_URL / BOUNCER_TOKEN_URL / BOUNCER_CLIENT_ID")
     async with SessionLocal() as session:
         await bootstrap(session)
-    log.info("%s запущен: google=%s, local=%s, dev=%s, insight=%s", settings.app_name, settings.google_enabled,
+    log.info("%s запущен: bouncer=%s, local=%s, dev=%s, insight=%s", settings.app_name, settings.bouncer_enabled,
              settings.auth_local_enabled, settings.auth_dev_enabled, settings.insight_mode)
     yield
 

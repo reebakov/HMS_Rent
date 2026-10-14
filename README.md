@@ -1,4 +1,4 @@
-# HMS Rent — бронирование рабочих компьютеров
+# HMS Rent — аренда техники (компьютеры и виртуальные машины)
 
 Веб-портал для сторонних отделов. Сотрудник входит рабочей учёткой, выбирает категорию мощности
 (слабые / средние / мощные / виртуальные), видит свободные компьютеры с характеристиками из
@@ -19,7 +19,7 @@ docker compose up -d --build
 * «Вход для администраторов» → логин `admin` (любой пароль) — администратор (dev-вход, `AUTH_DEV_ENABLED=true`);
 * любой другой логин, например `ivanov`, — обычный сотрудник.
 
-Боевые варианты входа — Google SSO для сотрудников и локальные учётки администраторов, см. ниже.
+Боевые варианты входа — рабочие учётки Microsoft (Entra ID) для сотрудников и локальные учётки администраторов, см. ниже.
 
 В демо-режиме Insight не нужен: 60 тестовых ПК берутся из `backend/seed/mock_computers.json`.
 Swagger с описанием API: **http://localhost:8080/api/docs**.
@@ -28,7 +28,7 @@ Swagger с описанием API: **http://localhost:8080/api/docs**.
 
 | Сотрудник | Администратор |
 |---|---|
-| Вход через Google (рабочая почта) | Сводка парка: свободно / занято / недоступно / проблемы |
+| Вход через рабочую учётку Microsoft | Сводка парка: свободно / занято / недоступно / проблемы |
 | Категории мощности со счётчиками свободных ПК | Инвентаризация: все ПК, за каким отделом, кто взял, с какой даты |
 | Список ПК с характеристиками, поиск, фильтры | Пулы выдачи: какие ПК видят сотрудники |
 | | Выгрузка инвентаризации в CSV (открывается в Excel) |
@@ -48,7 +48,7 @@ hms-rent/
 ├── docs/
 │   ├── ARCHITECTURE.md       # модель данных, статусы, пулы, правила синхронизации
 │   ├── INSIGHT_SETUP.md      # подключение jira.marvin-it.com, insight-check
-│   └── GOOGLE_SSO.md         # вход через Google и учётки администраторов
+│   └── MICROSOFT_SSO.md      # вход через Microsoft (Entra ID) и учётки администраторов
 ├── backend/                  # Python 3.12 · FastAPI · SQLAlchemy 2 (async) · PostgreSQL
 │   ├── app/
 │   │   ├── main.py           # FastAPI-приложение
@@ -62,7 +62,7 @@ hms-rent/
 │   │   ├── services/         # бизнес-логика: бронь, синхронизация, инвентаризация, категории
 │   │   └── integrations/
 │   │       ├── insight/      # клиент Insight (Server/DC), mock, маппинг атрибутов
-│   │       ├── auth/         # вход: Google OIDC, dev
+│   │       ├── auth/         # вход: Microsoft OIDC, dev
 │   │       └── notify.py     # уведомления в Mattermost
 │   ├── config/insight_mapping.yaml   # маппинг под jira.marvin-it.com (IT Assets → Automat)
 │   ├── config/insight_mapping.mock.yaml  # маппинг демо-данных
@@ -82,8 +82,8 @@ hms-rent/
 1. **Insight** — [docs/INSIGHT_SETUP.md](docs/INSIGHT_SETUP.md): одна сервисная учётка (токен) на портал,
    проверка `python -m app.cli insight-check`, затем `INSIGHT_MODE=live`.
 2. **Пулы** — после синхронизации админ добавляет ПК в опубликованный пул: только их видят сотрудники.
-3. **Вход** — [docs/GOOGLE_SSO.md](docs/GOOGLE_SSO.md): Google для сотрудников, администраторы — по
-   почты из `backend/config/admins.txt` (входят через тот же Google) или локальные учётки (`python -m app.cli create-admin <логин>`).
+3. **Вход** — [docs/MICROSOFT_SSO.md](docs/MICROSOFT_SSO.md): Microsoft для сотрудников, администраторы — по
+   почты из `backend/config/admins.txt` (входят через тот же Microsoft) или локальные учётки (`python -m app.cli create-admin <логин>`).
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
 
 ## Локальная разработка без Docker

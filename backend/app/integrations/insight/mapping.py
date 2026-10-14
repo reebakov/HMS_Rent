@@ -1,6 +1,7 @@
 """Маппинг «атрибуты Insight -> поля портала». Настраивается в config/insight_mapping.yaml без правки кода."""
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -9,7 +10,9 @@ from app.models.enums import ComputerStatus, Tier
 
 FIELDS = (
     "name", "hostname", "cpu", "cpu_cores", "ram", "storage", "gpu", "os",
-    "location", "serial_number", "ip_address", "status", "tier", "gateway"
+    "location", "serial_number", "ip_address", "status", "tier", "gateway",
+    # поля аренды: читаются из Insight и пишутся обратно (см. docs/INSIGHT_SETUP.md)
+    "pool", "team", "usage_period", "order_number",
 )
 
 
@@ -17,8 +20,11 @@ FIELDS = (
 class WritebackMapping:
     status_attribute: str | None = None
     status_values: dict[str, str] = field(default_factory=dict)  # наш статус -> статус Insight
-    department_attribute: str | None = None
+    department_attribute: str | None = None  # «Команда-получатель»
     owner_attribute: str | None = None
+    pool_attribute: str | None = None  # «Пул выдачи»
+    period_attribute: str | None = None  # «Срок использования»
+    order_attribute: str | None = None  # «Номер заказа»
 
 
 @dataclass
@@ -54,6 +60,10 @@ class ComputerData:
     insight_status: str | None
     status: str  # нормализованный ComputerStatus
     tier: str | None  # категория из Insight, если такое поле есть
+    pool_name: str | None = None  # «Пул выдачи»
+    team_name: str | None = None  # «Команда-получатель» (отдел)
+    usage_until: date | None = None  # «Срок использования»
+    order_number: int | None = None  # «Номер заказа»
 
 
 def load_mapping(path: Path) -> InsightMapping:
@@ -65,10 +75,11 @@ def load_mapping(path: Path) -> InsightMapping:
     tiers = {str(k).strip().lower(): str(v) for k, v in (raw.get("tier_values") or {}).items()}
     for value in tiers.values():
         Tier(value)
+    attrs = {k: v for k, v in (raw.get("attributes") or {}).items() if k in FIELDS and v}
     return InsightMapping(
         query=raw["query"],
         schema_id=raw.get("object_schema_id"),
-        attributes={k: v for k, v in (raw.get("attributes") or {}).items() if k in FIELDS and v},
+        attributes=attrs,
         specs_attribute=raw.get("specs_attribute") or None,
         status_map=statuses,
         default_status=raw.get("default_status", ComputerStatus.unknown.value),
@@ -77,8 +88,12 @@ def load_mapping(path: Path) -> InsightMapping:
         writeback=WritebackMapping(
             status_attribute=wb.get("status_attribute"),
             status_values={str(k): str(v) for k, v in (wb.get("status_values") or {}).items() if v},
-            department_attribute=wb.get("department_attribute"),
+            # если в блоке writeback имя атрибута не задано — пишем туда же, откуда читаем (attributes)
+            department_attribute=wb.get("department_attribute") or attrs.get("team"),
             owner_attribute=wb.get("owner_attribute"),
+            pool_attribute=wb.get("pool_attribute") or attrs.get("pool"),
+            period_attribute=wb.get("period_attribute") or attrs.get("usage_period"),
+            order_attribute=wb.get("order_attribute") or attrs.get("order_number"),
         ),
     )
 
@@ -91,6 +106,26 @@ def parse_int(value: str | None) -> int | None:
         return None
     m = _NUM.search(value)
     return int(float(m.group(1).replace(",", "."))) if m else None
+
+
+_RU_MONTHS = {"янв": "Jan", "фев": "Feb", "мар": "Mar", "апр": "Apr", "май": "May", "мая": "May", "июн": "Jun",
+              "июл": "Jul", "авг": "Aug", "сен": "Sep", "окт": "Oct", "ноя": "Nov", "дек": "Dec"}
+_DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%y", "%d/%m/%Y", "%d-%m-%Y", "%d/%b/%y", "%d/%b/%Y")
+
+
+def parse_date(value: str | None) -> date | None:
+    """«2026-10-20», «20.10.2026», «20/Oct/26 12:00 AM», «2026-10-20T00:00:00.000Z» -> date. Непонятное -> None."""
+    if not value:
+        return None
+    head = re.split(r"[T\s]", value.strip(), maxsplit=1)[0]
+    for ru, en in _RU_MONTHS.items():  # Jira с русской локалью отдаёт «20/окт/26»
+        head = re.sub(ru + r"\w*", en, head, flags=re.I)
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(head, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def parse_size_gb(value: str | None) -> int | None:
@@ -188,4 +223,8 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         insight_status=insight_status,
         status=status,
         tier=mapping.tier_values.get(tier_raw.lower()) if tier_raw else None,
+        pool_name=get("pool"),
+        team_name=get("team"),
+        usage_until=parse_date(get("usage_period")),
+        order_number=parse_int(get("order_number")),
     )

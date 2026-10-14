@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
 from app.models import Computer, ComputerStatus, Department, EventType, Pool, User
+from app.services import runtime
 from app.services.events import add_event
 
 
@@ -85,6 +86,7 @@ async def assign(
             continue
         old = comp.pool.name if comp.pool else None
         comp.pool_id = pool_id
+        comp.writeback_pending = runtime.current().insight_writeback  # новый пул уедет в Insight («Пул выдачи»)
         updated += 1
         add_event(
             session, computer_id=comp.id, actor_id=admin.id, event_type=EventType.admin_update,
@@ -103,6 +105,9 @@ async def delete_pool(session: AsyncSession, pool_id: int) -> None:
     )
     if booked:
         raise Conflict(f"В пуле {booked} забронированных ПК — сначала дождитесь возврата или перенесите их")
-    await session.execute(update(Computer).where(Computer.pool_id == pool_id).values(pool_id=None))
+    await session.execute(
+        update(Computer).where(Computer.pool_id == pool_id)
+        .values(pool_id=None, writeback_pending=runtime.current().insight_writeback)
+    )
     await session.delete(pool)
     await session.commit()

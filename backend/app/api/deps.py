@@ -23,7 +23,7 @@ async def get_current_user(request: Request, session: DB) -> User:
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или отключён")
     if user.auth_source != "local":
-        # права Google-пользователей берутся из config/admins.txt на каждом запросе:
+        # права SSO-пользователей (Microsoft) берутся из config/admins.txt на каждом запросе:
         # добавили/убрали почту — изменение действует сразу, без повторного входа
         admin = is_admin_email(user.email or user.username) or (user.auth_source == "dev" and user.username == "admin")
         user.role = UserRole.admin.value if admin else UserRole.user.value

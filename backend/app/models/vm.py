@@ -43,6 +43,8 @@ class VirtualMachine(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(16), index=True, default="queued")
     error: Mapped[str | None] = mapped_column(Text)
 
+    order_number: Mapped[int] = mapped_column(unique=True)  # сквозной номер заказа (общий с бронями ПК), с 1
+
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"))
     requester_name: Mapped[str] = mapped_column(String(255))

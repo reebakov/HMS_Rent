@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.core.security import create_oauth_state, create_session_token, read_oauth_state, verify_password
-from app.integrations.auth import google
+from app.integrations.auth import bouncer
 from app.integrations.auth.base import AuthError, AuthResult
 from app.integrations.auth.dev import dev_login
 from app.models import User, UserRole
@@ -24,7 +24,8 @@ _failed: dict[str, list[float]] = defaultdict(list)  # логин -> время 
 
 
 def _session_out(user: User) -> SessionOut:
-    return SessionOut(user=UserOut.model_validate(user), app_name=settings.app_name, insight_mode=settings.insight_mode,
+    return SessionOut(user=UserOut.model_validate(user), app_name=settings.app_name,
+                      app_subtitle=settings.app_subtitle, insight_mode=settings.insight_mode,
                       catalog_refresh_sec=runtime.current().catalog_refresh_sec)
 
 
@@ -50,7 +51,7 @@ def _check_throttle(username: str) -> None:
 
 
 async def _upsert_sso_user(session: DB, result: AuthResult, source: str) -> User:
-    """Сотрудник из Google/dev: создаём при первом входе, обновляем имя и аватар."""
+    """Сотрудник из Microsoft/dev: создаём при первом входе, обновляем имя."""
     user = await session.scalar(select(User).where(User.username == result.username))
     if user is None:
         user = User(username=result.username, auth_source=source)
@@ -72,8 +73,7 @@ async def _upsert_sso_user(session: DB, result: AuthResult, source: str) -> User
 async def auth_config() -> AuthConfigOut:
     return AuthConfigOut(
         app_name=settings.app_name,
-        google_enabled=settings.google_enabled,
-        google_domains=settings.google_domains,
+        bouncer_enabled=settings.bouncer_enabled,
         local_enabled=settings.auth_local_enabled,
         dev_enabled=settings.auth_dev_enabled,
     )
@@ -106,21 +106,19 @@ async def login(data: LoginIn, response: Response, session: DB) -> SessionOut:
     return _session_out(user)
 
 
-@router.get("/google/login")
-async def google_login(next: str = "/") -> RedirectResponse:
-    if not settings.google_enabled:
-        raise HTTPException(404, "Вход через Google не настроен")
+@router.get("/bouncer/login")
+async def bouncer_login(next: str = "/") -> RedirectResponse:
+    if not settings.bouncer_enabled:
+        raise HTTPException(404, "Вход через Bouncer не настроен")
     safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
     state, nonce, cookie = create_oauth_state(safe_next)
-    resp = RedirectResponse(google.authorization_url(state, nonce), status_code=302)
-    resp.set_cookie(OAUTH_COOKIE, cookie, httponly=True, secure=settings.cookie_secure,
-                    samesite="lax", max_age=600, path="/")
+    resp = RedirectResponse(bouncer.authorization_url(state, nonce), status_code=302)
+    resp.set_cookie(OAUTH_COOKIE, cookie, httponly=True, secure=settings.cookie_secure, samesite="lax", max_age=600, path="/")
     return resp
 
 
-@router.get("/google/callback")
-async def google_callback(request: Request, session: DB, code: str = "", state: str = "",
-                          error: str = "") -> RedirectResponse:
+@router.get("/bouncer/callback")
+async def bouncer_callback(request: Request, session: DB, code: str = "", state: str = "", error: str = "") -> RedirectResponse:
     saved = read_oauth_state(request.cookies.get(OAUTH_COOKIE))
 
     def fail(message: str) -> RedirectResponse:
@@ -129,11 +127,11 @@ async def google_callback(request: Request, session: DB, code: str = "", state: 
         return resp
 
     if error:
-        return fail("Вход через Google отменён")
+        return fail("Вход отменён")
     if not saved or not code or saved.get("state") != state:
         return fail("Сессия входа устарела, попробуйте ещё раз")
     try:
-        user = await _upsert_sso_user(session, await google.exchange_code(code, saved["nonce"]), "google")
+        user = await _upsert_sso_user(session, await bouncer.exchange_code(code, saved["nonce"]), "bouncer")
     except AuthError as exc:
         return fail(str(exc))
 

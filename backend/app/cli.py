@@ -6,6 +6,7 @@
   disable <логин> / enable <логин>               — заблокировать / разблокировать
   insight-check [--sample 5] [--query IQL]       — проверить подключение к Insight и маппинг
   insight-check --breakdown Type                 — сколько объектов с каждым значением атрибута
+  push-pools                                     — записать в Insight («Пул выдачи») пулы всех ПК, что сейчас на портале
 """
 import argparse
 import asyncio
@@ -13,12 +14,12 @@ import getpass
 import json
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal
-from app.models import User, UserRole
+from app.models import Computer, User, UserRole
 
 
 def ask_password() -> str:
@@ -74,6 +75,18 @@ async def list_users() -> None:
         print(f"{u.username:40} {u.auth_source:7} {u.role:6} {'on ' if u.is_active else 'OFF'}  вход: {last}")
 
 
+async def push_pools() -> None:
+    """Одноразово после включения «Пул выдачи»: отправить в Insight пулы, которые уже назначены на портале."""
+    async with SessionLocal() as session:
+        result = await session.execute(
+            update(Computer).where(Computer.pool_id.is_not(None), Computer.is_archived.is_(False))
+            .values(writeback_pending=True)
+        )
+        await session.commit()
+    print(f"✓ В очередь на запись в Insight поставлено ПК: {result.rowcount}. Воркер отправит их за несколько минут "
+          f"(нужен INSIGHT_WRITEBACK=true или включатель на странице «Настройки»).")
+
+
 async def insight_check(sample: int, query: str | None, breakdown: str | None) -> None:
     from collections import Counter
 
@@ -121,6 +134,10 @@ async def insight_check(sample: int, query: str | None, breakdown: str | None) -
         if objects:
             attrs = await client._type_attributes(objects[0].object_type_id)
             print(f"Атрибуты типа «{objects[0].object_type}»: " + ", ".join(a["name"] for a in attrs.values()))
+            known = {a["name"].lower() for a in attrs.values()}
+            missing = [f"{field} → «{name}»" for field, name in mapping.attributes.items() if name.lower() not in known]
+            if missing:
+                print("⚠ В Insight нет атрибутов из маппинга (проверьте написание): " + "; ".join(missing))
         for obj in objects:
             data = map_object(obj, mapping)
             tier = data.tier or classify(is_virtual=data.is_virtual, ram_gb=data.ram_gb, gpu=data.gpu)
@@ -128,6 +145,8 @@ async def insight_check(sample: int, query: str | None, breakdown: str | None) -
             print("  в Insight:", json.dumps(obj.attributes, ensure_ascii=False))
             print(f"  на портале: CPU={data.cpu} | ОЗУ={data.ram_gb} ГБ | GPU={data.gpu} | диск={data.storage} | "
                   f"статус «{data.insight_status}» → {data.status} | категория {tier}")
+            print(f"  аренда: пул={data.pool_name} | команда={data.team_name} | срок={data.usage_until} | "
+                  f"заказ №={data.order_number}")
         if not objects:
             print("Запрос ничего не вернул — проверьте query и права учётки на схему.")
     finally:
@@ -144,6 +163,7 @@ def main() -> None:
     sub.add_parser("disable").add_argument("username")
     sub.add_parser("enable").add_argument("username")
     sub.add_parser("users")
+    sub.add_parser("push-pools")
     p = sub.add_parser("insight-check")
     p.add_argument("--sample", type=int, default=5, help="сколько объектов показать")
     p.add_argument("--query", help="свой IQL-запрос вместо query из маппинга")
@@ -156,6 +176,7 @@ def main() -> None:
         "disable": lambda: set_active(args.username, False),
         "enable": lambda: set_active(args.username, True),
         "users": list_users,
+        "push-pools": push_pools,
         "insight-check": lambda: insight_check(args.sample, args.query, args.breakdown),
     }
     asyncio.run(commands[args.cmd]())
