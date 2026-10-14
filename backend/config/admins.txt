@@ -5,4 +5,4 @@
 # Убрали почту — права пропадают при следующем действии в портале.
 #
 recruit@deeplay.io
-# petrov@deeplay.io
+champion@deeplay.io
