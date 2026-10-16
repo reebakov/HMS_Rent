@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { PageHeader } from '@/components/ui/card'
@@ -37,6 +37,8 @@ export function CatalogPage() {
   const [openedId, setOpenedId] = useState<number | null>(null)
   const [booking, setBooking] = useState<Computer | null>(null)
   const [search, setSearch] = useState(filters.q ?? '')
+  const qRef = useRef(filters.q)
+  qRef.current = filters.q
 
   const update = (patch: Record<string, string | undefined>) =>
     setParams(
@@ -50,7 +52,9 @@ export function CatalogPage() {
 
   // поиск с задержкой, чтобы не дёргать API на каждую букву
   useEffect(() => {
-    const timer = setTimeout(() => update({ q: search.trim() || undefined }), 250)
+    const timer = setTimeout(() => {
+      if ((search.trim() || undefined) !== qRef.current) update({ q: search.trim() || undefined })
+    }, 250)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])

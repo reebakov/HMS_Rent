@@ -106,7 +106,7 @@ export function InventoryPage() {
           </Select>
           <Select className="w-40" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
             <option value="">Все статусы</option>
-            <option value="unavailable">⚠️ Недоступные</option> {/* <-- ДОБАВИТЬ ЭТУ СТРОКУ */}
+            <option value="unavailable">⚠️ Недоступные</option>
             {(Object.keys(STATUSES) as ComputerStatus[]).map((s) => (
               <option key={s} value={s}>
                 {STATUSES[s].label}

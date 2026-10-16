@@ -17,7 +17,7 @@ const sizes = {
   icon: 'h-9 w-9',
 }
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: keyof typeof variants
   size?: keyof typeof sizes
   loading?: boolean

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type ViewMode = 'cards' | 'compact'
+type ViewMode = 'cards' | 'compact'
 
 /** Режим отображения списка, запоминается в браузере отдельно для каждой страницы */
 export function useViewMode(key: string): [ViewMode, (mode: ViewMode) => void] {

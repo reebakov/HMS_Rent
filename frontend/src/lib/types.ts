@@ -10,7 +10,7 @@ export interface User {
   display_name: string
   email: string | null
   avatar_url: string | null
-  auth_source: 'microsoft' | 'local' | 'dev'
+  auth_source: 'bouncer' | 'microsoft' | 'local' | 'dev'
   role: 'user' | 'admin'
   department_id: number | null
 }
@@ -25,7 +25,7 @@ export interface Session {
 
 export interface AuthConfig {
   app_name: string
-  bouncer_enabled: boolean // <-- вместо microsoft
+  bouncer_enabled: boolean
   local_enabled: boolean
   dev_enabled: boolean
 }

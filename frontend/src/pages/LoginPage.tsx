@@ -14,7 +14,6 @@ const FEATURES = [
   { icon: Zap, title: 'В пару кликов', text: 'Выбрали, нажали «Забронировать» — готово' },
 ]
 
-// Добавили больше слов для плотности
 const RAW_WORDS = [
   'HMS RENT', 'RENT', 'HMS', 'vSphere', 'RTX 4070', 'Intel', 'Xeon',
   'Automat', 'Linked Clone', 'AMD', 'Godzen', 'Jira', 'Insight', 'NVMe', 
@@ -41,7 +40,6 @@ function generateSpotlightGrid(count: number) {
     const angles = ['rotate-0', '-rotate-6', 'rotate-6', '-rotate-12', 'rotate-12', '-rotate-45', 'rotate-90']
     const rotate = angles[Math.floor(Math.random() * angles.length)]
     
-    // Шрифты стали ЗНАЧИТЕЛЬНО крупнее и разнообразнее
     const sizes = [
       'text-sm opacity-60', 
       'text-lg font-medium opacity-80', 
@@ -67,7 +65,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(params.get('error'))
   const [pending, setPending] = useState(false)
 
-  // Генерируем 60 слов вместо 30 для плотности
+  // 60 слов для плотности сетки
   const spotlightWords = useMemo(() => generateSpotlightGrid(60), [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
