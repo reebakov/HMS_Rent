@@ -14,6 +14,9 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
     restoreMocks: true,
+    // тесты с десятками кликов через userEvent на слабом раннере CI (2 ядра + coverage) идут 5-6 с
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'lcov'],

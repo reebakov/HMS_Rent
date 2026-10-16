@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
@@ -36,8 +36,15 @@ export function InventoryPage() {
   const rows = data?.items ?? []
   const total = data?.total ?? 0
 
+  // set() сбрасывает выбор и страницу: без проверки таймер, сработавший через 250 мс после открытия страницы,
+  // стирал уже отмеченные ПК, хотя поиск никто не менял
+  const qRef = useRef(filters.q)
+  qRef.current = filters.q
   useEffect(() => {
-    const timer = setTimeout(() => set({ q: search.trim() || undefined }), 250)
+    const timer = setTimeout(() => {
+      const q = search.trim() || undefined
+      if (q !== qRef.current) set({ q })
+    }, 250)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])

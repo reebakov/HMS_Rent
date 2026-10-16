@@ -3,7 +3,7 @@ import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 // файлы тестов идут параллельно и делят CPU: стандартной 1 с на waitFor/findBy иногда не хватает
-configure({ asyncUtilTimeout: 4000 })
+configure({ asyncUtilTimeout: 10_000 })
 
 afterEach(() => {
   cleanup()

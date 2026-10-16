@@ -200,6 +200,16 @@ describe('InventoryPage', () => {
     expect(screen.queryByText(/Выбрано:/)).not.toBeInTheDocument()
   })
 
+  it('отмеченные ПК не сбрасываются таймером поиска, сработавшим без ввода в поиск', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<InventoryPage />)
+    await screen.findByText('PC-001')
+    await user.click(tableBoxes()[1])
+    expect(screen.getByText('Выбрано: 1')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 400)) // дольше дебаунса поиска в 250 мс
+    expect(screen.getByText('Выбрано: 1')).toBeInTheDocument()
+  })
+
   it('перемещение выбранных в пул: POST /admin/pools/assign, тост, сброс выделения', async () => {
     const user = userEvent.setup()
     renderWithProviders(<InventoryPage />)
