@@ -19,7 +19,7 @@ docker compose up -d --build
 * «Вход для администраторов» → логин `admin` (любой пароль) — администратор (dev-вход, `AUTH_DEV_ENABLED=true`);
 * любой другой логин, например `ivanov`, — обычный сотрудник.
 
-Боевые варианты входа — рабочие учётки Microsoft (Entra ID) для сотрудников и локальные учётки администраторов, см. ниже.
+Боевые варианты входа — корпоративный SSO (Bouncer) для сотрудников и локальные учётки администраторов, см. ниже.
 
 В демо-режиме Insight не нужен: 60 тестовых ПК берутся из `backend/seed/mock_computers.json`.
 Swagger с описанием API: **http://localhost:8080/api/docs**.
@@ -28,7 +28,7 @@ Swagger с описанием API: **http://localhost:8080/api/docs**.
 
 | Сотрудник | Администратор |
 |---|---|
-| Вход через рабочую учётку Microsoft | Сводка парка: свободно / занято / недоступно / проблемы |
+| Вход через корпоративный SSO (Bouncer) | Сводка парка: свободно / занято / недоступно / проблемы |
 | Категории мощности со счётчиками свободных ПК | Инвентаризация: все ПК, за каким отделом, кто взял, с какой даты |
 | Список ПК с характеристиками, поиск, фильтры | Пулы выдачи: какие ПК видят сотрудники |
 | | Выгрузка инвентаризации в CSV (открывается в Excel) |
@@ -48,7 +48,7 @@ hms-rent/
 ├── docs/
 │   ├── ARCHITECTURE.md       # модель данных, статусы, пулы, правила синхронизации
 │   ├── INSIGHT_SETUP.md      # подключение jira.marvin-it.com, insight-check
-│   └── MICROSOFT_SSO.md      # вход через Microsoft (Entra ID) и учётки администраторов
+│   └── BOUNCER_SSO.md        # вход через Bouncer (OIDC) и учётки администраторов
 ├── backend/                  # Python 3.12 · FastAPI · SQLAlchemy 2 (async) · PostgreSQL
 │   ├── app/
 │   │   ├── main.py           # FastAPI-приложение
@@ -62,7 +62,7 @@ hms-rent/
 │   │   ├── services/         # бизнес-логика: бронь, синхронизация, инвентаризация, категории
 │   │   └── integrations/
 │   │       ├── insight/      # клиент Insight (Server/DC), mock, маппинг атрибутов
-│   │       ├── auth/         # вход: Microsoft OIDC, dev
+│   │       ├── auth/         # вход: Bouncer (OIDC), dev
 │   │       └── notify.py     # уведомления в Mattermost
 │   ├── config/insight_mapping.yaml   # маппинг под jira.marvin-it.com (IT Assets → Automat)
 │   ├── config/insight_mapping.mock.yaml  # маппинг демо-данных
@@ -82,8 +82,8 @@ hms-rent/
 1. **Insight** — [docs/INSIGHT_SETUP.md](docs/INSIGHT_SETUP.md): одна сервисная учётка (токен) на портал,
    проверка `python -m app.cli insight-check`, затем `INSIGHT_MODE=live`.
 2. **Пулы** — после синхронизации админ добавляет ПК в опубликованный пул: только их видят сотрудники.
-3. **Вход** — [docs/MICROSOFT_SSO.md](docs/MICROSOFT_SSO.md): Microsoft для сотрудников, администраторы — по
-   почты из `backend/config/admins.txt` (входят через тот же Microsoft) или локальные учётки (`python -m app.cli create-admin <логин>`).
+3. **Вход** — [docs/BOUNCER_SSO.md](docs/BOUNCER_SSO.md): Bouncer для сотрудников, администраторы — по
+   почты из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
 
 ## Локальная разработка без Docker
@@ -101,3 +101,14 @@ cd frontend && npm install && npm run dev
 ```
 
 `npm run typecheck` — проверка типов TypeScript (сборка `npm run build` её не требует).
+
+## Тесты
+
+Всё запускается в Docker, ни Python, ни Node на хосте не нужны.
+
+- `make test` — бэкенд (pytest) на отдельной Postgres в tmpfs, боевая БД не затрагивается. Аргументы pytest: `make test ARGS="-k booking -x"`.
+- `make test-frontend` — фронтенд (Vitest + Testing Library) и затем проверка типов; фильтр: `make test-frontend ARGS="BookingDialog"`.
+- `make test-down` — остановить и удалить тестовые контейнеры и тома.
+- Без Docker: `cd frontend && npm run test` (или `npm run test:watch`), `cd backend && pytest`.
+- Тесты фронтенда лежат рядом с кодом (`*.test.ts(x)`), общие хелперы — в `frontend/src/test/`.
+- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`.
