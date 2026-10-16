@@ -68,11 +68,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Установка зависимостей
         run: npm ci
-      # TODO: в admin-страницах есть старые ошибки типов (AdminOverviewPage, InventoryPage, UsersPage);
-      # после их исправления убрать continue-on-error, чтобы typecheck блокировал PR.
       - name: Typecheck
         run: npm run typecheck
-        continue-on-error: true
       - name: Тесты
         run: npm run test:coverage
       - name: Сборка

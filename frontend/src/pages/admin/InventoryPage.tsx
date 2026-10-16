@@ -227,7 +227,11 @@ export function InventoryPage() {
                     </td>
                     <td className="px-3 py-1.5 text-muted-foreground">{c.pool?.name ?? '—'}</td>
                     <td className="px-3 py-1.5">
-                      {c.issues.length > 0 && <CircleAlert className="h-3.5 w-3.5 text-danger" title={c.issues.join('\n')} />}
+                      {c.issues.length > 0 && (
+                        <span title={c.issues.join('\n')}>
+                          <CircleAlert className="h-3.5 w-3.5 text-danger" />
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

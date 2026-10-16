@@ -10,7 +10,7 @@ import { formatRelative } from '@/lib/utils'
 export function AdminOverviewPage() {
   const stats = useStats()
   const departments = useDepartmentUsage()
-  const events = useEvents(10)
+  const events = useEvents({ limit: 10, offset: 0 })
   const s = stats.data
 
   return (

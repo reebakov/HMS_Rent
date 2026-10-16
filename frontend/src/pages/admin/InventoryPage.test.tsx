@@ -105,7 +105,8 @@ describe('InventoryPage', () => {
   it('проблемы ПК выводятся в title иконки, удалённые из Insight — приглушены', async () => {
     renderWithProviders(<InventoryPage />)
     const row = (await screen.findByText('PC-002')).closest('tr')!
-    expect(row.querySelector('[title="Нет в Insight"]')).not.toBeNull()
+    // подсказка — на обёртке-span: у svg атрибут title браузер как тултип не показывает
+    expect(row.querySelector('span[title="Нет в Insight"] svg')).not.toBeNull()
     expect(row.className).toContain('opacity-60')
   })
 
