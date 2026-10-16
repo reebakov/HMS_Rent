@@ -86,6 +86,21 @@ hms-rent/
    почты из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
 
+## Деплой на сервер
+
+На сервере (клон проекта с `docker-compose.yml` и своим `.env`) выкатка делается одной командой:
+
+```bash
+sudo ./scripts/deploy.sh            # забрать origin/<текущая ветка> и перезапустить
+sudo ./scripts/deploy.sh --dry-run  # только показать, какие коммиты приедут
+```
+
+Скрипт проверяет, что рабочее дерево чистое, делает дамп БД в `/var/backups/hms-rent` (хранит 14 последних),
+обновляет код только fast-forward, пересобирает и перезапускает `backend`, `worker` и `frontend`
+и ждёт `/api/health`. Если сервис не поднялся, сам возвращает прежний коммит и перезапускает его.
+`.env` и данные БД он не трогает; миграции применяет backend при старте. Параметры: `BACKUP_DIR`, `BACKUP_KEEP`,
+`HEALTH_TIMEOUT`.
+
 ## Локальная разработка без Docker
 
 ```bash
