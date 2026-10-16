@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CalendarClock, Inbox, Undo2 } from 'lucide-react'
+import { CalendarClock, CircleAlert, Inbox, Undo2 } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import { formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/uti
 
 export function MyBookingsPage() {
   const navigate = useNavigate()
-  const { data, isLoading } = useMyBookings()
+  const { data, isLoading, isError, error, refetch } = useMyBookings()
   const returnMutation = useReturnBooking()
   const [returning, setReturning] = useState<Booking | null>(null)
 
@@ -46,6 +46,19 @@ export function MyBookingsPage() {
           <Skeleton className="h-44 rounded-xl" />
           <Skeleton className="h-44 rounded-xl" />
         </div>
+      ) : isError && !data ? (
+        <Card>
+          <EmptyState
+            icon={CircleAlert}
+            title="Не удалось загрузить бронирования"
+            description={error instanceof Error ? error.message : 'Попробуйте ещё раз'}
+            action={
+              <Button variant="outline" onClick={() => refetch()}>
+                Повторить
+              </Button>
+            }
+          />
+        </Card>
       ) : active.length === 0 ? (
         <Card>
           <EmptyState

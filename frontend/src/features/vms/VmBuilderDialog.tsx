@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
+import { safeStorage } from '@/lib/storage'
 
 type Range = { min: number; max: number; step: number }
 
@@ -69,7 +70,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     setCpu(o.min_cpu)
     setRam(o.min_ram_gb)
     setDisk(o.min_disk_gb)
-    setDepartmentId(String(session.user.department_id ?? localStorage.getItem('hmsrent:last-department') ?? ''))
+    setDepartmentId(String(session.user.department_id ?? safeStorage.get('hmsrent:last-department') ?? ''))
     setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')

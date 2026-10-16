@@ -73,17 +73,25 @@ describe('MyBookingsPage', () => {
     expect(screen.getByTestId('path')).toHaveTextContent(/^\/$/)
   })
 
-  // БАГ: страница не читает isError — при падении /bookings/my пользователь видит
-  // «Активных бронирований нет», хотя на деле просто не получил данные
-  it.fails('при ошибке загрузки не выдаёт ошибку за пустой список', async () => {
+  it('при ошибке загрузки не выдаёт ошибку за пустой список; «Повторить» перезапрашивает', async () => {
+    const user = userEvent.setup()
+    let fail = true
     vi.mocked(api.get).mockImplementation(async (path: string) => {
-      if (path === '/bookings/my') throw new ApiError(500, 'Сервер недоступен')
+      if (path === '/bookings/my') {
+        if (fail) throw new ApiError(500, 'Сервер недоступен')
+        return [makeBooking()]
+      }
       return []
     })
     renderPage()
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/bookings/my'))
-    await new Promise((r) => setTimeout(r, 50))
+    expect(await screen.findByText('Не удалось загрузить бронирования')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
     expect(screen.queryByText('Активных бронирований нет')).not.toBeInTheDocument()
+
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-010')).toBeInTheDocument()
+    expect(screen.queryByText('Не удалось загрузить бронирования')).not.toBeInTheDocument()
   })
 
   it('рисует карточку активной брони: заказ, характеристики, отдел, ответственный, цель', async () => {

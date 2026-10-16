@@ -57,6 +57,22 @@ const renderVms = async (list: Vm[]) => {
 }
 
 describe('MyVms', () => {
+  it('ошибка загрузки — сообщение и «Повторить», а не пустой блок', async () => {
+    const user = userEvent.setup()
+    let fail = true
+    vi.mocked(api.get).mockImplementation(async () => {
+      if (fail) throw new ApiError(500, 'Сервер недоступен')
+      return [makeVm()]
+    })
+    renderWithProviders(<MyVms />)
+    expect(await screen.findByText(/Не удалось загрузить виртуальные машины: Сервер недоступен/)).toBeInTheDocument()
+
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(screen.queryByText(/Не удалось загрузить/)).not.toBeInTheDocument()
+  })
+
   it('нет виртуалок — блок не рисуется', async () => {
     await renderVms([])
     expect(screen.queryByText('Виртуальные машины')).not.toBeInTheDocument()

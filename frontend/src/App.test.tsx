@@ -102,7 +102,8 @@ describe('App: сотрудник', () => {
     expect(screen.queryByText(/stub:admin/)).not.toBeInTheDocument()
   })
 
-  it('уже вошедший, открыв /login, попадает на логин-страницу (маршрут не защищён)', async () => {
+  // сам маршрут /login не защищён: редирект вошедшего делает LoginPage (см. LoginPage.test.tsx), здесь она — заглушка
+  it('маршрут /login не закрыт гардом — отдаёт страницу входа', async () => {
     mount('/login', employee())
     expect(await screen.findByText('stub:login')).toBeInTheDocument()
   })

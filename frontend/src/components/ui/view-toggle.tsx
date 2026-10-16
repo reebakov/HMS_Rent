@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { LayoutGrid, List } from 'lucide-react'
+import { safeStorage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'cards' | 'compact'
@@ -7,8 +8,8 @@ type ViewMode = 'cards' | 'compact'
 /** Режим отображения списка, запоминается в браузере отдельно для каждой страницы */
 export function useViewMode(key: string): [ViewMode, (mode: ViewMode) => void] {
   const storageKey = `hmsrent:view:${key}`
-  const [mode, setMode] = useState<ViewMode>(() => (localStorage.getItem(storageKey) as ViewMode) || 'cards')
-  useEffect(() => localStorage.setItem(storageKey, mode), [storageKey, mode])
+  const [mode, setMode] = useState<ViewMode>(() => (safeStorage.get(storageKey) as ViewMode) || 'cards')
+  useEffect(() => safeStorage.set(storageKey, mode), [storageKey, mode])
   return [mode, setMode]
 }
 

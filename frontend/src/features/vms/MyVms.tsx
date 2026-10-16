@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Cloud, Copy, Loader2, Trash2 } from 'lucide-react'
+import { CircleAlert, Cloud, Copy, Loader2, Trash2 } from 'lucide-react'
 import { Badge, type Tone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -20,10 +20,26 @@ export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boo
 
 /** Виртуалки сотрудника в «Моей аренде» */
 export function MyVms() {
-  const { data } = useMyVms()
+  const { data, isError, error, refetch } = useMyVms()
   const release = useReleaseVm()
   const [confirm, setConfirm] = useState<Vm | null>(null)
   const alive = data?.filter((v) => v.status !== 'deleted') ?? []
+
+  if (isError && !data) {
+    return (
+      <Card className="mb-8">
+        <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-[13px] text-danger">
+          <CircleAlert className="h-4 w-4 shrink-0" />
+          <span className="mr-auto">
+            Не удалось загрузить виртуальные машины{error instanceof Error ? `: ${error.message}` : ''}
+          </span>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Повторить
+          </Button>
+        </div>
+      </Card>
+    )
+  }
 
   if (!alive.length) return null
 

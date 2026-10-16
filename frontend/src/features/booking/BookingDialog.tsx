@@ -8,6 +8,7 @@ import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateBooking, useDepartments } from '@/lib/queries'
+import { safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
 
 const LAST_DEPARTMENT_KEY = 'hmsrent:last-department'
@@ -27,7 +28,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   // при каждом открытии — подставляем данные из рабочего аккаунта
   useEffect(() => {
     if (!computer) return
-    setDepartmentId(localStorage.getItem(LAST_DEPARTMENT_KEY) ?? '')
+    setDepartmentId(safeStorage.get(LAST_DEPARTMENT_KEY) ?? '')
     setName(session.user.display_name)
     setNick(session.user.username)
     setUntil('')
@@ -48,7 +49,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         purpose: purpose || undefined,
         expected_return_at: until || null,
       })
-      localStorage.setItem(LAST_DEPARTMENT_KEY, departmentId)
+      safeStorage.set(LAST_DEPARTMENT_KEY, departmentId)
       toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, {
         action: { label: 'Моя аренда', onClick: () => navigate('/my') },
       })

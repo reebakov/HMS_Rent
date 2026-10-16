@@ -7,7 +7,9 @@
     <title>HMS Rent — аренда техники</title>
     <script>
       // тема применяется до отрисовки, чтобы не было «вспышки» светлой темы
-      if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark')
+      try {
+        if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark')
+      } catch (e) { /* localStorage недоступен — остаётся светлая тема */ }
     </script>
   </head>
   <body>
