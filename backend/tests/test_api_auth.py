@@ -23,9 +23,11 @@ ADMIN = UserRole.admin.value
 
 @pytest.fixture(autouse=True)
 def _reset_throttle():
-    auth_routes._failed.clear()
+    for store in (auth_routes._failed, auth_routes._failed_by_user):
+        store.clear()
     yield
-    auth_routes._failed.clear()
+    for store in (auth_routes._failed, auth_routes._failed_by_user):
+        store.clear()
 
 
 @pytest.fixture
@@ -43,8 +45,11 @@ def admins_file(tmp_path, monkeypatch):
     return write
 
 
-async def _login(client, username, password="pass12345"):
-    return await client.post(settings.api_prefix + "/auth/login", json={"username": username, "password": password})
+async def _login(client, username, password="pass12345", ip=None):
+    """ip — адрес клиента для X-Forwarded-For (так его передаёт nginx); без него адрес берётся из соединения."""
+    headers = {"X-Forwarded-For": ip} if ip else None
+    return await client.post(settings.api_prefix + "/auth/login", json={"username": username, "password": password},
+                             headers=headers)
 
 
 # ---------- /auth/config ----------
@@ -132,7 +137,9 @@ async def test_lockout_expires(client, make_user):
     for _ in range(settings.login_max_attempts):
         await _login(client, "admin", "wrong")
     old = time.time() - settings.login_lock_minutes * 60 - 1
-    auth_routes._failed["admin"] = [old] * settings.login_max_attempts  # попытки «состарились»
+    for store in (auth_routes._failed, auth_routes._failed_by_user):  # попытки «состарились»
+        for key in list(store):
+            store[key] = [old] * len(store[key])
     assert (await _login(client, "admin")).status_code == 200
 
 
@@ -143,6 +150,44 @@ async def test_success_resets_failed_counter(client, make_user):
     assert (await _login(client, "admin")).status_code == 200
     for _ in range(settings.login_max_attempts - 1):  # счётчик начался заново
         assert (await _login(client, "admin", "wrong")).status_code == 401
+
+
+async def test_lockout_is_per_address_so_stranger_cannot_lock_admin_out(client, make_user):
+    """Перебор с чужого адреса блокирует только этот адрес, настоящий админ входит со своего."""
+    await make_user("admin", role=ADMIN)
+    for _ in range(settings.login_max_attempts):
+        assert (await _login(client, "admin", "wrong", ip="203.0.113.9")).status_code == 401
+    assert (await _login(client, "admin", "wrong", ip="203.0.113.9")).status_code == 429
+    assert (await _login(client, "admin", ip="198.51.100.7")).status_code == 200
+
+
+async def test_lockout_uses_last_forwarded_address(client, make_user):
+    """Клиент может подписать X-Forwarded-For своим значением, но последний адрес дописывает nginx."""
+    await make_user("admin", role=ADMIN)
+    for i in range(settings.login_max_attempts):
+        await _login(client, "admin", "wrong", ip=f"10.0.0.{i}, 203.0.113.9")  # «чужие» адреса спереди
+    assert (await _login(client, "admin", ip="1.2.3.4, 203.0.113.9")).status_code == 429
+
+
+async def test_username_wide_cap_stops_spoofed_addresses(client, make_user):
+    """Если адрес подделан и каждый раз новый, перебор упирается в общий потолок на логин."""
+    await make_user("admin", role=ADMIN)
+    cap = settings.login_max_attempts * auth_routes.LOGIN_USER_LIMIT_FACTOR
+    for i in range(cap):
+        assert (await _login(client, "admin", "wrong", ip=f"10.1.{i // 250}.{i % 250}")).status_code == 401
+    assert (await _login(client, "admin", ip="198.51.100.7")).status_code == 429
+
+
+async def test_expired_throttle_keys_are_dropped(client, make_user):
+    await make_user("admin", role=ADMIN)
+    await _login(client, "admin", "wrong", ip="203.0.113.9")
+    old = time.time() - settings.login_lock_minutes * 60 - 1
+    for store in (auth_routes._failed, auth_routes._failed_by_user):
+        for key in list(store):
+            store[key] = [old]
+    await _login(client, "admin", "wrong", ip="203.0.113.9")  # проверка выбрасывает устаревшие попытки
+    assert [len(v) for v in auth_routes._failed.values()] == [1]
+    assert [len(v) for v in auth_routes._failed_by_user.values()] == [1]
 
 
 async def test_lockout_applies_to_unknown_usernames_too(client):

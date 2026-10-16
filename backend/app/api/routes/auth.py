@@ -20,7 +20,14 @@ from app.services import runtime
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 OAUTH_COOKIE = "hmsrent_oauth"
-_failed: dict[str, list[float]] = defaultdict(list)  # логин -> время неудачных попыток (в памяти процесса)
+# Неудачные попытки входа живут в памяти процесса (backend запускается одним процессом).
+# Основной счётчик — по паре (логин, адрес): чужой перебор не блокирует настоящему админу вход с его адреса.
+# Запасной — по одному логину со всех адресов, с потолком в LOGIN_USER_LIMIT_FACTOR раз выше: если адрес
+# подделан (X-Forwarded-For), перебор всё равно упирается в этот потолок.
+_failed: dict[tuple[str, str], list[float]] = defaultdict(list)
+_failed_by_user: dict[str, list[float]] = defaultdict(list)
+LOGIN_USER_LIMIT_FACTOR = 10
+_PRUNE_ABOVE = 10_000  # ключей в словаре, после которых вычищаем устаревшие (чтобы память не росла от случайных логинов)
 
 
 def _session_out(user: User) -> SessionOut:
@@ -41,13 +48,43 @@ def _set_session(response: Response, user: User) -> None:
     )
 
 
-def _check_throttle(username: str) -> None:
+def _client_ip(request: Request) -> str:
+    """Адрес клиента. За nginx это последний элемент X-Forwarded-For (его дописывает сам nginx)."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[-1].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
+
+def _recent(store: dict, key, window: float) -> list[float]:
+    """Свежие попытки по ключу; устаревшие выбрасываются, пустой ключ удаляется."""
+    attempts = [t for t in store.get(key, ()) if time.time() - t < window]
+    if attempts:
+        store[key] = attempts
+    else:
+        store.pop(key, None)
+    return attempts
+
+
+def _check_throttle(username: str, ip: str) -> None:
     window = settings.login_lock_minutes * 60
-    attempts = [t for t in _failed[username] if time.time() - t < window]
-    _failed[username] = attempts
-    if len(attempts) >= settings.login_max_attempts:
+    by_pair = len(_recent(_failed, (username, ip), window))
+    by_user = len(_recent(_failed_by_user, username, window))
+    if by_pair >= settings.login_max_attempts or by_user >= settings.login_max_attempts * LOGIN_USER_LIMIT_FACTOR:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
                             f"Слишком много попыток. Повторите через {settings.login_lock_minutes} мин.")
+
+
+def _register_failure(username: str, ip: str) -> None:
+    now = time.time()
+    _failed[(username, ip)].append(now)
+    _failed_by_user[username].append(now)
+    if len(_failed) > _PRUNE_ABOVE or len(_failed_by_user) > _PRUNE_ABOVE:
+        window = settings.login_lock_minutes * 60
+        for key in list(_failed):
+            _recent(_failed, key, window)
+        for key in list(_failed_by_user):
+            _recent(_failed_by_user, key, window)
 
 
 async def _upsert_sso_user(session: DB, result: AuthResult, source: str) -> User:
@@ -80,17 +117,18 @@ async def auth_config() -> AuthConfigOut:
 
 
 @router.post("/login", response_model=SessionOut)
-async def login(data: LoginIn, response: Response, session: DB) -> SessionOut:
+async def login(data: LoginIn, request: Request, response: Response, session: DB) -> SessionOut:
     """Локальные учётки администраторов (логин + пароль). В dev-режиме — вход любым логином."""
     username = data.username.strip().lower()
-    _check_throttle(username)
+    ip = _client_ip(request)
+    _check_throttle(username, ip)
     user = await session.scalar(select(User).where(User.username == username))
 
     if user is not None and user.auth_source == "local" and settings.auth_local_enabled:
         if not user.is_active or not verify_password(data.password, user.password_hash):
-            _failed[username].append(time.time())
+            _register_failure(username, ip)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
-        _failed.pop(username, None)
+        _failed.pop((username, ip), None)
         user.last_login_at = datetime.now(timezone.utc)
         await session.commit()
     elif settings.auth_dev_enabled:
@@ -99,7 +137,7 @@ async def login(data: LoginIn, response: Response, session: DB) -> SessionOut:
         except AuthError as exc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
     else:
-        _failed[username].append(time.time())
+        _register_failure(username, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
 
     _set_session(response, user)
