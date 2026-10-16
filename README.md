@@ -88,18 +88,33 @@ hms-rent/
 
 ## Деплой на сервер
 
-На сервере (клон проекта с `docker-compose.yml` и своим `.env`) выкатка делается одной командой:
+Прод работает на образах, которые собирает CI и публикует в GitHub Container Registry
+(`ghcr.io/reebakov/hms-rent-backend` и `-frontend`, тег — полный sha коммита). Сервер ничего не собирает:
+он тянет готовые образы нужного коммита и перезапускает контейнеры. Конфигурация прода — `docker-compose.prod.yml`
+(для разработки и демо остаётся `docker-compose.yml` со сборкой из исходников).
+
+Поток: PR → зелёные тесты → merge в `main` → CI публикует образы (job «Образы») → на сервере:
 
 ```bash
-sudo ./scripts/deploy.sh            # забрать origin/<текущая ветка> и перезапустить
-sudo ./scripts/deploy.sh --dry-run  # только показать, какие коммиты приедут
+sudo ./scripts/deploy.sh            # забрать origin/<текущая ветка>, подтянуть образы, перезапустить
+sudo ./scripts/deploy.sh --dry-run  # показать, какие коммиты приедут и есть ли для них образы
+sudo ./scripts/deploy.sh --redeploy # перезапустить текущий коммит без git fetch
 ```
 
-Скрипт проверяет, что рабочее дерево чистое, делает дамп БД в `/var/backups/hms-rent` (хранит 14 последних),
-обновляет код только fast-forward, пересобирает и перезапускает `backend`, `worker` и `frontend`
-и ждёт `/api/health`. Если сервис не поднялся, сам возвращает прежний коммит и перезапускает его.
-`.env` и данные БД он не трогает; миграции применяет backend при старте. Параметры: `BACKUP_DIR`, `BACKUP_KEEP`,
-`HEALTH_TIMEOUT`.
+Скрипт проверяет чистоту дерева, **сначала подтягивает образы** (если CI ещё не закончил, останавливается, ничего не
+тронув), делает дамп БД в `/var/backups/hms-rent` (хранит 14 последних), обновляет код fast-forward-ом (compose-файл,
+`backend/config`, сам скрипт) и перезапускает `backend`, затем `worker` и `frontend`. После запуска ждёт `/api/health`.
+Если сервис не поднялся, возвращает прежний коммит и его образы. `.env` и данные БД не трогает; миграции применяет
+backend при старте. Откат на конкретный коммит: `sudo ./scripts/deploy.sh --force-ref --ref <sha>`.
+
+Настройки, которые читаются с диска сервера без пересборки: `backend/config/admins.txt` и маппинг Insight
+(`backend/config/*.yaml`). Всё остальное в образе.
+
+Первый раз (один раз на сервере): образы публикуются в приватный пакет GHCR — сделайте пакеты публичными
+(GitHub → профиль → Packages → `hms-rent-backend` / `hms-rent-frontend` → Package settings → Change visibility → Public;
+в образах нет секретов, `.env` не копируется) либо выполните `sudo docker login ghcr.io` с токеном `read:packages`.
+Переход со сборки на сервере на образы: `sudo git pull --ff-only origin main && sudo ./scripts/deploy.sh --redeploy`.
+Параметры окружения скрипта: `IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`.
 
 ## Локальная разработка без Docker
 
