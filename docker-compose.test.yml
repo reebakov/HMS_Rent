@@ -1,0 +1,33 @@
+# Тесты бэкенда: docker compose -f docker-compose.test.yml run --rm --build tests [аргументы pytest]
+# Отдельная БД в tmpfs — боевой том pgdata не затрагивается.
+services:
+  db_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hmsrent_test
+      POSTGRES_USER: hmsrent
+      POSTGRES_PASSWORD: hmsrent
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmsrent -d hmsrent_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    build: ./backend
+    entrypoint: ["sh", "-c", "pip install -q -r requirements-dev.txt && exec python -m pytest \"$$@\"", "--"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hmsrent:hmsrent@db_test:5432/hmsrent_test
+      ENVIRONMENT: dev
+      SECRET_KEY: test-secret-key-for-pytest-only-32b
+      INSIGHT_MODE: mock
+      INSIGHT_WRITEBACK: "false"
+      MATTERMOST_WEBHOOK_URL: ""
+      VCENTER_HOST: ""
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db_test:
+        condition: service_healthy

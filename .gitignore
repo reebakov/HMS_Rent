@@ -7,3 +7,7 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/

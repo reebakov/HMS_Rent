@@ -1,0 +1,4 @@
+[run]
+# SQLAlchemy async работает на greenlet: без этого coverage теряет трассировку после await и занижает цифры
+concurrency = greenlet,thread
+source = app

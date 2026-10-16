@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: hmsrent_test
+          POSTGRES_USER: hmsrent
+          POSTGRES_PASSWORD: hmsrent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hmsrent -d hmsrent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://hmsrent:hmsrent@localhost:5432/hmsrent_test
+      ENVIRONMENT: dev
+      SECRET_KEY: test-secret-key-for-pytest-only-32b
+      INSIGHT_MODE: mock
+      INSIGHT_WRITEBACK: "false"
+      MATTERMOST_WEBHOOK_URL: ""
+      VCENTER_HOST: ""
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Установка зависимостей
+        run: pip install -r requirements-dev.txt
+      - name: Тесты
+        run: python -m pytest --cov=app --cov-report=term-missing
+
+  frontend:
+    name: Frontend (typecheck, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Установка зависимостей
+        run: npm ci
+      # TODO: в admin-страницах есть старые ошибки типов (AdminOverviewPage, InventoryPage, UsersPage);
+      # после их исправления убрать continue-on-error, чтобы typecheck блокировал PR.
+      - name: Typecheck
+        run: npm run typecheck
+        continue-on-error: true
+      - name: Тесты
+        run: npm run test:coverage
+      - name: Сборка
+        run: npm run build

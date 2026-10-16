@@ -1,0 +1,314 @@
+import type { ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { api, ApiError } from './api'
+import * as q from './queries'
+
+vi.mock('@/lib/api', async (orig) => ({
+  ...(await orig<typeof import('@/lib/api')>()),
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
+}))
+// queries.ts импортирует './api' — тот же модуль, мок по алиасу его подменяет
+
+let client: QueryClient
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={client}>{children}</QueryClientProvider>
+)
+const hook = <T,>(fn: () => T) => renderHook(fn, { wrapper })
+
+/** Ключи, которые инвалидировались после мутации */
+const invalidated = (spy: { mock: { calls: unknown[][] } }) =>
+  spy.mock.calls.map(([f]) => (f as { queryKey: unknown[] }).queryKey[0]).sort()
+const ALL_BOOKING_KEYS = ['admin', 'catalog-summary', 'computer', 'computers', 'my-bookings']
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset().mockResolvedValue(null as never)
+})
+
+describe('запросы на чтение', () => {
+  it('useCatalogSummary: берёт /catalog/summary, ключ и интервал из refreshSec', async () => {
+    vi.mocked(api.get).mockResolvedValue([{ tier: 'weak' }])
+    const { result } = hook(() => q.useCatalogSummary(7))
+    await waitFor(() => expect(result.current.data).toEqual([{ tier: 'weak' }]))
+    expect(api.get).toHaveBeenCalledWith('/catalog/summary')
+    const query = client.getQueryCache().find({ queryKey: ['catalog-summary'] })!
+    expect(query.observers[0].options.refetchInterval).toBe(7000)
+  })
+
+  it('useCatalogSummary: интервал по умолчанию 15 секунд', async () => {
+    hook(() => q.useCatalogSummary())
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+    expect(client.getQueryCache().find({ queryKey: ['catalog-summary'] })!.observers[0].options.refetchInterval).toBe(15_000)
+  })
+
+  it('useComputers: фильтры уходят query-параметрами, ключ зависит от фильтров', async () => {
+    vi.mocked(api.get).mockResolvedValue([])
+    const filters: q.ComputerFilters = { tier: 'powerful', q: 'rtx', min_ram: 32, gpu_only: true, sort: 'ram_desc' }
+    const { result } = hook(() => q.useComputers(filters))
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(api.get).toHaveBeenCalledWith('/computers', filters)
+    expect(client.getQueryCache().find({ queryKey: ['computers', filters] })).toBeDefined()
+    // в API уходит копия, а не тот же объект, что лежит в ключе кэша
+    expect(vi.mocked(api.get).mock.calls[0][1]).not.toBe(filters)
+  })
+
+  it('useComputers: при смене фильтра пока грузится новый список, показывается прежний (placeholderData)', async () => {
+    let resolveSecond!: (v: unknown[]) => void
+    vi.mocked(api.get)
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockImplementationOnce(() => new Promise((r) => (resolveSecond = r as never)))
+    const { result, rerender } = renderHook(({ f }: { f: q.ComputerFilters }) => q.useComputers(f), {
+      wrapper,
+      initialProps: { f: { tier: 'weak' } as q.ComputerFilters },
+    })
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 1 }]))
+    rerender({ f: { tier: 'medium' } })
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+    expect(result.current.data).toEqual([{ id: 1 }])
+    expect(result.current.isPlaceholderData).toBe(true)
+    resolveSecond([{ id: 2 }])
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 2 }]))
+  })
+
+  it('useComputer: при id=null запрос не отправляется, при id — идёт на /computers/{id}', async () => {
+    const { result, rerender } = renderHook(({ id }: { id: number | null }) => q.useComputer(id), {
+      wrapper,
+      initialProps: { id: null as number | null },
+    })
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(api.get).not.toHaveBeenCalled()
+    rerender({ id: 42 })
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/computers/42'))
+  })
+
+  it.each([
+    ['useDepartments', () => q.useDepartments(), '/departments'],
+    ['useMyBookings', () => q.useMyBookings(), '/bookings/my'],
+    ['useStats', () => q.useStats(), '/admin/stats'],
+    ['useDepartmentUsage', () => q.useDepartmentUsage(), '/admin/departments'],
+    ['useSyncInfo', () => q.useSyncInfo(), '/admin/sync'],
+    ['usePools', () => q.usePools(), '/admin/pools'],
+    ['useMyVms', () => q.useMyVms(), '/vms/my'],
+    ['useAppSettings', () => q.useAppSettings(), '/admin/settings'],
+    ['useAdminUsers', () => q.useAdminUsers(), '/admin/users'],
+    ['useVmOptions', () => q.useVmOptions(), '/vms/options'],
+  ] as [string, () => unknown, string][])('%s: GET %s', async (_n, useIt, path) => {
+    hook(useIt)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(path))
+  })
+
+  it('useDepartments: справочник кэшируется 5 минут', async () => {
+    hook(() => q.useDepartments())
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+    expect(client.getQueryCache().find({ queryKey: ['departments'] })!.observers[0].options.staleTime).toBe(300_000)
+  })
+
+  it('useVmOptions(false): запрос не отправляется', () => {
+    const { result } = hook(() => q.useVmOptions(false))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('админские списки передают фильтры как query-параметры', async () => {
+    const inv: q.InventoryFilters = { q: 'pc', status: 'busy', pool_id: 'none', issues_only: true, limit: 20, offset: 40 }
+    const jr: q.JournalFilters = { status: 'active', department_id: 3, date_from: '2024-01-01' }
+    const ev: q.EventFilters = { event_type: 'sync', limit: 5, offset: 10 }
+    hook(() => q.useInventory(inv))
+    hook(() => q.useJournal(jr))
+    hook(() => q.useEvents(ev))
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3))
+    expect(api.get).toHaveBeenCalledWith('/admin/inventory', inv)
+    expect(api.get).toHaveBeenCalledWith('/admin/bookings', jr)
+    expect(api.get).toHaveBeenCalledWith('/admin/events', ev)
+  })
+
+  it('useEvents: без аргументов — первая страница из 12 записей', async () => {
+    hook(() => q.useEvents())
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/events', { limit: 12, offset: 0 }))
+  })
+
+  it('useComputerHistory: null — не грузим, id — /admin/computers/{id}', async () => {
+    const { result, rerender } = renderHook(({ id }: { id: number | null }) => q.useComputerHistory(id), {
+      wrapper,
+      initialProps: { id: null as number | null },
+    })
+    expect(result.current.fetchStatus).toBe('idle')
+    rerender({ id: 7 })
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/computers/7'))
+  })
+
+  it('useAdminVms: include_deleted передаётся в запрос и в ключ, опрос раз в 10 с', async () => {
+    hook(() => q.useAdminVms())
+    hook(() => q.useAdminVms(true))
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+    expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: false })
+    expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: true })
+    const query = client.getQueryCache().find({ queryKey: ['admin', 'vms', true] })!
+    expect(query.observers[0].options.refetchInterval).toBe(10_000)
+  })
+
+  it('ошибка API попадает в error хука', async () => {
+    vi.mocked(api.get).mockRejectedValue(new ApiError(500, 'Сервер недоступен'))
+    const { result } = hook(() => q.useMyBookings())
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeInstanceOf(ApiError)
+    expect(result.current.error?.message).toBe('Сервер недоступен')
+  })
+})
+
+describe('useMyVms: частота опроса', () => {
+  const interval = async (vms: unknown) => {
+    vi.mocked(api.get).mockResolvedValue(vms)
+    const { result } = hook(() => q.useMyVms())
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const query = client.getQueryCache().find({ queryKey: ['my-vms'] })!
+    return (query.observers[0].options.refetchInterval as (qq: unknown) => unknown)(query)
+  }
+
+  it.each(['queued', 'creating', 'deleting'])('ВМ в статусе %s — опрос каждые 5 с', async (status) => {
+    expect(await interval([{ id: 1, status, ip_address: null }])).toBe(5000)
+  })
+  it('ready, но IP ещё нет — продолжаем опрашивать', async () => {
+    expect(await interval([{ id: 1, status: 'ready', ip_address: null }])).toBe(5000)
+  })
+  it('ready с IP — опрос выключен', async () => {
+    expect(await interval([{ id: 1, status: 'ready', ip_address: '10.0.0.5' }])).toBe(false)
+  })
+  it('пустой список — опрос выключен', async () => {
+    expect(await interval([])).toBe(false)
+  })
+})
+
+describe('мутации броней: вызов API и инвалидация кэша', () => {
+  it('useCreateBooking: POST /bookings и инвалидация всех связанных ключей', async () => {
+    vi.mocked(api.post).mockResolvedValue({ id: 5 })
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useCreateBooking())
+    await act(() => result.current.mutateAsync({ computer_id: 1 } as never))
+    expect(api.post).toHaveBeenCalledWith('/bookings', { computer_id: 1 })
+    await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
+  })
+
+  it('useCreateBooking: при ошибке (409) кэш всё равно обновляется — ПК уже мог занять другой', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Уже забронирован'))
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useCreateBooking())
+    await act(async () => {
+      await expect(result.current.mutateAsync({ computer_id: 1 } as never)).rejects.toThrow('Уже забронирован')
+    })
+    await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
+    expect(result.current.error?.message).toBe('Уже забронирован')
+  })
+
+  it('инвалидация реально помечает кэш каталога устаревшим и перезапрашивает активные запросы', async () => {
+    vi.mocked(api.get).mockResolvedValue([])
+    const { result: list } = hook(() => q.useComputers({ tier: 'weak' }))
+    await waitFor(() => expect(list.current.isSuccess).toBe(true))
+    expect(api.get).toHaveBeenCalledTimes(1)
+    const { result } = hook(() => q.useCreateBooking())
+    await act(() => result.current.mutateAsync({ computer_id: 1 } as never))
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+  })
+
+  it('useReturnBooking: POST /bookings/{id}/return с комментарием', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useReturnBooking())
+    await act(() => result.current.mutateAsync({ id: 9, comment: 'всё ок' }))
+    expect(api.post).toHaveBeenCalledWith('/bookings/9/return', { comment: 'всё ок' })
+    await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
+  })
+
+  it('useRunSync: POST /admin/sync и инвалидация', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useRunSync())
+    await act(() => result.current.mutateAsync())
+    expect(api.post).toHaveBeenCalledWith('/admin/sync')
+    await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
+  })
+
+  it('useUpdateComputer: PATCH без id в теле', async () => {
+    const { result } = hook(() => q.useUpdateComputer())
+    await act(() => result.current.mutateAsync({ id: 4, tier_override: 'weak', note: null }))
+    expect(api.patch).toHaveBeenCalledWith('/admin/computers/4', { tier_override: 'weak', note: null })
+  })
+})
+
+describe('сохранение сущностей: создание или обновление по наличию id', () => {
+  it('useSaveDepartment: без id — POST, с id — PATCH; инвалидирует admin и departments', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useSaveDepartment())
+    await act(() => result.current.mutateAsync({ name: 'HMS', code: 'H' }))
+    expect(api.post).toHaveBeenCalledWith('/admin/departments', { name: 'HMS', code: 'H' })
+    await act(() => result.current.mutateAsync({ id: 2, is_active: false }))
+    expect(api.patch).toHaveBeenCalledWith('/admin/departments/2', { is_active: false })
+    await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'admin', 'departments', 'departments']))
+  })
+
+  it('useSavePool: POST/PATCH и полная инвалидация', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useSavePool())
+    await act(() => result.current.mutateAsync({ name: 'Пул', department_ids: [1, 2] }))
+    expect(api.post).toHaveBeenCalledWith('/admin/pools', { name: 'Пул', department_ids: [1, 2] })
+    await act(() => result.current.mutateAsync({ id: 3, is_published: true }))
+    expect(api.patch).toHaveBeenCalledWith('/admin/pools/3', { is_published: true })
+    expect(new Set(invalidated(spy))).toEqual(new Set(ALL_BOOKING_KEYS))
+  })
+
+  it('useDeletePool: DELETE /admin/pools/{id}', async () => {
+    const { result } = hook(() => q.useDeletePool())
+    await act(() => result.current.mutateAsync(5))
+    expect(api.del).toHaveBeenCalledWith('/admin/pools/5')
+  })
+
+  it('useAssignPool: POST /admin/pools/assign', async () => {
+    const { result } = hook(() => q.useAssignPool())
+    await act(() => result.current.mutateAsync({ pool_id: null, names: 'PC-1' }))
+    expect(api.post).toHaveBeenCalledWith('/admin/pools/assign', { pool_id: null, names: 'PC-1' })
+  })
+
+  it('useSaveUser: POST/PATCH, обновляется только список сотрудников', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useSaveUser())
+    await act(() => result.current.mutateAsync({ email: 'a@b.c' }))
+    expect(api.post).toHaveBeenCalledWith('/admin/users', { email: 'a@b.c' })
+    await act(() => result.current.mutateAsync({ id: 8, department_id: null }))
+    expect(api.patch).toHaveBeenCalledWith('/admin/users/8', { department_id: null })
+    expect(spy.mock.calls.map(([f]) => (f as { queryKey: unknown[] }).queryKey)).toEqual([['admin', 'users'], ['admin', 'users']])
+  })
+
+  it('useSaveSettings: PATCH и инвалидация admin + vm-options', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useSaveSettings())
+    await act(() => result.current.mutateAsync({ catalog_refresh_sec: 60 } as never))
+    expect(api.patch).toHaveBeenCalledWith('/admin/settings', { catalog_refresh_sec: 60 })
+    await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'vm-options']))
+  })
+})
+
+describe('виртуалки и vSphere', () => {
+  it('useCreateVm / useReleaseVm: API и инвалидация my-vms, vm-options, admin', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const create = hook(() => q.useCreateVm())
+    await act(() => create.result.current.mutateAsync({ template: 't' } as never))
+    expect(api.post).toHaveBeenCalledWith('/vms', { template: 't' })
+    await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'my-vms', 'vm-options']))
+
+    spy.mockClear()
+    const release = hook(() => q.useReleaseVm())
+    await act(() => release.result.current.mutateAsync(12))
+    expect(api.post).toHaveBeenCalledWith('/vms/12/release')
+    await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'my-vms', 'vm-options']))
+  })
+
+  it('useVsphereCheck: POST /admin/vsphere/check без инвалидации', async () => {
+    vi.mocked(api.post).mockResolvedValue({ ok: true })
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useVsphereCheck())
+    await act(() => result.current.mutateAsync())
+    expect(api.post).toHaveBeenCalledWith('/admin/vsphere/check')
+    await waitFor(() => expect(result.current.data).toEqual({ ok: true }))
+    expect(spy).not.toHaveBeenCalled()
+  })
+})
