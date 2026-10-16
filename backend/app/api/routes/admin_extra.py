@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 
 from app.api.deps import DB, AdminUser
@@ -11,7 +11,7 @@ from app.core.admins import is_admin_email
 from app.core.config import settings
 from app.integrations.vsphere import client as vsphere
 from app.models import Department, User
-from app.schemas.common import DepartmentShort, ORMModel
+from app.schemas.common import DepartmentShort, ORMModel, reject_explicit_null
 from app.services import runtime
 from app.services.runtime import RuntimeConfig
 
@@ -67,7 +67,7 @@ class UserAdminOut(ORMModel):
 
 
 class UserCreate(BaseModel):
-    email: str = Field(min_length=5, max_length=255, pattern=r"^[^@\s]+@[^@\s]+$")
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+$")
     display_name: str | None = Field(default=None, max_length=255)
     department_id: int | None = None
 
@@ -75,6 +75,11 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     department_id: int | None = None
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_null(self):
+        reject_explicit_null(self, "is_active")
+        return self
 
 
 def _out(user: User) -> UserAdminOut:
@@ -91,11 +96,11 @@ async def list_users(_: AdminUser, session: DB) -> list[UserAdminOut]:
 
 @router.post("/users", response_model=UserAdminOut, status_code=201)
 async def add_user(data: UserCreate, _: AdminUser, session: DB) -> UserAdminOut:
-    """Заранее завести сотрудника с отделом: при первом входе через Microsoft он сразу его получит."""
+    """Заранее завести сотрудника с отделом: при первом входе через Bouncer он сразу его получит."""
     email = data.email.strip().lower()
     if await session.scalar(select(User).where(User.username == email)):
         raise HTTPException(409, "Такой сотрудник уже есть")
-    if data.department_id and await session.get(Department, data.department_id) is None:
+    if data.department_id is not None and await session.get(Department, data.department_id) is None:
         raise HTTPException(404, "Отдел не найден")
     user = User(username=email, email=email, display_name=data.display_name or email.split("@")[0],
                 auth_source="microsoft", department_id=data.department_id)
@@ -111,7 +116,7 @@ async def update_user(user_id: int, data: UserUpdate, admin: AdminUser, session:
         raise HTTPException(404, "Сотрудник не найден")
     changes = data.model_dump(exclude_unset=True)
     if "department_id" in changes:
-        if changes["department_id"] and await session.get(Department, changes["department_id"]) is None:
+        if changes["department_id"] is not None and await session.get(Department, changes["department_id"]) is None:
             raise HTTPException(404, "Отдел не найден")
         user.department_id = changes["department_id"]
     if "is_active" in changes:

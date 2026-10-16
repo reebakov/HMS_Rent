@@ -16,7 +16,7 @@ class AppSetting(Base):
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[Any] = mapped_column(JSONB)
+    value: Mapped[Any] = mapped_column(JSONB, nullable=True)  # как в миграции 0003
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
                                                  onupdate=func.now())
 

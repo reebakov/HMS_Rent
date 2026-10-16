@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     app_name: str = "HMS Rent"
     app_subtitle: str = "Аренда техники"  # подпись под названием в сайдбаре (APP_SUBTITLE в .env)
     environment: Literal["dev", "prod"] = "dev"
-    public_url: str = "http://localhost:8080"  # адрес портала в браузере (из него собирается redirect URI для Microsoft)
+    public_url: str = "http://localhost:8080"  # адрес портала в браузере (из него собирается redirect URI для Bouncer)
     api_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173"
     display_timezone: str = "Europe/Moscow"
@@ -71,7 +71,6 @@ class Settings(BaseSettings):
     vcenter_folder: str = ""  # папка VMs and Templates (путь «A/B»); пусто — корень датацентра
     vcenter_template_windows: str = "Template_Win"  # шаблон, с которого клонируем
     vcenter_datastore: str = ""  # пусто — тот же datastore, что у шаблона
-    vcenter_network: str = ""  # пусто — сеть как у шаблона
     vcenter_customization_spec: str = ""  # спецификация гостевой настройки (sysprep); пусто — без неё
     vm_name_prefix: str = "rent-"  # имя ВМ в vSphere = префикс + имя от пользователя
 
@@ -95,10 +94,6 @@ class Settings(BaseSettings):
     @property
     def vsphere_configured(self) -> bool:
         return bool(self.vcenter_host and self.vcenter_user and self.vcenter_password)
-
-    @property
-    def microsoft_domains(self) -> list[str]:
-        return [d.lower().lstrip("@") for d in _split(self.microsoft_allowed_domains)]
 
     @property
     def cors_list(self) -> list[str]:

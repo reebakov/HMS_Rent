@@ -23,22 +23,31 @@ def authorization_url(state: str, nonce: str) -> str:
     return f"{settings.bouncer_authorize_url}?{urlencode(params)}"
 
 async def exchange_code(code: str, nonce: str) -> AuthResult:
-    async with httpx.AsyncClient(timeout=10) as http:
-        resp = await http.post(settings.bouncer_token_url, data={
-            "code": code,
-            "client_id": settings.bouncer_client_id,
-            "client_secret": settings.bouncer_client_secret,
-            "redirect_uri": redirect_uri(),
-            "grant_type": "authorization_code",
-        })
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            resp = await http.post(settings.bouncer_token_url, data={
+                "code": code,
+                "client_id": settings.bouncer_client_id,
+                "client_secret": settings.bouncer_client_secret,
+                "redirect_uri": redirect_uri(),
+                "grant_type": "authorization_code",
+            })
+    except httpx.HTTPError as exc:  # недоступен или не ответил вовремя
+        raise AuthError("Сервер авторизации (Bouncer) недоступен, попробуйте позже") from exc
     if resp.status_code != 200:
         raise AuthError("Сервер авторизации (Bouncer) отклонил запрос")
 
-    data = resp.json()
-    if "id_token" not in data:
+    try:
+        data = resp.json()
+    except ValueError as exc:  # например, HTML-страница ошибки от прокси
+        raise AuthError("Bouncer вернул некорректный ответ") from exc
+    if not isinstance(data, dict) or "id_token" not in data:
         raise AuthError("Bouncer не вернул id_token")
 
-    claims = jwt.decode(data["id_token"], options={"verify_signature": False})
+    try:
+        claims = jwt.decode(data["id_token"], options={"verify_signature": False})
+    except jwt.PyJWTError as exc:
+        raise AuthError("Bouncer вернул некорректный id_token") from exc
     
     if claims.get("exp", 0) < time.time() or claims.get("nonce") != nonce:
         raise AuthError("Сессия входа устарела, попробуйте ещё раз")

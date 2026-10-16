@@ -255,6 +255,19 @@ async def list_events(
     return items, total or 0
 
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe_cell(value):
+    """Строка, которую Excel примет за формулу («=HYPERLINK(...)»), получает префикс «'» — остаётся текстом.
+
+    Имя и ник в брони вводит любой сотрудник, а выгрузку открывает админ.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def inventory_csv(rows: list[InventoryRow]) -> str:
     """CSV для Excel: разделитель «;» и BOM — так русские буквы открываются без танцев."""
     buf = io.StringIO()
@@ -267,7 +280,7 @@ def inventory_csv(rows: list[InventoryRow]) -> str:
     ])
     for r in rows:
         b = r.booking
-        w.writerow([
+        w.writerow(_safe_cell(c) for c in [
             r.name, r.insight_key or "", TIER_LABELS.get(r.tier, r.tier), r.cpu or "", r.ram_gb or "",
             r.storage or "", r.gpu or "", r.os or "", r.location or "", r.serial_number or "",
             STATUS_LABELS.get(r.status, r.status), r.insight_status or "",

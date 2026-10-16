@@ -1,11 +1,11 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import Tier
 from app.schemas.booking import BookingOut
-from app.schemas.common import DepartmentShort, ORMModel, UserShort
+from app.schemas.common import DepartmentShort, ORMModel, UserShort, reject_explicit_null
 from app.schemas.computer import ComputerOut
 
 
@@ -95,10 +95,17 @@ class PoolOut(PoolShort):
 
 
 class PoolSave(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # «   » не проходит min_length
+
     name: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     is_published: bool | None = None
     department_ids: list[int] | None = None  # кто видит пул; [] — все сотрудники
+
+    @model_validator(mode="after")
+    def _no_null(self):
+        reject_explicit_null(self, "name", "is_published")
+        return self
 
 
 class PoolAssign(BaseModel):

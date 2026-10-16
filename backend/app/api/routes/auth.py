@@ -51,7 +51,7 @@ def _check_throttle(username: str) -> None:
 
 
 async def _upsert_sso_user(session: DB, result: AuthResult, source: str) -> User:
-    """Сотрудник из Microsoft/dev: создаём при первом входе, обновляем имя."""
+    """Сотрудник из Bouncer/dev: создаём при первом входе, обновляем имя."""
     user = await session.scalar(select(User).where(User.username == result.username))
     if user is None:
         user = User(username=result.username, auth_source=source)

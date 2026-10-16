@@ -1,6 +1,5 @@
 """Виртуалки из конструктора: заявка → очередь → worker клонирует шаблон в vSphere → «Моя аренда»."""
 import asyncio
-import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -15,8 +14,6 @@ from app.models import Department, User, VirtualMachine
 from app.schemas.vm import VmCreate, VmOptions
 from app.services import runtime
 from app.services.orders import next_order_number
-
-log = logging.getLogger(__name__)
 
 ALIVE = ("queued", "creating", "ready", "deleting")
 

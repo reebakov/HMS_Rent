@@ -18,12 +18,16 @@ async def get_current_user(request: Request, session: DB) -> User:
     payload = decode_session_token(token) if token else None
     if not payload:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется вход")
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):  # подпись верна, но токен без sub или с мусором в sub
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется вход") from None
     await runtime.load(session)  # свежие настройки с сайта (кэш 5 с)
-    user = await session.get(User, int(payload["sub"]))
+    user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или отключён")
     if user.auth_source != "local":
-        # права SSO-пользователей (Microsoft) берутся из config/admins.txt на каждом запросе:
+        # права SSO-пользователей (Bouncer) берутся из config/admins.txt на каждом запросе:
         # добавили/убрали почту — изменение действует сразу, без повторного входа
         admin = is_admin_email(user.email or user.username) or (user.auth_source == "dev" and user.username == "admin")
         user.role = UserRole.admin.value if admin else UserRole.user.value

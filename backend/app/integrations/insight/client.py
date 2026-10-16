@@ -14,7 +14,6 @@ from app.integrations.insight.mapping import InsightMapping
 log = logging.getLogger(__name__)
 
 ATTR_TYPE_REFERENCE = 1  # ссылка на другой объект Insight
-ATTR_TYPE_USER = 2
 ATTR_TYPE_STATUS = 7
 
 
@@ -47,17 +46,33 @@ class InsightClient:
     async def close(self) -> None:
         await self._http.aclose()
 
+    async def _send(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Запрос к Insight: сетевые сбои (недоступен, таймаут) превращаются в InsightError с понятным текстом."""
+        try:
+            return await self._http.request(method, url, **kwargs)
+        except httpx.HTTPError as exc:  # str(ReadTimeout()) бывает пустым — имя класса есть всегда
+            detail = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+            raise InsightError(f"Insight недоступен ({method} {url}): {detail}") from exc
+
+    @staticmethod
+    def _json(resp: httpx.Response):
+        """Тело ответа как JSON. HTML вместо JSON (страница логина Jira при протухшем токене) -> InsightError."""
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise InsightError(f"Insight вернул не JSON (HTTP {resp.status_code}): {resp.text[:120]!r}") from exc
+
     async def get(self, path: str, **params) -> dict | list:
         """Произвольный GET (для диагностики): путь относительно /rest/insight/1.0 или абсолютный URL."""
-        resp = await self._http.get(path, params=params or None)
+        resp = await self._send("GET", path, params=params or None)
         if resp.status_code >= 400:
             raise InsightError(f"{path}: HTTP {resp.status_code} {resp.text[:200]}")
-        return resp.json()
+        return self._json(resp)
 
     async def whoami(self) -> str:
-        resp = await self._http.get(self._jira_url + "/rest/api/2/myself")
+        resp = await self._send("GET", self._jira_url + "/rest/api/2/myself")
         if resp.status_code == 200:
-            me = resp.json()
+            me = self._json(resp)
             return f"{me.get('displayName')} ({me.get('name')})"
         return f"не авторизован (HTTP {resp.status_code}) — запросы идут анонимно"
 
@@ -74,17 +89,20 @@ class InsightClient:
         }
         if self.mapping.schema_id:
             params["objectSchemaId"] = self.mapping.schema_id
-        resp = await self._http.get(endpoint, params=params)
+        resp = await self._send("GET", endpoint, params=params)
         if resp.status_code >= 400:
             raise InsightError(f"Insight {resp.status_code}: {resp.text[:300]}")
-        return resp.json()
+        return self._json(resp)
 
     async def _type_attributes(self, type_id: int) -> dict[int, dict]:
         if type_id not in self._type_attrs:
-            resp = await self._http.get(f"/objecttype/{type_id}/attributes")
+            resp = await self._send("GET", f"/objecttype/{type_id}/attributes")
             if resp.status_code >= 400:
                 raise InsightError(f"Не удалось получить атрибуты типа {type_id}: {resp.status_code}")
-            self._type_attrs[type_id] = {a["id"]: a for a in resp.json()}
+            try:
+                self._type_attrs[type_id] = {a["id"]: a for a in self._json(resp)}
+            except (KeyError, TypeError) as exc:
+                raise InsightError(f"Неожиданный ответ Insight по атрибутам типа {type_id}") from exc
         return self._type_attrs[type_id]
 
     @staticmethod
@@ -100,7 +118,10 @@ class InsightClient:
 
     async def to_object(self, entry: dict) -> InsightObject:
         """Объект из ответа IQL/AQL -> InsightObject с атрибутами «имя: значение»."""
-        type_id = entry["objectType"]["id"]
+        try:
+            obj_id, type_id, type_name = entry["id"], entry["objectType"]["id"], entry["objectType"].get("name", "")
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise InsightError(f"Неожиданная структура объекта Insight: нет поля {exc}") from exc
         type_attrs = await self._type_attributes(type_id)
         attrs: dict[str, str] = {}
         for attr in entry.get("attributes") or []:
@@ -110,10 +131,10 @@ class InsightClient:
             if name and values:
                 attrs[name] = ", ".join(values)
         return InsightObject(
-            id=entry["id"],
+            id=obj_id,
             key=entry.get("objectKey", ""),
             label=entry.get("label", ""),
-            object_type=entry["objectType"].get("name", ""),
+            object_type=type_name,
             object_type_id=type_id,
             attributes=attrs,
         )
@@ -146,17 +167,21 @@ class InsightClient:
     async def _status_id(self, name: str) -> str:
         if self._status_ids is None:
             params = {"objectSchemaId": self.mapping.schema_id} if self.mapping.schema_id else {}
-            resp = await self._http.get("/config/statustype", params=params)
+            resp = await self._send("GET", "/config/statustype", params=params)
             if resp.status_code >= 400:
                 raise InsightError(f"Не удалось получить статусы Insight: {resp.status_code}")
-            self._status_ids = {s["name"].lower(): str(s["id"]) for s in resp.json()}
+            try:
+                self._status_ids = {s["name"].lower(): str(s["id"]) for s in self._json(resp)}
+            except (KeyError, TypeError) as exc:
+                raise InsightError("Неожиданный ответ Insight со списком статусов") from exc
         status_id = self._status_ids.get(name.lower())
         if status_id is None:
             raise InsightError(f"В Insight нет статуса «{name}»")
         return status_id
 
     async def _reference_key(self, ref_type_id: int, label: str) -> str:
-        data = await self._search(f'objectTypeId = {ref_type_id} AND Label = "{label}"', 1, 1)
+        escaped = label.replace("\\", "\\\\").replace('"', '\\"')  # кавычка в названии не должна ломать IQL
+        data = await self._search(f'objectTypeId = {ref_type_id} AND Label = "{escaped}"', 1, 1)
         entries = data.get("objectEntries") or []
         if not entries:
             raise InsightError(f"В Insight не найден объект «{label}» (тип {ref_type_id})")
@@ -164,12 +189,12 @@ class InsightClient:
 
     async def get_object(self, object_id: int) -> InsightObject | None:
         """Один объект «прямо сейчас» — для перепроверки статуса перед бронью."""
-        resp = await self._http.get(f"/object/{object_id}")
+        resp = await self._send("GET", f"/object/{object_id}")
         if resp.status_code == 404:
             return None
         if resp.status_code >= 400:
             raise InsightError(f"Insight {resp.status_code}: {resp.text[:200]}")
-        return await self.to_object(resp.json())
+        return await self.to_object(self._json(resp))
 
     async def update_object(
         self, object_id: int, object_type_id: int | None, values: dict[str, str | None],
@@ -197,8 +222,8 @@ class InsightClient:
             )
         if not attributes:
             return
-        resp = await self._http.put(
-            f"/object/{object_id}", json={"objectTypeId": object_type_id, "attributes": attributes}
+        resp = await self._send(
+            "PUT", f"/object/{object_id}", json={"objectTypeId": object_type_id, "attributes": attributes}
         )
         if resp.status_code >= 400:
             raise InsightError(f"Insight {resp.status_code}: {resp.text[:300]}")

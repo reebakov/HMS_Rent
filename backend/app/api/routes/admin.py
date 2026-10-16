@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +23,8 @@ from app.services import runtime
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+POOL_FILTER = r"^(none|\d+)$"  # id пула или «none» — ПК вне пулов
+
 
 # ---------- Сводка и инвентаризация ----------
 
@@ -39,7 +41,7 @@ async def inventory_list(
     status: str | None = None,
     tier: str | None = None,
     department_id: int | None = None,
-    pool_id: str | None = None,
+    pool_id: str | None = Query(default=None, pattern=POOL_FILTER),
     issues_only: bool = False,
     include_archived: bool = False,
     limit: int = 100,
@@ -54,7 +56,8 @@ async def inventory_list(
 
 @router.get("/inventory/export")
 async def inventory_export(
-    _: AdminUser, session: DB, department_id: int | None = None, pool_id: str | None = None
+    _: AdminUser, session: DB, department_id: int | None = None,
+    pool_id: str | None = Query(default=None, pattern=POOL_FILTER),
 ) -> Response:
     rows, _total = await inventory.list_inventory(session, department_id=department_id, pool_id=pool_id, limit=None)
     filename = f"inventory_{date.today():%Y-%m-%d}.csv"
@@ -143,7 +146,7 @@ async def create_pool(data: PoolSave, _: AdminUser, session: DB) -> Pool:
 
 
 @router.patch("/pools/{pool_id}", response_model=PoolOut)
-async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -> Pool:
+async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -> PoolOut:
     pool = await session.get(Pool, pool_id)
     if pool is None:
         raise HTTPException(404, "Пул не найден")
@@ -157,7 +160,10 @@ async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(409, "Пул с таким названием уже есть") from exc
-    return pool
+    stats = next(i for i in await pools.pool_stats(session) if i["pool"].id == pool.id)
+    return PoolOut.model_validate(pool).model_copy(
+        update={"total": stats["total"], "available": stats["available"], "booked": stats["booked"]}
+    )
 
 
 @router.delete("/pools/{pool_id}", status_code=204)
@@ -190,7 +196,7 @@ async def journal(
 @router.get("/events", response_model=EventPage)
 async def events(
     _: AdminUser, session: DB, 
-    limit: int = 50, offset: int = 0,
+    limit: int = Query(50, ge=0), offset: int = Query(0, ge=0),
     event_type: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,

@@ -13,6 +13,13 @@ from app.models import VirtualMachine
 
 log = logging.getLogger(__name__)
 
+CREATE_ATTEMPTS = 2  # первая попытка + одна повторная (регламент DR-15065)
+CREATE_RETRY_DELAY_SEC = 10  # пауза перед повтором: vCenter успевает освободить имя и отпустить задачу
+
+
+async def _pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)  # отдельная функция — в тестах подменяется, чтобы не ждать по-настоящему
+
 
 def _annotation(vm: VirtualMachine) -> str:
     until = f"{vm.expected_return_at:%d.%m.%Y}" if vm.expected_return_at else "без срока"
@@ -42,19 +49,26 @@ async def create_next(session: AsyncSession) -> bool:
         return False
     vm.status = "creating"
     await session.commit()
-    try:
-        info = await asyncio.to_thread(vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm))
+    for attempt in range(1, CREATE_ATTEMPTS + 1):
+        try:
+            info = await asyncio.to_thread(vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Не удалось создать ВМ %s (попытка %d из %d)", vm.name, attempt, CREATE_ATTEMPTS)
+            vm.error = str(exc)[:1000]
+            try:  # убираем недоделанный клон, чтобы имя освободилось (и повторная попытка не упёрлась в него)
+                await asyncio.to_thread(vsphere.delete_vm, None, vm.name)
+            except Exception:  # noqa: BLE001
+                log.warning("Не удалось убрать недоделанную ВМ %s", vm.name)
+            if attempt < CREATE_ATTEMPTS:
+                await _pause(CREATE_RETRY_DELAY_SEC)
+            continue
         vm.status, vm.error = "ready", None
         vm.vsphere_moid, vm.ip_address, vm.power_state = info.moid, info.ip_address, info.power_state
         vm.ready_at = datetime.now(timezone.utc)
         await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
-    except Exception as exc:  # noqa: BLE001
-        log.exception("Не удалось создать ВМ %s", vm.name)
-        vm.status, vm.error = "failed", str(exc)[:1000]
-        try:  # убираем недоделанный клон, чтобы имя освободилось
-            await asyncio.to_thread(vsphere.delete_vm, None, vm.name)
-        except Exception:  # noqa: BLE001
-            log.warning("Не удалось убрать недоделанную ВМ %s", vm.name)
+        break
+    else:
+        vm.status = "failed"  # в error осталась ошибка последней попытки
     await session.commit()
     return True
 
