@@ -25,7 +25,7 @@ class FakeVSphere:
         self.existing: dict[str, VmInfo] = {}
         self.ip: str | None = "10.0.0.5"
 
-    def create_vm(self, name, cpu, ram_gb, disk_gb, annotation):
+    def create_vm(self, name, cpu, ram_gb, disk_gb, annotation, template_name=None, customization_spec=None):
         self.created.append((name, cpu, ram_gb, disk_gb, annotation))
         if self.create_errors and (err := self.create_errors.pop(0)):
             raise err

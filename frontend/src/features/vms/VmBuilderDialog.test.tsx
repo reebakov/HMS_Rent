@@ -35,6 +35,7 @@ const makeOptions = (over: Partial<VmOptions> = {}): VmOptions => ({
   max_disk_gb: 200,
   max_per_user: 3,
   used_by_me: 1,
+  templates: [],
   ...over,
 })
 

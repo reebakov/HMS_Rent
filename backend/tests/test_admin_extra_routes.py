@@ -171,13 +171,13 @@ async def test_patch_settings_accepts_bool_coercion_from_string(client, boss, ap
 
 async def test_vsphere_check_ok(client, boss, api, monkeypatch):
     info = {"vcenter": "vc.local", "datacenter": "DC", "template": "tpl"}
-    monkeypatch.setattr(vsphere, "check", lambda: info)
+    monkeypatch.setattr(vsphere, "check", lambda names=None: info) # <-- Добавлено names=None
     r = await client.post(api("/admin/vsphere/check"))
     assert r.status_code == 200 and r.json() == {"ok": True, **info}
 
 
 async def test_vsphere_check_error_is_200_with_message(client, boss, api, monkeypatch):
-    def boom():
+    def boom(names=None): # <-- Добавлено names=None
         raise vsphere.VSphereError("vCenter недоступен: timeout")
     monkeypatch.setattr(vsphere, "check", boom)
     r = await client.post(api("/admin/vsphere/check"))

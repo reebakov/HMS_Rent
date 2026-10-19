@@ -312,6 +312,7 @@ export interface VmCreate {
   requester_nick: string
   purpose?: string
   expected_return_at?: string | null
+  template_key?: string | null // <-- ДОБАВИТЬ ЭТУ СТРОКУ
 }
 
 // ---------- Настройки и сотрудники ----------

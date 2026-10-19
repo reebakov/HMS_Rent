@@ -20,6 +20,8 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   cpu: 4,
   ram_gb: 8,
   disk_gb: 80,
+  template_key: null,
+  os_label: null,
   status: 'ready',
   error: null,
   department: { id: 1, name: 'Разработка' },
