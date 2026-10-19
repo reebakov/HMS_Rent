@@ -30,7 +30,7 @@ main() {
       --redeploy) REDEPLOY=1 ;;
       --force-ref) FORCE_REF=1 ;;
       --ref) REF="${2:?после --ref нужна ветка или коммит}"; shift ;;
-      -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}"; return 0 ;;
+      -h|--help) sed -n '2,/^set /{/^set /!p}' "${BASH_SOURCE[0]}"; return 0 ;;
       *) echo "Неизвестный аргумент: $1" >&2; return 2 ;;
     esac
     shift
@@ -64,6 +64,9 @@ main() {
     mode="$(stat -c %a "$secret_file")"
     [[ "$mode" =~ ^[0-7]00$ ]] || warn "$secret_file доступен остальным пользователям (права $mode): sudo chmod 600 $ROOT/$secret_file"
   done
+  # без POSTGRES_PASSWORD compose подставляет слабый пароль по умолчанию; менять его на обязательный нельзя: пароль
+  # в уже созданном томе БД может быть как раз значением по умолчанию (docs/SECRETS.md)
+  grep -qE '^POSTGRES_PASSWORD=.+' .env || warn "в .env не задан POSTGRES_PASSWORD — БД использует слабый пароль по умолчанию (порядок смены: docs/SECRETS.md)"
   if [[ $DRY_RUN -eq 0 ]]; then
     docker info >/dev/null 2>&1 || die "нет доступа к Docker (запустите через sudo или добавьте пользователя в группу docker)"
     mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
