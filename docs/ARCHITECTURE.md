@@ -27,6 +27,41 @@
 * **frontend** — статическая сборка React, nginx отдаёт её и проксирует `/api` на backend. Если на сервере есть
   сертификат, nginx принимает HTTPS (подробности в «Доставка и окружения»).
 
+## Структура backend
+
+Зависимости идут сверху вниз: `api/routes` → `services` → `schemas`, `models`, `integrations`, `db`, `core`.
+
+* **`api/routes`** — тонкий слой HTTP: разбор запроса, права (`CurrentUser` / `AdminUser`), вызов сервиса, ответ.
+  Запросов к БД и бизнес-правил нет; файлы маршрутов: `auth`, `catalog`, `bookings`, `vms`, `requests`, `admin`,
+  `admin_extra`, `admin_ops`.
+* **`services`** — бизнес-логика и работа с БД, один модуль на область:
+
+  | Область | Модуль |
+  |---|---|
+  | вход, SSO-сотрудники; троттлинг неудачных входов (в памяти процесса) | `auth`, `auth_throttle` |
+  | каталог для сотрудников | `catalog` |
+  | брони и возврат (+ фоновые задачи после ответа: запись в Insight, заявка на возврат) | `bookings` |
+  | пулы выдачи (список со статистикой, создание, правка, назначение ПК) | `pools` |
+  | справочник отделов, проверка «отдел существует / активен» | `departments` |
+  | сотрудники в админке | `users` |
+  | карточка ПК в админке, инвентаризация, сводка, журналы, CSV | `computers`, `inventory` |
+  | синхронизация с Insight, её журнал и детали запуска, запись обратно | `sync`, `sync_runs`, `writeback` |
+  | ВМ: конструктор, очередь worker'а, проверка vCenter | `vms`, `vm_jobs` |
+  | заявки Service Desk | `service_requests` |
+  | просрочки и ежедневная сводка | `overdue` |
+  | настройки с сайта (`app_settings`) | `runtime` |
+
+  Бизнес-ошибки — `NotFound`, `Conflict`, `Forbidden`, `Unauthorized`, `Unprocessable`, `TooManyRequests` из
+  `core/errors.py`; в HTTP-ответ их превращает `main.py`. Нарушение уникального индекса при записи превращается в
+  `Conflict` через `db/integrity.conflict_on_integrity_error`.
+* **`schemas`** — все pydantic-схемы API (по областям: `admin`, `booking`, `computer`, `department`, `service_request`,
+  `settings`, `user`, `vm` …); в роутах и сервисах своих схем нет.
+* **`models`** — SQLAlchemy 2 (async). Перечисления лежат в `models/enums.py` (`StrEnum`): `ComputerStatus`,
+  `BookingStatus`, `VmStatus`, `SyncRunStatus`, `ServiceRequestKind`, `EventType`, `Tier`, `UserRole`. В БД они хранятся
+  обычными строками (колонки `String`), поэтому значения менять нельзя без миграции.
+* **`integrations`** — внешние системы за узкими интерфейсами: `InsightSource` (живой клиент и mock), vSphere,
+  Service Desk, Bouncer, Mattermost.
+
 ## Кто источник правды
 
 | Данные | Источник | Почему |
