@@ -50,10 +50,8 @@ class FakeVSphere:
 @pytest.fixture
 def vsphere(monkeypatch):
     fake = FakeVSphere()
-    for mod in (vm_jobs, vms):
-        monkeypatch.setattr(mod, "vsphere", fake)
+    monkeypatch.setattr(vm_jobs, "vsphere", fake)
     monkeypatch.setattr(vm_jobs, "notify", _noop)
-    monkeypatch.setattr(vms, "notify", _noop)
 
     async def no_wait(_):
         pass

@@ -9,7 +9,7 @@ from app.schemas.admin import EventPage
 from app.api.deps import DB, AdminUser
 from app.core import clock
 from app.core.config import settings
-from app.models import AssetEvent, Booking, Computer, Department, EventType, Pool, SyncRun
+from app.models import Booking, Computer, Department, EventType, Pool, SyncRun
 from app.schemas.admin import (
     ComputerAdminUpdate, ComputerHistoryOut, DepartmentUsage, EventOut, InventoryPage, InventoryRow,
     PoolAssign, PoolAssignResult, PoolOut, PoolSave, StatsOut, SyncInfoOut, SyncRunOut,

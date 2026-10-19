@@ -1,5 +1,4 @@
 """Виртуалки из конструктора: заявка → очередь → worker клонирует шаблон в vSphere → «Моя аренда»."""
-import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -8,8 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
-from app.integrations.notify import notify
-from app.integrations.vsphere import client as vsphere
 from app.models import Department, User, VirtualMachine
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import runtime

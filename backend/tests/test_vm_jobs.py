@@ -49,8 +49,7 @@ class FakeVSphere:
 @pytest.fixture
 def vsphere(monkeypatch):
     fake = FakeVSphere()
-    for mod in (vm_jobs, vms):
-        monkeypatch.setattr(mod, "vsphere", fake)
+    monkeypatch.setattr(vm_jobs, "vsphere", fake)
     return fake
 
 
@@ -69,8 +68,7 @@ def pauses(monkeypatch):
 @pytest.fixture
 def notify(monkeypatch):
     mock = AsyncMock()
-    for mod in (vm_jobs, vms):
-        monkeypatch.setattr(mod, "notify", mock)
+    monkeypatch.setattr(vm_jobs, "notify", mock)
     return mock
 
 
