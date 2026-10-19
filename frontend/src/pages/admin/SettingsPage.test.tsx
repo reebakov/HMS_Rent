@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { SettingsPage } from './SettingsPage'
 import { api, ApiError } from '@/lib/api'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { AppSettings, VmTemplate } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -49,6 +49,19 @@ describe('SettingsPage: загрузка и отображение', () => {
     const { container } = renderWithProviders(<SettingsPage />)
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо вечного скелетона; повтор показывает форму', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/settings')
+    const { container } = renderWithProviders(<SettingsPage />)
+    expect(await screen.findByText('Не удалось загрузить настройки')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByLabelText(/^Интервал синхронизации, минут/)).toHaveValue(15)
   })
 
   it('показывает значения настроек и шаблоны ОС; «Сохранить» неактивна без правок', async () => {

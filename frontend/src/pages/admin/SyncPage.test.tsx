@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { SyncPage } from './SyncPage'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { SyncInfo, SyncRun, SyncRunDetails } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -63,12 +63,26 @@ describe('SyncPage: состояние и таблица', () => {
     expect(screen.getByText('Выключена')).toBeInTheDocument()
   })
 
-  it('пока данные не пришли — скелетоны вместо значений и пустая таблица', () => {
+  it('пока данные не пришли — скелетоны вместо значений, таблицы запусков ещё нет', () => {
     vi.mocked(api.get).mockReturnValue(new Promise(() => undefined))
     const { container } = renderWithProviders(<SyncPage />)
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4)
     expect(screen.getByRole('button', { name: 'Синхронизировать сейчас' })).toBeEnabled()
-    expect(screen.getAllByRole('row')).toHaveLength(1)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо пустой таблицы; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/sync')
+    renderWithProviders(<SyncPage />)
+    expect(await screen.findByText('Не удалось загрузить данные синхронизации')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Синхронизировать сейчас' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Jira Insight')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('таблица запусков: результат, число объектов, ошибка', async () => {

@@ -1,0 +1,81 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
+import { VmsPage } from './VmsPage'
+import { api } from '@/lib/api'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
+import type { Vm } from '@/lib/types'
+
+vi.mock('@/lib/api', async (orig) => ({
+  ...(await orig<typeof import('@/lib/api')>()),
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
+}))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
+const makeVm = (over: Partial<Vm> = {}): Vm => ({
+  id: 1, order_number: 200, name: 'rent-design-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
+  status: 'ready', error: null, department: { id: 1, name: 'Разработка' },
+  user: { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' }, requester_name: 'Иван Иванов', requester_nick: 'iivanov',
+  purpose: null, expected_return_at: null, ip_address: '10.0.0.15', power_state: 'on', created_at: '2024-01-10T09:00:00Z',
+  ready_at: '2024-01-10T09:10:00Z', released_at: null, deleted_at: null, ...over,
+})
+
+let vms: Vm[]
+
+beforeEach(() => {
+  vms = [makeVm(), makeVm({ id: 2, order_number: 201, name: 'rent-qa-02', cpu: 2, ram_gb: 4, disk_gb: 50, status: 'failed', error: 'Нет места', ip_address: null })]
+  for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
+  vi.mocked(toast.success).mockReset()
+  vi.mocked(api.get).mockImplementation(async (path: string) => {
+    if (path === '/admin/vms') return vms
+    throw new Error(`неожиданный GET ${path}`)
+  })
+  vi.mocked(api.post).mockResolvedValue({})
+})
+
+describe('VmsPage', () => {
+  it('рисует виртуалки и суммарные ресурсы только работающих', async () => {
+    renderWithProviders(<VmsPage />)
+    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(screen.getByText('Работают сейчас: 4 ядер, 8 ГБ памяти, 80 ГБ дисков')).toBeInTheDocument()
+    expect(screen.getByText('Нет места')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: false })
+  })
+
+  it('пустой список — «Виртуалок пока нет»', async () => {
+    vms = []
+    renderWithProviders(<VmsPage />)
+    expect(await screen.findByText('Виртуалок пока нет')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо «Виртуалок пока нет»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/vms')
+    renderWithProviders(<VmsPage />)
+    expect(await screen.findByText('Не удалось загрузить виртуалки')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Виртуалок пока нет')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('«Показать удалённые» перезапрашивает список с include_deleted', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<VmsPage />)
+    await screen.findByText('rent-design-01')
+    await user.click(screen.getByLabelText('Показать удалённые'))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: true }))
+  })
+
+  it('удаление после подтверждения: POST /vms/{id}/release', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    renderWithProviders(<VmsPage />)
+    const row = (await screen.findByText('rent-design-01')).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Удалить' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/1/release'))
+  })
+})

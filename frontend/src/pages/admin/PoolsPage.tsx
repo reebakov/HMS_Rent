@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Eye, EyeOff, Layers, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DataState, QueryError } from '@/components/ui/data-state'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/input'
@@ -17,7 +18,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Ошибк�
 /** Пулы выдачи: сотрудники видят в каталоге только ПК из опубликованных пулов */
 export function PoolsPage() {
   const navigate = useNavigate()
-  const { data, isLoading } = usePools()
+  const pools = usePools()
   const save = useSavePool()
   const remove = useDeletePool()
   const assign = useAssignPool()
@@ -87,68 +88,76 @@ export function PoolsPage() {
         }
       />
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
-          ))}
-        </div>
-      ) : !data?.length ? (
-        <Card>
-          <EmptyState icon={Layers} title="Пулов пока нет" description="Создайте пул и добавьте в него компьютеры для выдачи" />
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {data.map((pool) => (
-            <Card key={pool.id} className="flex flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-base font-semibold">{pool.name}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">{pool.description || 'Без описания'}</p>
-                  <p className="mt-1.5 text-xs font-medium">
-                    {pool.departments.length ? `Видят: ${pool.departments.map((d) => d.name).join(', ')}` : 'Видят все сотрудники'}
-                  </p>
-                </div>
-                {pool.is_published ? <Badge tone="success" dot>В каталоге</Badge> : <Badge>Скрыт</Badge>}
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-                {[
-                  ['Всего', pool.total, ''],
-                  ['Свободно', pool.available, 'text-success'],
-                  ['Выдано', pool.booked, 'text-primary'],
-                ].map(([label, value, color]) => (
-                  <div key={label as string} className="rounded-lg bg-muted/50 py-2.5">
-                    <p className={`text-xl font-semibold tabular ${color}`}>{value}</p>
-                    <p className="text-[11px] text-muted-foreground">{label}</p>
+      <DataState
+        query={pools}
+        errorTitle="Не удалось загрузить пулы"
+        errorCardClass=""
+        loading={
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-48 rounded-xl" />
+            ))}
+          </div>
+        }
+        empty={
+          <Card>
+            <EmptyState icon={Layers} title="Пулов пока нет" description="Создайте пул и добавьте в него компьютеры для выдачи" />
+          </Card>
+        }
+      >
+        {(data) => (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {data.map((pool) => (
+              <Card key={pool.id} className="flex flex-col p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold">{pool.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">{pool.description || 'Без описания'}</p>
+                    <p className="mt-1.5 text-xs font-medium">
+                      {pool.departments.length ? `Видят: ${pool.departments.map((d) => d.name).join(', ')}` : 'Видят все сотрудники'}
+                    </p>
                   </div>
-                ))}
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-1.5 border-t pt-4">
-                <Button size="sm" onClick={() => setFilling(pool)}>
-                  <ListPlus className="h-3.5 w-3.5" />
-                  Добавить ПК
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => navigate(`/admin/inventory?pool=${pool.id}`)}>
-                  Состав
-                </Button>
-                <div className="ml-auto flex gap-1">
-                  <Button size="icon" variant="ghost" title={pool.is_published ? 'Скрыть из каталога' : 'Опубликовать'} onClick={() => togglePublished(pool)}>
-                    {pool.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button size="icon" variant="ghost" title="Изменить" onClick={() => setEditing({ id: pool.id, name: pool.name, description: pool.description ?? '', departmentIds: pool.departments.map((d) => d.id) })}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button size="icon" variant="ghost" title="Удалить" onClick={() => destroy(pool)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {pool.is_published ? <Badge tone="success" dot>В каталоге</Badge> : <Badge>Скрыт</Badge>}
                 </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+
+                <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+                  {[
+                    ['Всего', pool.total, ''],
+                    ['Свободно', pool.available, 'text-success'],
+                    ['Выдано', pool.booked, 'text-primary'],
+                  ].map(([label, value, color]) => (
+                    <div key={label as string} className="rounded-lg bg-muted/50 py-2.5">
+                      <p className={`text-xl font-semibold tabular ${color}`}>{value}</p>
+                      <p className="text-[11px] text-muted-foreground">{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-1.5 border-t pt-4">
+                  <Button size="sm" onClick={() => setFilling(pool)}>
+                    <ListPlus className="h-3.5 w-3.5" />
+                    Добавить ПК
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/inventory?pool=${pool.id}`)}>
+                    Состав
+                  </Button>
+                  <div className="ml-auto flex gap-1">
+                    <Button size="icon" variant="ghost" title={pool.is_published ? 'Скрыть из каталога' : 'Опубликовать'} onClick={() => togglePublished(pool)}>
+                      {pool.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" title="Изменить" onClick={() => setEditing({ id: pool.id, name: pool.name, description: pool.description ?? '', departmentIds: pool.departments.map((d) => d.id) })}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" title="Удалить" onClick={() => destroy(pool)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </DataState>
 
       <Dialog
         open={!!editing}
@@ -173,6 +182,7 @@ export function PoolsPage() {
             <div>
                   <p className="mb-1.5 text-[13px] font-medium">Кто видит пул</p>
                   <p className="mb-2 text-xs text-muted-foreground">Ничего не отмечено — все сотрудники. Отдел человеку назначается в «Сотрудниках»</p>
+                  <QueryError query={departments} title="Не удалось загрузить отделы" />
                   <div className="grid grid-cols-2 gap-2">
                     {departments.data?.map((d) => (
                       <label key={d.id} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[13px]">

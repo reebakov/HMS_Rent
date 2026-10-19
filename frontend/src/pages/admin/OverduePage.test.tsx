@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { OverduePage } from './OverduePage'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { OverdueItem } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -108,11 +108,27 @@ describe('OverduePage: состояния', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('ошибка загрузки: страница не падает и показывает пустое состояние (отдельного экрана ошибки в коде нет)', async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error('500'))
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо «Просрочек нет»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/overdue')
     renderWithProviders(<OverduePage />)
-    expect(await screen.findByText('Просрочек нет')).toBeInTheDocument()
+    expect(await screen.findByText('Не удалось загрузить просрочки')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Просрочек нет')).not.toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-010')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('«Написать» — ссылка mailto, а не кнопка внутри ссылки', async () => {
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('PC-010')
+    const link = within(row('PC-010')).getByRole('link', { name: 'Написать' })
+    expect(link.getAttribute('href')).toMatch(/^mailto:p\.petrov@example\.com\?subject=/)
+    expect(link.querySelector('button')).toBeNull()
+    expect(within(row('vm-build-01')).queryByRole('link', { name: 'Написать' })).not.toBeInTheDocument()
   })
 })
 

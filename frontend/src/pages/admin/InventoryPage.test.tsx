@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { InventoryPage } from './InventoryPage'
 import { api } from '@/lib/api'
-import { makeComputer, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
 import type { InventoryRow, Pool } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => {
@@ -116,6 +116,34 @@ describe('InventoryPage', () => {
     renderWithProviders(<InventoryPage />)
     expect(await screen.findByText('Ничего не найдено')).toBeInTheDocument()
     expect(screen.getByText('0 записей')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо «Ничего не найдено» и «0 записей»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/inventory')
+    renderWithProviders(<InventoryPage />)
+    expect(await screen.findByText('Не удалось загрузить инвентаризацию')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Ничего не найдено')).not.toBeInTheDocument()
+    expect(screen.queryByText('0 записей')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-001')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['/departments', 'Не удалось загрузить отделы'],
+    ['/admin/pools', 'Не удалось загрузить пулы'],
+  ])('ошибка справочника %s: сообщение над таблицей, таблица остаётся; «Повторить» перезапрашивает', async (path, title) => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), path)
+    renderWithProviders(<InventoryPage />)
+    expect(await screen.findByText(title)).toBeInTheDocument()
+    expect(screen.getByText('PC-001')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    await waitFor(() => expect(screen.queryByText(title)).not.toBeInTheDocument())
   })
 
   it('фильтры из адресной строки: ?issues=1&pool=2', async () => {

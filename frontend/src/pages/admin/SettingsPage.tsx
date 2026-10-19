@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { CheckCircle2, CircleAlert, Server } from 'lucide-react'
 import { Card, CardHeader, PageHeader, Skeleton } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DataState } from '@/components/ui/data-state'
 import { Field, Input } from '@/components/ui/input'
 import { useAppSettings, useSaveSettings, useVsphereCheck } from '@/lib/queries'
 import type { AppSettings } from '@/lib/types'
@@ -24,16 +25,25 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
 
 /** Настройки без правки кода: сохраняются в базе и сразу применяются в API и worker */
 export function SettingsPage() {
-  const { data } = useAppSettings()
+  const settings = useAppSettings()
+  return (
+    <DataState
+      query={settings}
+      errorTitle="Не удалось загрузить настройки"
+      errorCardClass=""
+      loading={<Skeleton className="h-96 rounded-xl" />}
+    >
+      {(data) => <SettingsForm data={data} />}
+    </DataState>
+  )
+}
+
+function SettingsForm({ data }: { data: AppSettings }) {
   const save = useSaveSettings()
   const check = useVsphereCheck()
-  const [form, setForm] = useState<AppSettings | null>(null)
+  const [form, setForm] = useState(data)
 
-  useEffect(() => {
-    if (data) setForm(data)
-  }, [data])
-
-  if (!form || !data) return <Skeleton className="h-96 rounded-xl" />
+  useEffect(() => setForm(data), [data])
 
   const num = (key: NumKey, label: string, hint?: string) => (
     <Field label={label} hint={hint}>

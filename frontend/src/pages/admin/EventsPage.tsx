@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Activity, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from 'lucide-react'
-import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
+import { Card, EmptyState, PageHeader } from '@/components/ui/card'
+import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useEvents, type EventFilters } from '@/lib/queries'
@@ -14,7 +15,8 @@ export function EventsPage() {
   const [filters, setFilters] = useState<EventFilters>({})
   const [page, setPage] = useState(0)
 
-  const { data, isLoading, isFetching } = useEvents({ ...filters, limit: PAGE, offset: page * PAGE })
+  const events = useEvents({ ...filters, limit: PAGE, offset: page * PAGE })
+  const { data, isFetching } = events
   const rows = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -54,47 +56,50 @@ export function EventsPage() {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="space-y-2 p-4">
-            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11" />)}
-          </div>
-        ) : !rows.length ? (
-          <EmptyState icon={Activity} title="Событий не найдено" description="Измените фильтры" />
-        ) : (
-          <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-[13px]">
-              <thead className="bg-muted/40 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Дата и время</th>
-                  <th className="px-4 py-2.5 font-medium">Компьютер</th>
-                  <th className="px-4 py-2.5 font-medium">Тип события</th>
-                  <th className="px-4 py-2.5 font-medium">Сообщение / Статусы</th>
-                  <th className="px-4 py-2.5 font-medium">Кто сделал</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rows.map((e) => (
-                  <tr key={e.id} className="hover:bg-muted/40">
-                    <td className="px-4 py-3 tabular whitespace-nowrap text-muted-foreground">{formatDateTime(e.created_at)}</td>
-                    <td className="px-4 py-3 font-semibold">{e.computer.name}</td>
-                    <td className="px-4 py-3 font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</td>
-                    <td className="px-4 py-3">
-                      <p>{e.message}</p>
-                      {(e.from_status || e.to_status) && (
-                        <p className="mt-0.5 text-xs text-muted-foreground font-mono">
-                          [{e.from_status || '—'} ➔ {e.to_status || '—'}]
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{e.actor?.display_name || 'Система'}</td>
+        <DataState
+          query={events}
+          errorTitle="Не удалось загрузить события"
+          loading={<RowsSkeleton rows={8} className="h-11" />}
+          empty={<EmptyState icon={Activity} title="Событий не найдено" description="Измените фильтры" />}
+          isEmpty={(d) => !d.items.length}
+        >
+          {() => (
+            <div className="scroll-thin overflow-x-auto">
+              <table className="w-full min-w-[960px] text-left text-[13px]">
+                <thead className="bg-muted/40 text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Дата и время</th>
+                    <th className="px-4 py-2.5 font-medium">Компьютер</th>
+                    <th className="px-4 py-2.5 font-medium">Тип события</th>
+                    <th className="px-4 py-2.5 font-medium">Сообщение / Статусы</th>
+                    <th className="px-4 py-2.5 font-medium">Кто сделал</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y">
+                  {rows.map((e) => (
+                    <tr key={e.id} className="hover:bg-muted/40">
+                      <td className="px-4 py-3 tabular whitespace-nowrap text-muted-foreground">{formatDateTime(e.created_at)}</td>
+                      <td className="px-4 py-3 font-semibold">{e.computer.name}</td>
+                      <td className="px-4 py-3 font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</td>
+                      <td className="px-4 py-3">
+                        <p>{e.message}</p>
+                        {(e.from_status || e.to_status) && (
+                          <p className="mt-0.5 text-xs text-muted-foreground font-mono">
+                            [{e.from_status || '—'} ➔ {e.to_status || '—'}]
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{e.actor?.display_name || 'Система'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DataState>
 
         {/* Пагинация */}
+        {data && (
         <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
           <span className={cn(isFetching && 'animate-pulse')}>{total ? `${from}–${to} из ${total.toLocaleString()}` : '0 записей'}</span>
           {total > 0 && (() => {
@@ -110,6 +115,7 @@ export function EventsPage() {
             )
           })()}
         </div>
+        )}
       </Card>
     </>
   )

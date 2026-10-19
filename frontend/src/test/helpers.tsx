@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import type { Mock } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
@@ -11,6 +12,19 @@ export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?:
       <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/** GET по path один раз падает с ошибкой, дальше работает прежняя подмена: для проверки «Повторить» */
+export function failGetOnce(get: Mock, path: string, message = 'Сервер недоступен') {
+  const base = get.getMockImplementation()
+  let failed = false
+  get.mockImplementation(async (...args: unknown[]) => {
+    if (args[0] === path && !failed) {
+      failed = true
+      throw new Error(message)
+    }
+    return base?.(...args)
+  })
 }
 
 export const makeSession = (over: Partial<Session['user']> = {}): Session => ({

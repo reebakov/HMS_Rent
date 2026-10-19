@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { PoolsPage } from './PoolsPage'
 import { api } from '@/lib/api'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { Pool } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -68,6 +68,33 @@ describe('PoolsPage', () => {
     pools = []
     renderWithProviders(<PoolsPage />)
     expect(await screen.findByText('Пулов пока нет')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо «Пулов пока нет»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/pools')
+    renderWithProviders(<PoolsPage />)
+    expect(await screen.findByText('Не удалось загрузить пулы')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Пулов пока нет')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Аренда')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('ошибка загрузки отделов в окне пула: сообщение и «Повторить» вместо пустого списка отделов', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/departments')
+    renderWithProviders(<PoolsPage />)
+    await screen.findByText('Аренда')
+    await user.click(screen.getByRole('button', { name: 'Новый пул' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('Не удалось загрузить отделы')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }))
+    expect(await within(dialog).findByLabelText('Аналитика')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('«Состав» ведёт в инвентаризацию с фильтром по пулу', async () => {

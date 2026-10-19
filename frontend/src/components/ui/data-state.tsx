@@ -27,6 +27,16 @@ export function ErrorNotice({ title, error, onRetry }: { title: string; error?: 
   )
 }
 
+/**
+ * Ошибка запроса без данных. Пока запрос грузится или успешен — ничего не рисует (годится для справочников,
+ * от которых зависит фильтр или список). cardClass — если задан (можно пустой), ошибка в своей карточке.
+ */
+export function QueryError({ query, title, cardClass }: { query: QueryLike<unknown>; title: string; cardClass?: string }) {
+  if (!query.isError || query.data !== undefined) return null
+  const notice = <ErrorNotice title={title} error={query.error} onRetry={query.refetch} />
+  return cardClass === undefined ? notice : <Card className={cardClass}>{notice}</Card>
+}
+
 /** Заглушка загрузки: несколько строк-скелетонов */
 export function RowsSkeleton({ rows = 6, className = 'h-12' }: { rows?: number; className?: string }) {
   return (
@@ -43,7 +53,7 @@ const isEmptyList = (data: unknown) => Array.isArray(data) && data.length === 0
 /**
  * Состояния запроса в одном месте: загрузка → скелетон, ошибка без данных → «Повторить», пусто → empty, иначе данные.
  * Если данные уже есть, а фоновое обновление упало, показываются данные.
- * errorCardClass — если задан (можно пустой), ошибка рисуется в своей карточке с этим классом: нужно, когда снаружи карточки нет.
+ * errorCardClass — класс карточки вокруг ошибки (можно пустой): нужен, когда снаружи карточки нет.
  */
 export function DataState<T>({
   query,
@@ -64,9 +74,7 @@ export function DataState<T>({
 }) {
   const { data } = query
   if (data === undefined) {
-    if (!query.isError) return <>{loading}</>
-    const notice = <ErrorNotice title={errorTitle} error={query.error} onRetry={query.refetch} />
-    return errorCardClass === undefined ? notice : <Card className={errorCardClass}>{notice}</Card>
+    return query.isError ? <QueryError query={query} title={errorTitle} cardClass={errorCardClass} /> : <>{loading}</>
   }
   if (empty !== undefined && isEmpty(data)) return <>{empty}</>
   return <>{children(data)}</>

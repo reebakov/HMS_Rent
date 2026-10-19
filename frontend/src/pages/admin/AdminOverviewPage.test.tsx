@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { AdminOverviewPage } from './AdminOverviewPage'
 import { api } from '@/lib/api'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { Stats } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -42,5 +43,43 @@ describe('AdminOverviewPage', () => {
   it('последние события запрашиваются с limit=10 (а не 50 по умолчанию бэкенда)', async () => {
     renderWithProviders(<AdminOverviewPage />)
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/events', { limit: 10, offset: 0 }))
+  })
+
+  it('ошибка сводки: «Повторить» в каждом блоке сводки, скелетон не висит, повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/stats')
+    const { container } = renderWithProviders(<AdminOverviewPage />)
+    await waitFor(() => expect(screen.getAllByText('Не удалось загрузить сводку')).toHaveLength(3))
+    expect(screen.getAllByText('Сервер недоступен')).toHaveLength(3)
+    expect(screen.queryByText('Всего в учёте')).not.toBeInTheDocument()
+    expect(screen.queryByText('Синхронизаций ещё не было')).not.toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+
+    await user.click(screen.getAllByRole('button', { name: 'Повторить' })[0])
+    expect(await screen.findByText('Всего в учёте')).toBeInTheDocument()
+    expect(screen.queryByText('Не удалось загрузить сводку')).not.toBeInTheDocument()
+  })
+
+  it('ошибка отделов: сообщение вместо «Пока ни один ПК не закреплён»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/departments')
+    renderWithProviders(<AdminOverviewPage />)
+    expect(await screen.findByText('Не удалось загрузить отделы')).toBeInTheDocument()
+    expect(screen.queryByText('Пока ни один ПК не закреплён')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Пока ни один ПК не закреплён')).toBeInTheDocument()
+  })
+
+  it('ошибка событий: сообщение вместо «Событий пока нет»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/events')
+    renderWithProviders(<AdminOverviewPage />)
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('Не удалось загрузить события')).toBeInTheDocument()
+    expect(screen.queryByText('Событий пока нет')).not.toBeInTheDocument()
+
+    await user.click(within(alert).getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Событий пока нет')).toBeInTheDocument()
   })
 })

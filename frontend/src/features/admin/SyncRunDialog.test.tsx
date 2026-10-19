@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { SyncRunDialog } from './SyncRunDialog'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { SyncRunDetails } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -89,10 +89,17 @@ describe('SyncRunDialog', () => {
     expect(screen.getByText(/: 0$/)).toBeInTheDocument()
   })
 
-  it('ошибка загрузки: не падает, показывает «Подробностей нет»', async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error('404'))
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо «Подробностей нет»; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/admin/sync/runs/7', 'Запуск не найден')
     renderWithProviders(<SyncRunDialog runId={7} tab="created" onClose={() => undefined} />)
-    expect(await screen.findByText(/Подробностей нет/)).toBeInTheDocument()
+    expect(await screen.findByText('Не удалось загрузить подробности запуска')).toBeInTheDocument()
+    expect(screen.getByText('Запуск не найден')).toBeInTheDocument()
+    expect(screen.queryByText(/Подробностей нет/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-003')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('закрытие по Escape и по крестику вызывает onClose', async () => {

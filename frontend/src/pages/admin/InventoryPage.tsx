@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
-import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
+import { Card, EmptyState, PageHeader } from '@/components/ui/card'
+import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
@@ -32,7 +33,8 @@ export function InventoryPage() {
   const departments = useDepartments()
   const pools = usePools()
   const assign = useAssignPool()
-  const { data, isLoading, isFetching } = useInventory({ ...filters, limit: PAGE, offset: page * PAGE })
+  const inventory = useInventory({ ...filters, limit: PAGE, offset: page * PAGE })
+  const { data, isFetching } = inventory
   const rows = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -177,236 +179,242 @@ export function InventoryPage() {
           </div>
         )}
 
-        {isLoading ? (
-          <div className="space-y-2 p-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-11" />
-            ))}
-          </div>
-        ) : !rows.length ? (
-          <EmptyState icon={Search} title="Ничего не найдено" description="Измените фильтры или строку поиска" />
-        ) : view === 'compact' ? (
-          // компактно: плотная таблица с минимальными отступами
-          <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[800px] text-left text-xs">
-              <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="w-10 px-3 py-2">
-                    <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
-                  </th>
-                  <th className="px-3 py-2 font-medium">ПК</th>
-                  <th className="px-3 py-2 font-medium">Статус (Портал)</th>
-                  <th className="px-3 py-2 font-medium">В Insight</th>
-                  <th className="px-3 py-2 font-medium">Отдел / Кому выдан</th>
-                  <th className="px-3 py-2 font-medium">Пул</th>
-                  <th className="w-8 px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rows.map((c) => (
-                  <tr
-                    key={c.id}
-                    onClick={() => setOpenedId(c.id)}
-                    className={cn(
-                      'cursor-pointer transition-colors hover:bg-muted/40',
-                      selected.has(c.id) && 'bg-primary/5',
-                      c.is_archived && 'opacity-60'
-                    )}
-                  >
-                    <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
-                    </td>
-                    <td className="px-3 py-1.5 font-semibold text-[13px]">{c.name}</td>
-                    <td className="px-3 py-1.5">
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{c.insight_status ?? '—'}</td>
-                    <td className="px-3 py-1.5">
-                      {c.department ? (
-                        <span>
-                          <span className="font-medium text-foreground">{c.department.name}</span>
-                          {c.booking && <span className="ml-1 text-muted-foreground">({c.booking.requester_nick})</span>}
-                          {c.order_number && <span className="ml-1 text-muted-foreground">· заказ №{c.order_number}</span>}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{c.pool?.name ?? '—'}</td>
-                    <td className="px-3 py-1.5">
-                      {c.issues.length > 0 && (
-                        <span title={c.issues.join('\n')}>
-                          <CircleAlert className="h-3.5 w-3.5 text-danger" />
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-[13px]">
-              <thead className="bg-muted/40 text-xs text-muted-foreground">
-                <tr>
-                  <th className="w-10 px-4 py-2.5">
-                    <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
-                  </th>
-                  <th className="px-3 py-2.5 font-medium">Компьютер</th>
-                  <th className="px-3 py-2.5 font-medium">Пул</th>
-                  <th className="px-3 py-2.5 font-medium">Категория</th>
-                  <th className="px-3 py-2.5 font-medium">Характеристики</th>
-                  <th className="px-3 py-2.5 font-medium">Статус</th>
-                  <th className="px-3 py-2.5 font-medium">В Insight</th>
-                  <th className="px-3 py-2.5 font-medium">Отдел / ответственный</th>
-                  <th className="px-3 py-2.5 font-medium">С даты</th>
-                  <th className="w-8 px-3 py-2.5" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rows.map((c) => (
-                  <tr
-                    key={c.id}
-                    onClick={() => setOpenedId(c.id)}
-                    className={cn(
-                      'cursor-pointer transition-colors hover:bg-muted/40',
-                      selected.has(c.id) && 'bg-primary/5',
-                      c.is_archived && 'opacity-60',
-                    )}
-                  >
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
-                    </td>
-                    <td className="px-3 py-3">
-                      <p className="font-semibold">{c.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{c.insight_key}</p>
-                      {c.location && (
-                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {c.location}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      {c.pool ? (
-                        <span className={cn('font-medium', !c.pool.is_published && 'text-muted-foreground')}>{c.pool.name}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      <TierBadge tier={c.tier} />
-                    </td>
-                    <td className="max-w-[260px] px-3 py-3">
-                      <p className="truncate">{c.cpu ?? '—'}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[c.ram_gb && `${c.ram_gb} ГБ`, c.storage, c.gpu].filter(Boolean).join(' · ')}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td className="px-3 py-3 text-muted-foreground">{c.insight_status ?? '—'}</td>
-                    <td className="px-3 py-3">
-                      {c.department ? (
-                        <>
-                          <p className="font-medium">{c.department.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {c.booking ? `${c.booking.requester_name} (${c.booking.requester_nick})` : 'выдан мимо портала'}
-                            {c.order_number ? ` · заказ №${c.order_number}` : ''}
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 tabular">
-                      {c.booking ? (
-                        <>
-                          <p>{formatDate(c.booking.booked_at)}</p>
-                          {c.booking.expected_return_at && (
-                            <p className={cn('text-xs', isOverdue(c.booking.expected_return_at) ? 'text-danger' : 'text-muted-foreground')}>
-                              до {formatDate(c.booking.expected_return_at)}
+        <QueryError query={departments} title="Не удалось загрузить отделы" />
+        <QueryError query={pools} title="Не удалось загрузить пулы" />
+        <DataState
+          query={inventory}
+          errorTitle="Не удалось загрузить инвентаризацию"
+          loading={<RowsSkeleton rows={8} className="h-11" />}
+          empty={<EmptyState icon={Search} title="Ничего не найдено" description="Измените фильтры или строку поиска" />}
+          isEmpty={(d) => !d.items.length}
+        >
+          {() =>
+            view === 'compact' ? (
+              // компактно: плотная таблица с минимальными отступами
+              <div className="scroll-thin overflow-x-auto">
+                <table className="w-full min-w-[800px] text-left text-xs">
+                  <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="w-10 px-3 py-2">
+                        <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
+                      </th>
+                      <th className="px-3 py-2 font-medium">ПК</th>
+                      <th className="px-3 py-2 font-medium">Статус (Портал)</th>
+                      <th className="px-3 py-2 font-medium">В Insight</th>
+                      <th className="px-3 py-2 font-medium">Отдел / Кому выдан</th>
+                      <th className="px-3 py-2 font-medium">Пул</th>
+                      <th className="w-8 px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rows.map((c) => (
+                      <tr
+                        key={c.id}
+                        onClick={() => setOpenedId(c.id)}
+                        className={cn(
+                          'cursor-pointer transition-colors hover:bg-muted/40',
+                          selected.has(c.id) && 'bg-primary/5',
+                          c.is_archived && 'opacity-60'
+                        )}
+                      >
+                        <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                        </td>
+                        <td className="px-3 py-1.5 font-semibold text-[13px]">{c.name}</td>
+                        <td className="px-3 py-1.5">
+                          <StatusBadge status={c.status} />
+                        </td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{c.insight_status ?? '—'}</td>
+                        <td className="px-3 py-1.5">
+                          {c.department ? (
+                            <span>
+                              <span className="font-medium text-foreground">{c.department.name}</span>
+                              {c.booking && <span className="ml-1 text-muted-foreground">({c.booking.requester_nick})</span>}
+                              {c.order_number && <span className="ml-1 text-muted-foreground">· заказ №{c.order_number}</span>}
+                            </span>
+                            ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{c.pool?.name ?? '—'}</td>
+                        <td className="px-3 py-1.5">
+                          {c.issues.length > 0 && (
+                            <span title={c.issues.join('\n')}>
+                              <CircleAlert className="h-3.5 w-3.5 text-danger" />
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="scroll-thin overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-left text-[13px]">
+                  <thead className="bg-muted/40 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="w-10 px-4 py-2.5">
+                        <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
+                      </th>
+                      <th className="px-3 py-2.5 font-medium">Компьютер</th>
+                      <th className="px-3 py-2.5 font-medium">Пул</th>
+                      <th className="px-3 py-2.5 font-medium">Категория</th>
+                      <th className="px-3 py-2.5 font-medium">Характеристики</th>
+                      <th className="px-3 py-2.5 font-medium">Статус</th>
+                      <th className="px-3 py-2.5 font-medium">В Insight</th>
+                      <th className="px-3 py-2.5 font-medium">Отдел / ответственный</th>
+                      <th className="px-3 py-2.5 font-medium">С даты</th>
+                      <th className="w-8 px-3 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rows.map((c) => (
+                      <tr
+                        key={c.id}
+                        onClick={() => setOpenedId(c.id)}
+                        className={cn(
+                          'cursor-pointer transition-colors hover:bg-muted/40',
+                          selected.has(c.id) && 'bg-primary/5',
+                          c.is_archived && 'opacity-60',
+                        )}
+                      >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                        </td>
+                        <td className="px-3 py-3">
+                          <p className="font-semibold">{c.name}</p>
+                          <p className="font-mono text-xs text-muted-foreground">{c.insight_key}</p>
+                          {c.location && (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3" />
+                              {c.location}
                             </p>
                           )}
-                        </>
-                      ) : c.usage_until ? (
-                        <p className={cn('text-xs', isOverdue(c.usage_until) ? 'text-danger' : 'text-muted-foreground')}>
-                          до {formatDate(c.usage_until)}
-                        </p>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      {c.issues.length > 0 && (
-                        <span title={c.issues.join('\n')}>
-                          <CircleAlert className="h-4 w-4 text-danger" />
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-                <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
-          <span className={cn(isFetching && 'animate-pulse')}>
-            {total ? `${from}–${to} из ${total.toLocaleString('ru-RU')}` : '0 записей'}
-          </span>
-          
-          {total > 0 && (() => {
-            const totalPages = Math.ceil(total / PAGE)
-            // Логика отображения максимум 5 кнопок страниц (скользящее окно)
-            let start = Math.max(0, page - 2)
-            let end = Math.min(totalPages - 1, page + 2)
-            if (end - start < 4) {
-              if (start === 0) end = Math.min(totalPages - 1, 4)
-              else if (end === totalPages - 1) start = Math.max(0, totalPages - 5)
-            }
-            const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-
-            return (
-              <div className="flex items-center gap-1">
-                {/* В самое начало */}
-                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)} title="На первую страницу">
-                  <ChevronsLeft className="h-4 w-4" />
-                </Button>
-                {/* Назад */}
-                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-
-                {/* Номера страниц */}
-                <div className="hidden items-center gap-1 px-2 sm:flex">
-                  {pages.map((p) => (
-                    <Button
-                      key={p}
-                      size="sm"
-                      variant={page === p ? 'primary' : 'ghost'}
-                      className={cn('w-8 px-0', page !== p && 'text-muted-foreground')}
-                      onClick={() => setPage(p)}
-                    >
-                      {p + 1}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Вперед */}
-                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                {/* В самый конец */}
-                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="На последнюю страницу">
-                  <ChevronsRight className="h-4 w-4" />
-                </Button>
+                        </td>
+                        <td className="px-3 py-3">
+                          {c.pool ? (
+                            <span className={cn('font-medium', !c.pool.is_published && 'text-muted-foreground')}>{c.pool.name}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <TierBadge tier={c.tier} />
+                        </td>
+                        <td className="max-w-[260px] px-3 py-3">
+                          <p className="truncate">{c.cpu ?? '—'}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[c.ram_gb && `${c.ram_gb} ГБ`, c.storage, c.gpu].filter(Boolean).join(' · ')}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusBadge status={c.status} />
+                        </td>
+                        <td className="px-3 py-3 text-muted-foreground">{c.insight_status ?? '—'}</td>
+                        <td className="px-3 py-3">
+                          {c.department ? (
+                            <>
+                              <p className="font-medium">{c.department.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {c.booking ? `${c.booking.requester_name} (${c.booking.requester_nick})` : 'выдан мимо портала'}
+                                {c.order_number ? ` · заказ №${c.order_number}` : ''}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 tabular">
+                          {c.booking ? (
+                            <>
+                              <p>{formatDate(c.booking.booked_at)}</p>
+                              {c.booking.expected_return_at && (
+                                <p className={cn('text-xs', isOverdue(c.booking.expected_return_at) ? 'text-danger' : 'text-muted-foreground')}>
+                                  до {formatDate(c.booking.expected_return_at)}
+                                </p>
+                              )}
+                            </>
+                          ) : c.usage_until ? (
+                            <p className={cn('text-xs', isOverdue(c.usage_until) ? 'text-danger' : 'text-muted-foreground')}>
+                              до {formatDate(c.usage_until)}
+                            </p>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          {c.issues.length > 0 && (
+                            <span title={c.issues.join('\n')}>
+                              <CircleAlert className="h-4 w-4 text-danger" />
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )
-          })()}
-        </div>
+          }
+        </DataState>
+
+        {data && (
+                  <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
+            <span className={cn(isFetching && 'animate-pulse')}>
+              {total ? `${from}–${to} из ${total.toLocaleString('ru-RU')}` : '0 записей'}
+            </span>
+          
+            {total > 0 && (() => {
+              const totalPages = Math.ceil(total / PAGE)
+              // Логика отображения максимум 5 кнопок страниц (скользящее окно)
+              let start = Math.max(0, page - 2)
+              let end = Math.min(totalPages - 1, page + 2)
+              if (end - start < 4) {
+                if (start === 0) end = Math.min(totalPages - 1, 4)
+                else if (end === totalPages - 1) start = Math.max(0, totalPages - 5)
+              }
+              const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i)
+
+              return (
+                <div className="flex items-center gap-1">
+                  {/* В самое начало */}
+                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)} title="На первую страницу">
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  {/* Назад */}
+                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  {/* Номера страниц */}
+                  <div className="hidden items-center gap-1 px-2 sm:flex">
+                    {pages.map((p) => (
+                      <Button
+                        key={p}
+                        size="sm"
+                        variant={page === p ? 'primary' : 'ghost'}
+                        className={cn('w-8 px-0', page !== p && 'text-muted-foreground')}
+                        onClick={() => setPage(p)}
+                      >
+                        {p + 1}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {/* Вперед */}
+                  <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  {/* В самый конец */}
+                  <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="На последнюю страницу">
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })()}
+          </div>
+        )}
       </Card>
 
       <ComputerHistorySheet computerId={openedId} onClose={() => setOpenedId(null)} />

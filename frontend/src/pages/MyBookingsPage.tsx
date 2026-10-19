@@ -5,7 +5,7 @@ import { CalendarClock, Inbox, Undo2 } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
-import { DataState, ErrorNotice } from '@/components/ui/data-state'
+import { DataState, QueryError } from '@/components/ui/data-state'
 import { ReturnDialog } from '@/features/booking/BookingDialog'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
@@ -46,11 +46,7 @@ export function MyBookingsPage() {
         action={<Button onClick={() => navigate('/')}>Забронировать ещё</Button>}
       />
 
-      {requests.isError && !requests.data && (
-        <Card className="mb-8">
-          <ErrorNotice title="Не удалось загрузить заявки" error={requests.error} onRetry={requests.refetch} />
-        </Card>
-      )}
+      <QueryError query={requests} title="Не удалось загрузить заявки" cardClass="mb-8" />
 
       <MyVms
         requestsFor={(vmId) => requests.data?.filter((r) => r.vm_id === vmId) ?? []}

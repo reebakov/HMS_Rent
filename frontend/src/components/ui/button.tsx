@@ -17,6 +17,16 @@ const sizes = {
   icon: 'h-9 w-9',
 }
 
+/** Классы кнопки — и для ссылок, которые выглядят как кнопки */
+export const buttonClass = ({ variant = 'primary', size = 'md' }: { variant?: keyof typeof variants; size?: keyof typeof sizes } = {}) =>
+  cn(
+    'inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+    'disabled:pointer-events-none disabled:opacity-50',
+    variants[variant],
+    sizes[size],
+  )
+
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: keyof typeof variants
   size?: keyof typeof sizes
@@ -28,14 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-        'disabled:pointer-events-none disabled:opacity-50',
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      className={cn(buttonClass({ variant, size }), className)}
       {...props}
     >
       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
