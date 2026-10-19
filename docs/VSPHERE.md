@@ -1,27 +1,23 @@
 # Конструктор виртуалок (vSphere)
 
-Сотрудник в каталоге нажимает «Виртуализация», выбирает имя, ядра, память и диск, указывает отдел
-и ник. Портал клонирует шаблон Windows 10 в vApp/пул для аренды, пишет в Notes ВМ, за кем она и
-с какого числа, включает её и показывает IP в «Моей аренде». «Отказаться» — ВМ выключается и удаляется.
+Сотрудник в каталоге нажимает «Виртуализация», выбирает ОС из списка шаблонов, имя, ядра, память и диск, указывает
+отдел и ник. Портал клонирует выбранный шаблон в vApp/пул для аренды, пишет в Notes ВМ, за кем она и с какого числа,
+включает её и показывает IP в «Моей аренде». «Отказаться» — ВМ выключается и удаляется.
 
 ## Настройка (`.env`)
 
-```env
-VCENTER_HOST=            # адрес vCenter — впишите сами
-VCENTER_USER=            # сервисная учётка
-VCENTER_PASSWORD=
-VCENTER_VERIFY_SSL=false # для самоподписанного сертификата
-VCENTER_DATACENTER=Godzen
-VCENTER_CLUSTER=Automat-GZ
-VCENTER_RESOURCE_POOL=Rent        # vApp или пул ресурсов внутри кластера
-VCENTER_TEMPLATE_WINDOWS=Template_Win
-VCENTER_FOLDER=                   # пусто — корень датацентра
-VCENTER_DATASTORE=                # пусто — тот же, что у шаблона
-VCENTER_CUSTOMIZATION_SPEC=       # спецификация sysprep; пусто — без неё
-VM_NAME_PREFIX=rent-
-```
+Обязательны `VCENTER_HOST` (адрес vCenter), `VCENTER_USER` (сервисная учётка) и `VCENTER_PASSWORD`: без них конструктор
+выключен (включается тумблером в «Настройках», когда vCenter задан). Остальные настройки (`VCENTER_VERIFY_SSL`,
+`VCENTER_DATACENTER`, `VCENTER_CLUSTER`, `VCENTER_RESOURCE_POOL`, `VCENTER_FOLDER`, `VCENTER_DATASTORE`,
+`VCENTER_CUSTOMIZATION_SPEC`, `VM_NAME_PREFIX`) описаны со значениями по умолчанию в `.env.example` и
+`backend/app/core/config.py`.
 
-После правки: `docker compose up -d --build` (нужна пересборка — добавлен pyvmomi).
+`VCENTER_TEMPLATE_WINDOWS` и `VCENTER_CUSTOMIZATION_SPEC` задают только начальный шаблон «Windows 10»: список шаблонов
+ОС (`vm_templates`) редактируется в Админка → «Настройки» и важнее `.env`; описание полей шаблона — в
+`docs/ARCHITECTURE.md`, раздел «Виртуальные машины и шаблоны ОС».
+
+Применить правку `.env`: на проде — `sudo ./scripts/deploy.sh --redeploy`, при разработке —
+`docker compose up -d --force-recreate backend worker`.
 Проверка: Админка → «Настройки» → «Проверить» — найдёт датацентр, vApp и шаблон, ничего не меняя.
 
 ## Права сервисной учётки
@@ -37,7 +33,6 @@ VM_NAME_PREFIX=rent-
 
 ## Как это работает
 
-Заявка встаёт в очередь (`virtual_machines`, статус `queued`), worker раз в 5 секунд берёт её,
-клонирует (`creating`), настраивает и включает (`ready`), затем подтягивает IP, когда Windows загрузится.
-Удаление — статус `deleting`, worker выключает и удаляет ВМ (`deleted`). Ошибка — статус `failed`
-с текстом; недоделанный клон удаляется, имя освобождается. Одновременно создаётся не больше двух ВМ.
+Заявка встаёт в очередь, worker создаёт ВМ в vCenter и подтягивает IP, когда ОС загрузится; отказ — удаление ВМ.
+Статусы, повторная попытка при ошибке и лимиты очереди — в `docs/ARCHITECTURE.md`, раздел «Виртуальные машины и
+шаблоны ОС».
