@@ -134,13 +134,21 @@ describe('AppShell: профиль и шапка', () => {
 })
 
 describe('AppShell: мобильное меню', () => {
-  const burger = () => screen.getAllByRole('button').find((b) => b.className.includes('lg:hidden'))!
+  const burger = () => screen.getByRole('button', { name: /(Открыть|Закрыть) меню/ })
 
   it('по умолчанию меню одно (десктопный сайдбар); бургер открывает второе', async () => {
     mountShell()
     expect(screen.getAllByRole('link', { name: 'Каталог' })).toHaveLength(1)
     await userEvent.click(burger())
     expect(screen.getAllByRole('link', { name: 'Каталог' })).toHaveLength(2)
+  })
+
+  it('бургер подписан и сообщает состояние меню через aria-expanded', async () => {
+    mountShell()
+    const button = screen.getByRole('button', { name: 'Открыть меню' })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(button)
+    expect(screen.getByRole('button', { name: 'Закрыть меню' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('выбор пункта закрывает мобильное меню', async () => {
@@ -248,7 +256,7 @@ describe('AppShell: «Просрочки»', () => {
     const user = userEvent.setup()
     mountShell()
     await within(overdueLink()).findByText('3')
-    await user.click(screen.getAllByRole('button').find((b) => b.className.includes('lg:hidden'))!)
+    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
     const links = screen.getAllByRole('link', { name: /^Просрочки/ })
     expect(links).toHaveLength(2)
     for (const l of links) expect(within(l).getByText('3')).toBeInTheDocument()

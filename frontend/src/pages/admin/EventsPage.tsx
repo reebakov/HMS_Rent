@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Activity, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from 'lucide-react'
+import { Activity, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+import { Pagination } from '@/components/ui/pagination'
 import { useDebouncedSearch } from '@/lib/hooks'
 import { useEvents, type EventFilters } from '@/lib/queries'
 import { EVENT_LABELS } from '@/lib/dictionaries'
-import { cn, formatDateTime } from '@/lib/utils'
+import { formatDateTime } from '@/lib/utils'
 
 const PAGE = 100
 
@@ -28,9 +28,6 @@ export function EventsPage() {
 
   useDebouncedSearch(search, filters.q, (q) => set({ q }))
 
-  const from = total ? page * PAGE + 1 : 0
-  const to = Math.min(total, (page + 1) * PAGE)
-
   return (
     <>
       <PageHeader title="Логи системы" description="История всех системных событий, статусов и ручных правок" />
@@ -39,15 +36,15 @@ export function EventsPage() {
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
           <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" placeholder="ПК, текст события..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input className="pl-9" aria-label="Поиск по логам" placeholder="ПК, текст события..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select className="w-56" value={filters.event_type ?? ''} onChange={(e) => set({ event_type: e.target.value || undefined })}>
+          <Select className="w-56" aria-label="Тип события" value={filters.event_type ?? ''} onChange={(e) => set({ event_type: e.target.value || undefined })}>
             <option value="">Все типы событий</option>
             {Object.entries(EVENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            с <Input type="date" className="w-40" value={filters.date_from ?? ''} onChange={(e) => set({ date_from: e.target.value || undefined })} />
-            по <Input type="date" className="w-40" value={filters.date_to ?? ''} onChange={(e) => set({ date_to: e.target.value || undefined })} />
+            с <Input type="date" className="w-40" aria-label="Дата с" value={filters.date_from ?? ''} onChange={(e) => set({ date_from: e.target.value || undefined })} />
+            по <Input type="date" className="w-40" aria-label="Дата по" value={filters.date_to ?? ''} onChange={(e) => set({ date_to: e.target.value || undefined })} />
           </div>
         </div>
 
@@ -93,24 +90,7 @@ export function EventsPage() {
           )}
         </DataState>
 
-        {/* Пагинация */}
-        {data && (
-        <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
-          <span className={cn(isFetching && 'animate-pulse')}>{total ? `${from}–${to} из ${total.toLocaleString()}` : '0 записей'}</span>
-          {total > 0 && (() => {
-            const totalPages = Math.ceil(total / PAGE)
-            return (
-              <div className="flex items-center gap-1">
-                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)}><ChevronsLeft className="h-4 w-4" /></Button>
-                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-                <span className="px-2 hidden sm:block">Стр. {page + 1} из {totalPages}</span>
-                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
-                <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}><ChevronsRight className="h-4 w-4" /></Button>
-              </div>
-            )
-          })()}
-        </div>
-        )}
+        {data && <Pagination page={page} pageSize={PAGE} total={total} fetching={isFetching} onChange={setPage} />}
       </Card>
     </>
   )

@@ -34,6 +34,7 @@ function Amount({ icon: Icon, label, unit, value, range, onChange }: {
       </div>
       <input
         type="range"
+        aria-label={label}
         className="w-full accent-[hsl(var(--primary))]"
         min={range.min}
         max={range.max}

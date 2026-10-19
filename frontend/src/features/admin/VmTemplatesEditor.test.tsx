@@ -26,6 +26,18 @@ function Stateful({ initial, spy }: { initial: VmTemplate[]; spy: (v: VmTemplate
 }
 
 describe('VmTemplatesEditor: отображение', () => {
+  it('поля каждой строки подписаны номером строки', () => {
+    setup()
+    expect(screen.getByRole('textbox', { name: 'Название, строка 1' })).toHaveValue('Windows 11')
+    expect(screen.getByRole('textbox', { name: 'Ключ, строка 2' })).toHaveValue('ubuntu')
+    expect(screen.getByRole('combobox', { name: 'Тип, строка 1' })).toHaveValue('windows')
+    expect(screen.getByRole('textbox', { name: 'Шаблон в vCenter, строка 1' })).toHaveValue('Template_Win11')
+    expect(screen.getByRole('textbox', { name: 'Спецификация, строка 1' })).toHaveValue('spec-win')
+    expect(screen.getByRole('spinbutton', { name: 'Диск от, ГБ, строка 1' })).toHaveValue(80)
+    expect(screen.getByRole('checkbox', { name: 'Включена, строка 1' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Включена, строка 2' })).not.toBeChecked()
+  })
+
   it('рисует строку на каждый шаблон со всеми полями', () => {
     setup()
     expect(screen.getAllByRole('row')).toHaveLength(3)

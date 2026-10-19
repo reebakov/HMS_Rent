@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
+import { CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Pagination } from '@/components/ui/pagination'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
 import { ComputerHistorySheet } from '@/features/admin/ComputerHistorySheet'
 import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
@@ -77,8 +78,6 @@ export function InventoryPage() {
   }
 
   const exportUrl = inventoryExportUrl(filters)
-  const from = total ? page * PAGE + 1 : 0
-  const to = Math.min(total, (page + 1) * PAGE)
 
   return (
     <>
@@ -97,9 +96,9 @@ export function InventoryPage() {
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
           <div className="relative w-full sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Имя, ключ Insight, IP, CPU…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input className="pl-9" aria-label="Поиск по инвентаризации" placeholder="Имя, ключ Insight, IP, CPU…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select className="w-44" value={filters.pool_id ?? ''} onChange={(e) => set({ pool_id: e.target.value || undefined })}>
+          <Select className="w-44" aria-label="Фильтр по пулу" value={filters.pool_id ?? ''} onChange={(e) => set({ pool_id: e.target.value || undefined })}>
             <option value="">Все пулы</option>
             <option value="none">Без пула (не выдаются)</option>
             {pools.data?.map((p) => (
@@ -108,7 +107,7 @@ export function InventoryPage() {
               </option>
             ))}
           </Select>
-          <Select className="w-40" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
+          <Select className="w-40" aria-label="Фильтр по статусу" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
             <option value="">Все статусы</option>
             <option value="unavailable">⚠️ Недоступные</option>
             {(Object.keys(STATUSES) as ComputerStatus[]).map((s) => (
@@ -117,7 +116,7 @@ export function InventoryPage() {
               </option>
             ))}
           </Select>
-          <Select className="w-40" value={filters.tier ?? ''} onChange={(e) => set({ tier: e.target.value || undefined })}>
+          <Select className="w-40" aria-label="Фильтр по категории" value={filters.tier ?? ''} onChange={(e) => set({ tier: e.target.value || undefined })}>
             <option value="">Все категории</option>
             {TIER_ORDER.map((t) => (
               <option key={t} value={t}>
@@ -127,6 +126,7 @@ export function InventoryPage() {
           </Select>
           <Select
             className="w-44"
+            aria-label="Фильтр по отделу"
             value={filters.department_id ?? ''}
             onChange={(e) => set({ department_id: e.target.value ? Number(e.target.value) : undefined })}
           >
@@ -154,7 +154,7 @@ export function InventoryPage() {
         {selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-4 py-2.5 text-[13px] animate-fade-in">
             <span className="font-medium">Выбрано: {selected.size}</span>
-            <Select className="h-8 w-56" value={targetPool} onChange={(e) => setTargetPool(e.target.value)}>
+            <Select className="h-8 w-56" aria-label="Пул для перемещения" value={targetPool} onChange={(e) => setTargetPool(e.target.value)}>
               <option value="" disabled>
                 Переместить в пул…
               </option>
@@ -191,7 +191,7 @@ export function InventoryPage() {
                   <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="w-10 px-3 py-2">
-                        <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
+                        <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} aria-label="Выбрать все на странице" />
                       </th>
                       <th className="px-3 py-2 font-medium">ПК</th>
                       <th className="px-3 py-2 font-medium">Статус (Портал)</th>
@@ -213,7 +213,7 @@ export function InventoryPage() {
                         )}
                       >
                         <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                          <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Выбрать ${c.name}`} />
                         </td>
                         <td className="px-3 py-1.5 font-semibold text-[13px]">{c.name}</td>
                         <td className="px-3 py-1.5">
@@ -250,7 +250,7 @@ export function InventoryPage() {
                   <thead className="bg-muted/40 text-xs text-muted-foreground">
                     <tr>
                       <th className="w-10 px-4 py-2.5">
-                        <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} />
+                        <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={allOnPage} onChange={toggleAll} aria-label="Выбрать все на странице" />
                       </th>
                       <th className="px-3 py-2.5 font-medium">Компьютер</th>
                       <th className="px-3 py-2.5 font-medium">Пул</th>
@@ -275,7 +275,7 @@ export function InventoryPage() {
                         )}
                       >
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+                          <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Выбрать ${c.name}`} />
                         </td>
                         <td className="px-3 py-3">
                           <p className="font-semibold">{c.name}</p>
@@ -354,62 +354,7 @@ export function InventoryPage() {
           }
         </DataState>
 
-        {data && (
-                  <div className="flex items-center justify-between border-t px-4 py-3 text-[13px] text-muted-foreground">
-            <span className={cn(isFetching && 'animate-pulse')}>
-              {total ? `${from}–${to} из ${total.toLocaleString('ru-RU')}` : '0 записей'}
-            </span>
-          
-            {total > 0 && (() => {
-              const totalPages = Math.ceil(total / PAGE)
-              // Логика отображения максимум 5 кнопок страниц (скользящее окно)
-              let start = Math.max(0, page - 2)
-              let end = Math.min(totalPages - 1, page + 2)
-              if (end - start < 4) {
-                if (start === 0) end = Math.min(totalPages - 1, 4)
-                else if (end === totalPages - 1) start = Math.max(0, totalPages - 5)
-              }
-              const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-
-              return (
-                <div className="flex items-center gap-1">
-                  {/* В самое начало */}
-                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(0)} title="На первую страницу">
-                    <ChevronsLeft className="h-4 w-4" />
-                  </Button>
-                  {/* Назад */}
-                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  {/* Номера страниц */}
-                  <div className="hidden items-center gap-1 px-2 sm:flex">
-                    {pages.map((p) => (
-                      <Button
-                        key={p}
-                        size="sm"
-                        variant={page === p ? 'primary' : 'ghost'}
-                        className={cn('w-8 px-0', page !== p && 'text-muted-foreground')}
-                        onClick={() => setPage(p)}
-                      >
-                        {p + 1}
-                      </Button>
-                    ))}
-                  </div>
-
-                  {/* Вперед */}
-                  <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  {/* В самый конец */}
-                  <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="На последнюю страницу">
-                    <ChevronsRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )
-            })()}
-          </div>
-        )}
+        {data && <Pagination page={page} pageSize={PAGE} total={total} fetching={isFetching} onChange={setPage} />}
       </Card>
 
       <ComputerHistorySheet computerId={openedId} onClose={() => setOpenedId(null)} />

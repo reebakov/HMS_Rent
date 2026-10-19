@@ -135,7 +135,12 @@ export function AppShell() {
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
-          <button className="rounded-md p-1.5 hover:bg-muted lg:hidden" onClick={() => setMobileOpen((v) => !v)}>
+          <button
+            className="rounded-md p-1.5 hover:bg-muted lg:hidden"
+            aria-label={mobileOpen ? 'Закрыть меню' : 'Открыть меню'}
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((v) => !v)}
+          >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <div className="flex-1" />

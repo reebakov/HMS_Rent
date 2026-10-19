@@ -111,7 +111,7 @@ describe('SyncRunDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
 
     const dialog = screen.getByRole('dialog')
-    const x = within(dialog).getAllByRole('button').find((b) => !b.textContent)!
+    const x = within(dialog).getByRole('button', { name: 'Закрыть' })
     await user.click(x)
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2))
   })

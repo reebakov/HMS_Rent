@@ -36,30 +36,31 @@ export function VmTemplatesEditor({ value, onChange }: { value: VmTemplate[]; on
             {value.map((t, i) => (
               <tr key={i}>
                 <td className="py-1 pr-2">
-                  <Input value={t.label} onChange={(e) => set(i, { label: e.target.value })} />
+                  <Input aria-label={`Название, строка ${i + 1}`} value={t.label} onChange={(e) => set(i, { label: e.target.value })} />
                 </td>
                 <td className="w-32 py-1 pr-2">
-                  <Input className="font-mono" value={t.key} onChange={(e) => set(i, { key: e.target.value.toLowerCase() })} />
+                  <Input className="font-mono" aria-label={`Ключ, строка ${i + 1}`} value={t.key} onChange={(e) => set(i, { key: e.target.value.toLowerCase() })} />
                 </td>
                 <td className="w-32 py-1 pr-2">
-                  <Select value={t.os} onChange={(e) => set(i, { os: e.target.value as VmTemplate['os'] })}>
+                  <Select aria-label={`Тип, строка ${i + 1}`} value={t.os} onChange={(e) => set(i, { os: e.target.value as VmTemplate['os'] })}>
                     <option value="windows">Windows</option>
                     <option value="linux">Linux</option>
                   </Select>
                 </td>
                 <td className="py-1 pr-2">
-                  <Input placeholder="например Template_Win11" value={t.template} onChange={(e) => set(i, { template: e.target.value })} />
+                  <Input aria-label={`Шаблон в vCenter, строка ${i + 1}`} placeholder="например Template_Win11" value={t.template} onChange={(e) => set(i, { template: e.target.value })} />
                 </td>
                 <td className="py-1 pr-2">
-                  <Input value={t.customization_spec} onChange={(e) => set(i, { customization_spec: e.target.value })} />
+                  <Input aria-label={`Спецификация, строка ${i + 1}`} value={t.customization_spec} onChange={(e) => set(i, { customization_spec: e.target.value })} />
                 </td>
                 <td className="w-24 py-1 pr-2">
-                  <Input type="number" value={t.min_disk_gb} onChange={(e) => set(i, { min_disk_gb: Number(e.target.value) })} />
+                  <Input type="number" aria-label={`Диск от, ГБ, строка ${i + 1}`} value={t.min_disk_gb} onChange={(e) => set(i, { min_disk_gb: Number(e.target.value) })} />
                 </td>
                 <td className="w-12 py-1 pr-2 text-center">
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-[hsl(var(--primary))]"
+                    aria-label={`Включена, строка ${i + 1}`}
                     checked={t.enabled}
                     onChange={(e) => set(i, { enabled: e.target.checked })}
                   />

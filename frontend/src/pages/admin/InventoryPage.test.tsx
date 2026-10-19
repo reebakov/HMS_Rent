@@ -202,6 +202,20 @@ describe('InventoryPage', () => {
     expect(new Set(inventoryCalls().map((q) => q.q).filter(Boolean))).toEqual(new Set(['pc-7']))
   })
 
+  it('поля фильтров, поиск и чекбоксы выбора доступны по подписи', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<InventoryPage />)
+    await screen.findByText('PC-001')
+    for (const name of ['Поиск по инвентаризации', 'Фильтр по пулу', 'Фильтр по статусу', 'Фильтр по категории', 'Фильтр по отделу']) {
+      expect(screen.getByLabelText(name)).toBeInTheDocument()
+    }
+    await user.click(screen.getByRole('checkbox', { name: 'Выбрать PC-002' }))
+    expect(screen.getByText('Выбрано: 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Пул для перемещения')).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }))
+    expect(screen.getByText('Выбрано: 3')).toBeInTheDocument()
+  })
+
   it('режим «список» — компактная таблица, выбор запоминается в localStorage', async () => {
     const user = userEvent.setup()
     renderWithProviders(<InventoryPage />)
@@ -320,7 +334,8 @@ describe('InventoryPage', () => {
       expect(await screen.findByText('1–100 из 750')).toBeInTheDocument()
       const nums = screen.getAllByRole('button').map((b) => b.textContent).filter((t) => /^\d+$/.test(t ?? ''))
       expect(nums).toEqual(['1', '2', '3', '4', '5'])
-      expect(screen.getByTitle('На первую страницу')).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'На первую страницу' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page')
     })
 
     it('переход вперёд/назад, на последнюю и первую страницу меняет offset', async () => {

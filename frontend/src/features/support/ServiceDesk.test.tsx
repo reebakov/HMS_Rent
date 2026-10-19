@@ -250,9 +250,9 @@ describe('RequestSheet', () => {
     renderWithProviders(<RequestSheet id={id} onClose={onClose} />)
     return { onClose, user: userEvent.setup() }
   }
-  const replyBox = () => screen.getByPlaceholderText('Ответить администраторам…')
-  /** Кнопка отправки без текста (иконка), рядом с полем ответа */
-  const sendReply = () => within(replyBox().parentElement!).getByRole('button')
+  const replyBox = () => screen.getByRole('textbox', { name: 'Ответ администраторам' })
+  /** Кнопка отправки без текста (иконка), подписана aria-label */
+  const sendReply = () => screen.getByRole('button', { name: 'Отправить ответ' })
 
   it('id=null — панель закрыта и ничего не запрашивает', () => {
     renderSheet(null)

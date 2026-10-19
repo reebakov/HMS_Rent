@@ -64,6 +64,19 @@ describe('CatalogPage', () => {
     expect(screen.getByDisplayValue('По имени')).toBeInTheDocument()
   })
 
+  it('поиск, фильтры и кнопка «С видеокартой» доступны по подписи и роли', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CatalogPage />)
+    await screen.findByText('PC-001')
+    expect(screen.getByRole('textbox', { name: 'Поиск по каталогу' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Минимум ОЗУ' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toBeInTheDocument()
+    const gpu = screen.getByRole('button', { name: 'С видеокартой' })
+    expect(gpu).toHaveAttribute('aria-pressed', 'false')
+    await user.click(gpu)
+    expect(screen.getByRole('button', { name: 'С видеокартой' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('поиск уходит в API с задержкой (debounce), а не на каждую букву', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CatalogPage />)

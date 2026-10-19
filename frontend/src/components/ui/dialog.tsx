@@ -42,7 +42,7 @@ export function Dialog({
                 </DialogPrimitive.Description>
               )}
             </div>
-            <DialogPrimitive.Close className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <DialogPrimitive.Close aria-label="Закрыть" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
               <X className="h-4 w-4" />
             </DialogPrimitive.Close>
           </div>
@@ -84,7 +84,7 @@ export function Sheet({
                 </DialogPrimitive.Description>
               )}
             </div>
-            <DialogPrimitive.Close className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <DialogPrimitive.Close aria-label="Закрыть" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
               <X className="h-4 w-4" />
             </DialogPrimitive.Close>
           </div>

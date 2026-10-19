@@ -91,7 +91,7 @@ export function UsersPage() {
                         {{ bouncer: 'Bouncer', microsoft: 'Bouncer', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
                       </td>
                       <td className="px-4 py-3">
-                        <Select className="h-8 w-52" value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
+                        <Select className="h-8 w-52" aria-label={`Отдел: ${u.display_name}`} value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
                           <option value="">— без отдела —</option>
                           {departments.data?.map((d) => (
                             <option key={d.id} value={d.id}>

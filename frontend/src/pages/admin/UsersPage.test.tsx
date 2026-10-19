@@ -86,6 +86,13 @@ describe('UsersPage', () => {
     expect(await within(rowOf('Иван Иванов')).findByRole('option', { name: 'Аналитика' })).toBeInTheDocument()
   })
 
+  it('выбор отдела в строке подписан именем сотрудника', async () => {
+    renderWithProviders(<UsersPage />)
+    await screen.findByText('Иван Иванов')
+    expect(screen.getByRole('combobox', { name: 'Отдел: Иван Иванов' })).toHaveValue('5')
+    expect(screen.getByRole('combobox', { name: 'Отдел: Админ' })).toHaveValue('')
+  })
+
   it('смена отдела отправляет PATCH с department_id', async () => {
     const user = userEvent.setup()
     renderWithProviders(<UsersPage />)

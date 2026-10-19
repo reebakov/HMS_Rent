@@ -82,6 +82,7 @@ export function CatalogPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
+            aria-label="Поиск по каталогу"
             placeholder="Имя, процессор, видеокарта…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -89,6 +90,7 @@ export function CatalogPage() {
         </div>
         <Select
           className="w-36"
+          aria-label="Минимум ОЗУ"
           value={String(filters.min_ram ?? 0)}
           onChange={(e) => update({ min_ram: e.target.value === '0' ? undefined : e.target.value })}
         >
@@ -98,7 +100,7 @@ export function CatalogPage() {
             </option>
           ))}
         </Select>
-        <Select className="w-44" value={filters.sort} onChange={(e) => update({ sort: e.target.value })}>
+        <Select className="w-44" aria-label="Сортировка" value={filters.sort} onChange={(e) => update({ sort: e.target.value })}>
           <option value="name">По имени</option>
           <option value="ram_desc">Сначала мощнее</option>
           <option value="ram_asc">Сначала проще</option>
@@ -106,6 +108,7 @@ export function CatalogPage() {
         {tier !== 'vm' && (
           <button
             onClick={() => update({ gpu: filters.gpu_only ? undefined : '1' })}
+            aria-pressed={!!filters.gpu_only}
             className={cn(
               'h-9 rounded-lg border px-3 text-[13px] font-medium transition-colors',
               filters.gpu_only ? 'border-primary bg-primary/10 text-primary' : 'bg-card hover:bg-muted/60',

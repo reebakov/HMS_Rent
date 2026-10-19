@@ -28,15 +28,16 @@ export function JournalPage() {
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
           <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" placeholder="ПК, имя или ник…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input className="pl-9" aria-label="Поиск по журналу" placeholder="ПК, имя или ник…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select className="w-40" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
+          <Select className="w-40" aria-label="Фильтр по статусу" value={filters.status ?? ''} onChange={(e) => set({ status: e.target.value || undefined })}>
             <option value="">Все</option>
             <option value="active">Активные</option>
             <option value="returned">Возвращённые</option>
           </Select>
           <Select
             className="w-48"
+            aria-label="Фильтр по отделу"
             value={filters.department_id ?? ''}
             onChange={(e) => set({ department_id: e.target.value ? Number(e.target.value) : undefined })}
           >
@@ -49,9 +50,9 @@ export function JournalPage() {
           </Select>
           <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
             с
-            <Input type="date" className="w-40" value={filters.date_from ?? ''} onChange={(e) => set({ date_from: e.target.value || undefined })} />
+            <Input type="date" className="w-40" aria-label="Дата с" value={filters.date_from ?? ''} onChange={(e) => set({ date_from: e.target.value || undefined })} />
             по
-            <Input type="date" className="w-40" value={filters.date_to ?? ''} onChange={(e) => set({ date_to: e.target.value || undefined })} />
+            <Input type="date" className="w-40" aria-label="Дата по" value={filters.date_to ?? ''} onChange={(e) => set({ date_to: e.target.value || undefined })} />
           </div>
           <span className={cn('ml-auto text-[13px] text-muted-foreground', isFetching && 'animate-pulse')}>
             {data ? `${data.length} записей` : ''}

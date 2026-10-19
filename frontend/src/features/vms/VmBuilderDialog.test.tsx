@@ -134,6 +134,10 @@ describe('VmBuilderDialog', () => {
     await setup()
     expect(screen.getByRole('dialog', { name: 'Конструктор виртуалки' })).toBeInTheDocument()
     expect(sliders().map((s) => s.value)).toEqual(['2', '4', '50'])
+    // ползунки доступны по имени
+    expect(screen.getByRole('slider', { name: 'Ядра' })).toHaveValue('2')
+    expect(screen.getByRole('slider', { name: 'Память' })).toHaveValue('4')
+    expect(screen.getByRole('slider', { name: 'Диск' })).toHaveValue('50')
     expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue('Иван Иванов')
     // ник — часть логина до «@»
     expect(screen.getByLabelText(/Ник/)).toHaveValue('i.ivanov')

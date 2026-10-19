@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EventsPage } from './EventsPage'
 import { api } from '@/lib/api'
@@ -81,13 +81,31 @@ describe('EventsPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<EventsPage />)
     await screen.findByText('1–100 из 750')
-    // кнопки пагинации по порядку: «в начало», «назад», «вперёд», «в конец»
-    const next = within(screen.getByText(/Стр\. 1 из 8/).parentElement!).getAllByRole('button')[2]
-    await user.click(next)
+    await user.click(screen.getByRole('button', { name: 'Следующая страница' }))
     await screen.findByText('101–200 из 750')
     await new Promise((r) => setTimeout(r, 400)) // дольше дебаунса поиска в 250 мс
     expect(screen.getByText('101–200 из 750')).toBeInTheDocument()
     expect(lastQuery()).toMatchObject({ offset: 100 })
+  })
+
+  it('поиск, тип события и даты доступны по подписи', async () => {
+    renderWithProviders(<EventsPage />)
+    await screen.findByText('PC-010')
+    expect(screen.getByRole('textbox', { name: 'Поиск по логам' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Тип события' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Дата с')).toHaveAttribute('type', 'date')
+    expect(screen.getByLabelText('Дата по')).toHaveAttribute('type', 'date')
+  })
+
+  it('пагинация: страница меняет запрос, текущая помечена aria-current', async () => {
+    total = 750
+    const user = userEvent.setup()
+    renderWithProviders(<EventsPage />)
+    await screen.findByText('1–100 из 750')
+    expect(screen.getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: 'На последнюю страницу' }))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ offset: 700 }))
+    expect(await screen.findByText('701–750 из 750')).toBeInTheDocument()
   })
 
   it('фильтр типа события попадает в запрос', async () => {

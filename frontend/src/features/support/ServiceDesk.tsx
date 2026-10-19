@@ -131,11 +131,12 @@ export function RequestSheet({ id, onClose }: { id: number | null; onClose: () =
           <div className="flex w-full gap-2">
             <Textarea
               className="min-h-[44px] flex-1"
+              aria-label="Ответ администраторам"
               placeholder="Ответить администраторам…"
               value={reply}
               onChange={(e) => setReply(e.target.value)}
             />
-            <Button onClick={send} loading={add.isPending} disabled={!reply.trim()}>
+            <Button onClick={send} loading={add.isPending} disabled={!reply.trim()} aria-label="Отправить ответ">
               <Send className="h-4 w-4" />
             </Button>
           </div>

@@ -113,6 +113,16 @@ describe('JournalPage', () => {
     expect(journalCalls()).toHaveLength(1)
   })
 
+  it('поиск, фильтры и даты доступны по подписи', async () => {
+    renderWithProviders(<JournalPage />)
+    await screen.findByText('PC-010')
+    expect(screen.getByRole('textbox', { name: 'Поиск по журналу' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Фильтр по статусу' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Фильтр по отделу' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Дата с')).toHaveAttribute('type', 'date')
+    expect(screen.getByLabelText('Дата по')).toHaveAttribute('type', 'date')
+  })
+
   it('фильтры статуса и отдела попадают в запрос', async () => {
     const user = userEvent.setup()
     renderWithProviders(<JournalPage />)
