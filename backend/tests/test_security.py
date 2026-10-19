@@ -6,10 +6,14 @@ import pytest
 
 from app.core.config import settings
 from app.core.security import (
-    ALGORITHM, create_oauth_state, create_session_token, decode_session_token, hash_password, read_oauth_state,
+    ALGORITHM,
+    create_oauth_state,
+    create_session_token,
+    decode_session_token,
+    hash_password,
+    read_oauth_state,
     verify_password,
 )
-
 
 # ---------- Пароли ----------
 

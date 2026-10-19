@@ -13,7 +13,16 @@ log = logging.getLogger(__name__)
 
 
 class ServiceDeskError(Exception):
-    pass
+    """Ошибка Service Desk. str(exc) содержит подробности (в т.ч. начало тела ответа Jira) — только для логов и
+    служебных полей; пользователю показывается user_message."""
+
+    user_message = "Service Desk отклонил запрос, попробуйте позже"
+
+
+class ServiceDeskUnavailable(ServiceDeskError):
+    """Нет связи с Jira или Service Desk не настроен: запрос не дошёл до Jira."""
+
+    user_message = "Service Desk недоступен"
 
 
 @dataclass
@@ -36,7 +45,7 @@ def portal_url(issue_key: str) -> str:
 
 def _client() -> httpx.AsyncClient:
     if not settings.service_desk_configured:
-        raise ServiceDeskError("Service Desk не настроен: задайте SD_TOKEN (или SD_USERNAME/SD_PASSWORD) в .env")
+        raise ServiceDeskUnavailable("Service Desk не настроен: задайте SD_TOKEN (или SD_USERNAME/SD_PASSWORD) в .env")
     headers = {"Accept": "application/json", "X-ExperimentalApi": "opt-in"}
     auth = None
     if settings.sd_token:
@@ -53,7 +62,7 @@ async def _send(http: httpx.AsyncClient, method: str, url: str, **kwargs) -> htt
         return await http.request(method, url, **kwargs)
     except httpx.HTTPError as exc:  # str(ReadTimeout()) бывает пустым — имя класса есть всегда
         detail = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
-        raise ServiceDeskError(f"Service Desk недоступен ({method} {url}): {detail}") from exc
+        raise ServiceDeskUnavailable(f"Service Desk недоступен ({method} {url}): {detail}") from exc
 
 
 def _json_object(resp: httpx.Response) -> dict:

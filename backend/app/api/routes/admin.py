@@ -7,8 +7,20 @@ from app.api.deps import DB, AdminUser
 from app.core import clock
 from app.models import Booking, Department, Pool, SyncRun
 from app.schemas.admin import (
-    ComputerAdminUpdate, ComputerHistoryOut, DepartmentUsage, EventOut, EventPage, InventoryPage, InventoryRow,
-    PoolAssign, PoolAssignResult, PoolOut, PoolSave, StatsOut, SyncInfoOut, SyncRunOut,
+    ComputerAdminUpdate,
+    ComputerHistoryOut,
+    DepartmentUsage,
+    EventOut,
+    EventPage,
+    InventoryPage,
+    InventoryRow,
+    PoolAssign,
+    PoolAssignResult,
+    PoolOut,
+    PoolSave,
+    StatsOut,
+    SyncInfoOut,
+    SyncRunOut,
 )
 from app.schemas.booking import BookingOut
 from app.schemas.department import DepartmentCreate, DepartmentOut, DepartmentUpdate

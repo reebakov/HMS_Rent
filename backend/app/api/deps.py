@@ -29,7 +29,9 @@ async def get_current_user(request: Request, session: DB) -> User:
     if user.auth_source != "local":
         # права SSO-пользователей (Bouncer) берутся из config/admins.txt на каждом запросе:
         # добавили/убрали почту — изменение действует сразу, без повторного входа
-        admin = is_admin_email(user.email or user.username) or (user.auth_source == "dev" and user.username == "admin")
+        # dev/admin — админ только пока включён AUTH_DEV_ENABLED: демо-запись, попавшая на прод, прав не даёт
+        dev_admin = settings.auth_dev_enabled and user.auth_source == "dev" and user.username == "admin"
+        admin = is_admin_email(user.email or user.username) or dev_admin
         user.role = UserRole.admin.value if admin else UserRole.user.value
     return user
 

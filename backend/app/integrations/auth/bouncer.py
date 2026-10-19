@@ -1,12 +1,19 @@
 """Вход через корпоративный SSO (Bouncer) по стандарту OpenID Connect."""
+import logging
 import time
 from urllib.parse import urlencode
+
 import httpx
 import jwt
 
 from app.core.admins import is_admin_email
 from app.core.config import settings
 from app.integrations.auth.base import AuthError, AuthResult
+
+log = logging.getLogger("hmsrent.bouncer")
+
+_INVALID_SESSION = "Сессия входа некорректна, обратитесь к администратору портала"
+
 
 def redirect_uri() -> str:
     return settings.public_url.rstrip("/") + settings.api_prefix + "/auth/bouncer/callback"
@@ -21,6 +28,23 @@ def authorization_url(state: str, nonce: str) -> str:
         "nonce": nonce,
     }
     return f"{settings.bouncer_authorize_url}?{urlencode(params)}"
+
+def _check_audience_and_issuer(claims: dict) -> None:
+    """Токен выписан для нашего клиента (aud) и, если задано, нужным издателем (iss).
+
+    Подпись не проверяется (токен пришёл прямым TLS-запросом с token endpoint), но aud и iss защищают от настройки
+    с чужим client_id и от токена другого клиента. Пользователю — общий текст, причина и claims — в лог (без токена).
+    """
+    aud = claims.get("aud")
+    audiences = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
+    if settings.bouncer_client_id not in audiences:
+        log.warning("id_token отклонён: aud=%r не содержит client_id=%r (проверьте BOUNCER_CLIENT_ID)",
+                    aud, settings.bouncer_client_id)
+        raise AuthError(_INVALID_SESSION)
+    if settings.bouncer_issuer and claims.get("iss") != settings.bouncer_issuer:
+        log.warning("id_token отклонён: iss=%r, ожидался BOUNCER_ISSUER=%r", claims.get("iss"), settings.bouncer_issuer)
+        raise AuthError(_INVALID_SESSION)
+
 
 async def exchange_code(code: str, nonce: str) -> AuthResult:
     try:
@@ -51,6 +75,7 @@ async def exchange_code(code: str, nonce: str) -> AuthResult:
     
     if claims.get("exp", 0) < time.time() or claims.get("nonce") != nonce:
         raise AuthError("Сессия входа устарела, попробуйте ещё раз")
+    _check_audience_and_issuer(claims)
 
     # Ищем логин в стандартных полях
     candidates = [str(claims.get(k) or "").strip().lower() for k in ("email", "preferred_username", "upn", "sub")]

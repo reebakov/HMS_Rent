@@ -86,7 +86,8 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
     try:
         await _send(req, settings.sd_request_type_problem, user.username)
     except sd.ServiceDeskError as exc:
-        raise DomainError(f"Не удалось создать заявку: {exc}") from exc
+        log.warning("Заявка по проблеме не создана: %s", exc)  # подробности Jira — только в лог
+        raise DomainError(f"Не удалось создать заявку: {exc.user_message}") from exc
     session.add(req)
     await session.commit()
     return req
@@ -154,7 +155,8 @@ async def get_with_comments(session: AsyncSession, user: User, request_id: int) 
         await session.commit()
         comments = await sd.get_comments(req.issue_key)
     except sd.ServiceDeskError as exc:
-        raise DomainError(f"Jira недоступна: {exc}") from exc
+        log.warning("Заявка %s: статус и комментарии не получены: %s", req.issue_key, exc)
+        raise DomainError(exc.user_message) from exc
     return req, comments
 
 
@@ -165,7 +167,8 @@ async def add_comment(session: AsyncSession, user: User, request_id: int, text: 
     try:
         await sd.add_comment(req.issue_key, user.display_name, text)
     except sd.ServiceDeskError as exc:
-        raise DomainError(f"Не удалось отправить сообщение: {exc}") from exc
+        log.warning("Комментарий к заявке %s не отправлен: %s", req.issue_key, exc)
+        raise DomainError(f"Не удалось отправить сообщение: {exc.user_message}") from exc
 
 
 async def refresh_open(session: AsyncSession, batch: int = 20) -> None:

@@ -9,8 +9,6 @@ from app.integrations.insight.base import InsightError, InsightObject
 from app.integrations.insight.client import InsightClient
 from app.integrations.insight.mock import MockInsightSource
 
-from .insight_samples import TYPE_ID
-
 MAPPING_YAML = """
 object_schema_id: 7
 query: 'objectType = "Custom"'

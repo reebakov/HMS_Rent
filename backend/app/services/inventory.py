@@ -11,9 +11,7 @@ from app.core import clock
 from app.db.search import ilike_any
 from app.integrations.insight.factory import get_mapping
 from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, Department, SyncRun, Tier
-from app.schemas.admin import (
-    DepartmentUsage, InventoryBooking, InventoryRow, StatsOut, SyncRunOut, TierStat,
-)
+from app.schemas.admin import DepartmentUsage, InventoryBooking, InventoryRow, StatsOut, SyncRunOut, TierStat
 from app.services import runtime
 
 TIER_LABELS = {"weak": "Слабый", "medium": "Средний", "powerful": "Мощный", "vm": "Виртуальная"}

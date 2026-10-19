@@ -163,7 +163,7 @@ async def test_csv_excel_format_and_cyrillic(session, make_computer, make_pool, 
     assert text.startswith("﻿") and text.split("\n")[0].count(";") == 19  # BOM + разделитель «;»
     header, row = rows[0], rows[1]
     assert len(rows) == 2 and len(row) == len(header) == 20
-    data = dict(zip(header, row))
+    data = dict(zip(header, row, strict=True))
     assert data["ПК"] == "Ж-01" and data["Категория"] == "Мощный" and data["Статус портала"] == "Забронирован"
     assert data["Пул выдачи"] == "Основной" and data["Команда-получатель"] == "Тестирование (QA)"
     assert data["Забронировал"] == "Пётр Петров" and data["Ник"] == "petya"
@@ -177,7 +177,7 @@ async def test_csv_escapes_special_characters(session, make_computer, make_user,
     await add_booking(session, comp, await make_user("u"), await make_department("QA"), requester_name=nasty)
     text, rows = await csv_rows(session)
     assert len(rows) == 2 and len(rows[1]) == 20  # перенос строки внутри поля не ломает структуру
-    data = dict(zip(rows[0], rows[1]))
+    data = dict(zip(rows[0], rows[1], strict=True))
     assert data["Расположение"] == nasty and data["Забронировал"] == nasty
     assert data["ОС"] == "a,b" and data["Видеокарта"] == 'say "hi"'
     assert '"say ""hi"""' in text  # кавычки удвоены по RFC 4180
@@ -186,7 +186,7 @@ async def test_csv_escapes_special_characters(session, make_computer, make_user,
 async def test_csv_empty_values_and_unknown_labels(session, make_computer):
     await make_computer("A1", status="maintenance", tier="vm")
     _, rows = await csv_rows(session)
-    data = dict(zip(rows[0], rows[1]))
+    data = dict(zip(rows[0], rows[1], strict=True))
     assert data["Статус портала"] == "Резерв" and data["Категория"] == "Виртуальная"
     assert data["ОЗУ, ГБ"] == "" and data["Забронировал"] == "" and data["С даты"] == ""
 
@@ -194,7 +194,7 @@ async def test_csv_empty_values_and_unknown_labels(session, make_computer):
 async def test_csv_issues_joined(session, make_computer):
     await make_computer("A1", writeback_error="err")
     _, rows = await csv_rows(session)
-    assert "Ошибка записи в Insight: err" in dict(zip(rows[0], rows[1]))["Расхождения"]
+    assert "Ошибка записи в Insight: err" in dict(zip(rows[0], rows[1], strict=True))["Расхождения"]
 
 
 async def test_csv_empty_fleet_has_only_header(session):
@@ -208,7 +208,7 @@ async def test_csv_formula_injection(session, make_computer, make_user, make_dep
     comp = await make_computer("A1", status="booked", serial_number="+1-2-3")
     await add_booking(session, comp, await make_user("u"), await make_department("QA"), requester_name=evil)
     _, rows = await csv_rows(session)
-    row = dict(zip(rows[0], rows[1]))
+    row = dict(zip(rows[0], rows[1], strict=True))
     assert row["Забронировал"] == "'" + evil
     assert row["Серийный номер"] == "'+1-2-3"
     assert not any(cell[:1] in ("=", "+", "-", "@") for cell in rows[1] if cell)

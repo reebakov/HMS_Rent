@@ -11,7 +11,6 @@ import pytest
 from sqlalchemy import func, select
 
 from app.api.routes import auth as auth_routes
-from app.services import auth as auth_service, auth_throttle
 from app.core import admins
 from app.core.config import settings
 from app.core.security import create_session_token
@@ -19,6 +18,8 @@ from app.integrations.auth import bouncer
 from app.integrations.auth.base import AuthResult
 from app.main import app
 from app.models import User, UserRole
+from app.services import auth as auth_service
+from app.services import auth_throttle
 
 ADMIN = UserRole.admin.value
 
@@ -341,10 +342,15 @@ async def test_sso_user_matched_by_username_when_no_email(client, login, make_us
     assert (await client.get(api("/admin/stats"))).status_code == 200
 
 
-async def test_dev_user_named_admin_is_admin_without_list(client, login, make_user, admins_file, api):
+@pytest.mark.parametrize("dev_enabled,status", [(True, 200), (False, 403)])
+async def test_dev_user_named_admin_is_admin_only_while_dev_login_enabled(client, login, make_user, admins_file, api,
+                                                                          monkeypatch, dev_enabled, status):
+    """Админ без списка — только при AUTH_DEV_ENABLED; иначе запись dev/admin на проде была бы админом."""
+    monkeypatch.setattr(settings, "auth_dev_enabled", dev_enabled)
     admins_file()
     login(await make_user("admin", auth_source="dev", password=None))
-    assert (await client.get(api("/admin/stats"))).status_code == 200
+    assert (await client.get(api("/admin/stats"))).status_code == status
+    assert (await client.get(api("/auth/me"))).json()["user"]["role"] == ("admin" if dev_enabled else "user")
 
 
 async def test_local_admin_not_governed_by_list(client, login, make_user, admins_file, api):

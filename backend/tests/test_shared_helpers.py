@@ -27,7 +27,7 @@ async def test_block_without_error_passes_through(session):
 async def test_other_errors_are_not_swallowed(session):
     with pytest.raises(ZeroDivisionError):
         async with conflict_on_integrity_error(session, "не нужен"):
-            1 / 0
+            _ = 1 / 0
 
 
 async def test_get_active_department(session, make_department):

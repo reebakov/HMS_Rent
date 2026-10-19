@@ -41,7 +41,7 @@ async def test_create_problem_jira_down_is_domain_error(session, env, jira, exc)
 async def test_get_with_comments_jira_down_is_domain_error(session, env, jira):  # noqa: F811
     req = await add_req(session, env.owner, booking=env.booking, key="HMS-1")
     jira.get(f"{API}/request/HMS-1").mock(side_effect=httpx.ConnectError("refused"))
-    with pytest.raises(DomainError, match="Jira недоступна: Service Desk недоступен"):
+    with pytest.raises(DomainError, match="^Service Desk недоступен$"):
         await svc.get_with_comments(session, env.owner, req.id)
 
 
@@ -75,3 +75,33 @@ async def test_api_create_request_jira_down_is_client_error(client, login, api, 
     login(env.owner)
     r = await client.post(api("/requests"), json={"booking_id": env.booking.id, "message": "не включается"})
     assert r.status_code == 400 and "Не удалось создать заявку" in r.json()["detail"]
+
+
+# ---------- Jira ответила ошибкой: тело ответа не должно попасть к пользователю ----------
+
+SECRET_BODY = "customfield_10042: internal secret detail"
+
+
+async def test_api_create_request_jira_error_body_not_exposed(client, login, api, env, jira, caplog):  # noqa: F811
+    jira.post(f"{API}/request").respond(400, json={"errorMessage": SECRET_BODY})
+    login(env.owner)
+    r = await client.post(api("/requests"), json={"booking_id": env.booking.id, "message": "не включается"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Не удалось создать заявку: Service Desk отклонил запрос, попробуйте позже"
+    assert SECRET_BODY not in r.text
+    assert SECRET_BODY in caplog.text  # подробности остались в логе
+
+
+async def test_get_with_comments_jira_error_body_not_exposed(session, env, jira):  # noqa: F811
+    req = await add_req(session, env.owner, booking=env.booking, key="HMS-1")
+    jira.get(f"{API}/request/HMS-1").respond(500, text=SECRET_BODY)
+    with pytest.raises(DomainError) as e:
+        await svc.get_with_comments(session, env.owner, req.id)
+    assert str(e.value) == "Service Desk отклонил запрос, попробуйте позже" and SECRET_BODY not in str(e.value)
+
+
+async def test_return_request_jira_error_keeps_details_in_error_field(session, env, jira):  # noqa: F811
+    jira.post(f"{API}/request").respond(400, json={"errorMessage": SECRET_BODY})
+    await svc.create_return(session, env.booking.id, env.owner)
+    (req,) = await rows()
+    assert SECRET_BODY in req.error  # для фоновой заявки подробности хранятся в ServiceRequest.error, как и раньше

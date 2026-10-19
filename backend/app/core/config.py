@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     bouncer_token_url: str = ""
     bouncer_client_id: str = ""
     bouncer_client_secret: str = ""
+    bouncer_issuer: str = ""  # ожидаемый iss в id_token; пусто — не проверять
     admins_file: str = "config/admins.txt"
     auth_local_enabled: bool = True
     auth_dev_enabled: bool = False

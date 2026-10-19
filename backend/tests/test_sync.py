@@ -153,8 +153,8 @@ async def test_booked_computer_keeps_booked_status(session, monkeypatch, make_co
 
 async def test_writeback_pending_ignores_foreign_status(session, monkeypatch, make_computer, make_pool):
     old_pool = await make_pool("Old")
-    comp = await make_computer("A001", status="available", insight_object_id=1, writeback_pending=True,
-                               pool=old_pool, order_number=None)
+    await make_computer("A001", status="available", insight_object_id=1, writeback_pending=True,
+                         pool=old_pool, order_number=None)
     use(monkeypatch, insight_obj(1, "A001", status="В ремонте", **{"Пул выдачи": "Other", "Номер заказа": "9"}))
     await run_sync(session)
     c = (await reload_computers(session))["A001"]
