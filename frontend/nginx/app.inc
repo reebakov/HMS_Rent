@@ -1,4 +1,5 @@
-# Общие настройки приложения для всех server-блоков (подключается из tls.conf). Копия логики frontend/nginx.conf.
+# Общие настройки приложения для всех server-блоков: подключается из http.conf (образ frontend, COPY в Dockerfile) и
+# из deploy/nginx/tls.conf (HTTPS, монтируется docker-compose.tls.yml). Единственный источник locations и gzip.
 root /usr/share/nginx/html;
 
 # API и Swagger — на backend

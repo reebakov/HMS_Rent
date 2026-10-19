@@ -8,6 +8,7 @@ RUN npm run build
 
 # --- раздача статики + прокси на API ---
 FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/http.conf /etc/nginx/conf.d/default.conf
+COPY nginx/app.inc /etc/nginx/app.inc
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

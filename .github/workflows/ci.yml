@@ -65,7 +65,8 @@ jobs:
       - name: nginx -t (http)
         run: |
           docker run --rm --add-host backend:127.0.0.1 \
-            -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/frontend/nginx/http.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/frontend/nginx/app.inc:/etc/nginx/app.inc:ro" \
             nginx:1.27-alpine nginx -t
       - name: nginx -t (https)
         run: |
@@ -74,7 +75,7 @@ jobs:
             -keyout "$certs/privkey.pem" -out "$certs/fullchain.pem"
           docker run --rm --add-host backend:127.0.0.1 \
             -v "$PWD/deploy/nginx/tls.conf:/etc/nginx/conf.d/default.conf:ro" \
-            -v "$PWD/deploy/nginx/app.inc:/etc/nginx/app.inc:ro" \
+            -v "$PWD/frontend/nginx/app.inc:/etc/nginx/app.inc:ro" \
             -v "$certs:/etc/nginx/certs:ro" \
             nginx:1.27-alpine nginx -t
 
