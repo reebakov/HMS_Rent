@@ -116,6 +116,8 @@ backend при старте. Откат на конкретный коммит: 
 Переход со сборки на сервере на образы: `sudo git pull --ff-only origin main && sudo ./scripts/deploy.sh --redeploy`.
 Параметры окружения скрипта: `IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`.
 
+HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md). Включается сам, когда в `certs/` лежат `fullchain.pem` и `privkey.pem`.
+
 ## Локальная разработка без Docker
 
 ```bash
@@ -141,4 +143,4 @@ cd frontend && npm install && npm run dev
 - `make test-down` — остановить и удалить тестовые контейнеры и тома.
 - Без Docker: `cd frontend && npm run test` (или `npm run test:watch`), `cd backend && pytest`.
 - Тесты фронтенда лежат рядом с кодом (`*.test.ts(x)`), общие хелперы — в `frontend/src/test/`.
-- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`.
+- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`. Если менялась только документация, скрипты выкатки или compose-файлы прода (изменений в `backend/`, `frontend/`, `.github/` и `docker-compose.test.yml` нет), тесты пропускаются; образы на push в `main` собираются всегда.

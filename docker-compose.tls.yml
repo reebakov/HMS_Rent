@@ -1,0 +1,14 @@
+# Дополнение к docker-compose.prod.yml: HTTPS. deploy.sh подключает его сам, если на сервере есть
+# certs/fullchain.pem и certs/privkey.pem. Вручную:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+# Порты можно переопределить: HTTP_REDIRECT_PORT (80), HTTPS_PORT (443), HTTP_PORT (8080, только 127.0.0.1).
+services:
+  frontend:
+    ports: !override
+      - "${HTTP_REDIRECT_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"   # только локальные проверки, наружу порт 8080 больше не открыт
+    volumes:
+      - ./deploy/nginx/tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/app.inc:/etc/nginx/app.inc:ro
+      - ./certs:/etc/nginx/certs:ro
