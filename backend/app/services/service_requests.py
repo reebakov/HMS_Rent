@@ -8,11 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
+from app.integrations.servicedesk import portal_url
 from app.models import Booking, ServiceRequest, User, VirtualMachine
+from app.schemas.service_request import RequestOut
 
 log = logging.getLogger(__name__)
 
 REFRESH_EVERY = timedelta(minutes=2)
+
+
+def request_out(req: ServiceRequest) -> RequestOut:
+    row = RequestOut.model_validate(req)
+    row.url = portal_url(req.issue_key) if req.issue_key else None
+    return row
 
 
 def _can_access(user: User, owner_id: int, department_id: int) -> bool:

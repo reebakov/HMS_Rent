@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import Conflict, Forbidden, NotFound
 import logging
 
+from app.db.session import SessionLocal
 from app.integrations.insight.factory import create_insight_source, get_mapping
 from app.integrations.insight.mapping import map_object
 from app.integrations.notify import notify
@@ -15,8 +16,9 @@ from app.models import Booking, BookingStatus, Computer, ComputerStatus, Departm
 from app.schemas.booking import BookingCreate
 from app.services.events import add_event
 from app.services.orders import next_order_number
-from app.services import runtime
+from app.services import runtime, service_requests
 from app.services.pools import pool_visible
+from app.services.writeback import push_pending
 
 log = logging.getLogger(__name__)
 
@@ -161,3 +163,19 @@ async def list_user_bookings(session: AsyncSession, user: User) -> list[Booking]
         select(Booking).where(Booking.user_id == user.id).order_by(Booking.booked_at.desc()).limit(200)
     )
     return list(rows.unique().all())
+
+
+# Фоновые задачи после ответа: сессия запроса к этому моменту уже закрыта, поэтому у задач своя.
+
+async def push_to_insight() -> None:
+    """Сразу после брони/возврата отправляем статус в Insight, не дожидаясь круга воркера."""
+    async with SessionLocal() as session:
+        await push_pending(session)
+
+
+async def create_return_request(booking_id: int, user_id: int) -> None:
+    """Заявка «Возврат ПК» в Service Desk — в фоне, чтобы не задерживать возврат."""
+    async with SessionLocal() as session:
+        actor = await session.get(User, user_id)
+        if actor is not None:
+            await service_requests.create_return(session, booking_id, actor)
