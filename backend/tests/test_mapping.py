@@ -168,6 +168,17 @@ def test_map_object_custom_default_status():
     assert map_object(obj({"S": "x"}), m).status == "maintenance"
 
 
+@pytest.mark.parametrize("raw, expected", [
+    ("Свободен", "available"), ("свободен", "available"), ("что-то новое", "unknown"), (None, "unknown"), ("", "unknown"),
+])
+def test_portal_status(raw, expected):
+    assert mp(status_map={"свободен": "available"}).portal_status(raw) == expected
+
+
+def test_portal_status_custom_default():
+    assert mp(status_map={}, default_status="maintenance").portal_status("x") == "maintenance"
+
+
 @pytest.mark.parametrize("raw, expected", [("Мощный", "powerful"), ("слабый", "weak"), ("???", None), (None, None)])
 def test_map_object_tier(raw, expected):
     m = mp(attributes={"tier": "Класс"}, tier_values={"мощный": "powerful", "слабый": "weak"})

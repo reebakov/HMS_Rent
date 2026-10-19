@@ -39,6 +39,10 @@ class InsightMapping:
     tier_values: dict[str, str] = field(default_factory=dict)  # значение Insight (lower) -> Tier
     writeback: WritebackMapping = field(default_factory=WritebackMapping)
 
+    def portal_status(self, insight_status: str | None) -> str:
+        """Статус Insight -> статус ПК на портале (ComputerStatus); неописанный в status_map — default_status."""
+        return self.status_map.get((insight_status or "").lower(), self.default_status)
+
 
 @dataclass
 class ComputerData:
@@ -187,7 +191,7 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         return specs.get(field_name)  # отдельный атрибут важнее строки характеристик
 
     insight_status = get("status")
-    status = mapping.status_map.get((insight_status or "").lower(), mapping.default_status)
+    status = mapping.portal_status(insight_status)
     tier_raw = get("tier")
     storage = get("storage")
     ram = get("ram")

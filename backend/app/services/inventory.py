@@ -25,8 +25,7 @@ STATUS_LABELS = {
 
 def computer_issues(comp: Computer, booking: Booking | None) -> list[str]:
     """Расхождения между порталом и Insight — то, на что админу стоит посмотреть."""
-    mapping = get_mapping()
-    insight = mapping.status_map.get((comp.insight_status or "").lower(), mapping.default_status)
+    insight = get_mapping().portal_status(comp.insight_status)
     issues: list[str] = []
     if booking and comp.is_archived:
         issues.append("ПК пропал из Insight, но закреплён за отделом")

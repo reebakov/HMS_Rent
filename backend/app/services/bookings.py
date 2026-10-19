@@ -1,22 +1,21 @@
 """Бронирование и возврат компьютеров."""
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, Forbidden, NotFound
-import logging
-
+from app.db.integrity import conflict_on_integrity_error
 from app.db.session import SessionLocal
 from app.integrations.insight.factory import create_insight_source, get_mapping
 from app.integrations.insight.mapping import map_object
 from app.integrations.notify import notify
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, User
+from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate
 from app.services.events import add_event
 from app.services.orders import next_order_number
-from app.services import runtime, service_requests
+from app.services import departments, runtime, service_requests
 from app.services.pools import pool_visible
 from app.services.writeback import push_pending
 
@@ -34,8 +33,7 @@ async def get_booking(session: AsyncSession, booking_id: int) -> Booking:
 
 def status_after_return(comp: Computer) -> str:
     """Во что превращается ПК после возврата — решает статус в Insight."""
-    mapping = get_mapping()
-    insight = mapping.status_map.get((comp.insight_status or "").lower(), mapping.default_status)
+    insight = get_mapping().portal_status(comp.insight_status)
     if insight == ComputerStatus.in_use and runtime.current().insight_writeback:
         return ComputerStatus.available.value  # «занят» в Insight поставили мы сами — сейчас вернём «свободен»
     return insight
@@ -75,9 +73,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         comp.insight_status, comp.status = fresh.insight_status, fresh.status
         await session.commit()
         raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
-    dept = await session.get(Department, data.department_id)
-    if dept is None or not dept.is_active:
-        raise NotFound("Отдел не найден")
+    dept = await departments.get_active(session, data.department_id)
 
     order_number = await next_order_number(session)  # берём номер в последнюю очередь, чтобы не плодить пропуски
     booking = Booking(
@@ -97,7 +93,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     comp.usage_until = data.expected_return_at
     comp.order_number = order_number
     comp.writeback_pending = runtime.current().insight_writeback
-    try:
+    async with conflict_on_integrity_error(session, f"{comp.name} только что забронировали"):
         await session.flush()
         add_event(
             session,
@@ -110,9 +106,6 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
             message=f"Заказ №{order_number}. Закреплён за отделом «{dept.name}»: {booking.requester_name} ({booking.requester_nick})",
         )
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(f"{comp.name} только что забронировали") from exc
 
     await notify(f"🖥 **{comp.name}** забронирован (заказ №{order_number}): {dept.name}, {booking.requester_name} ({booking.requester_nick})")
     return await get_booking(session, booking.id)

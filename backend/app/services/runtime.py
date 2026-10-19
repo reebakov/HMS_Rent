@@ -4,6 +4,7 @@
 Кэш на 5 секунд: API и worker видят изменения почти сразу, база не нагружается.
 """
 import time
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,15 @@ async def load(session: AsyncSession, max_age: float = 5.0) -> RuntimeConfig:
     return config
 
 
+async def put_setting(session: AsyncSession, key: str, value: Any) -> None:
+    """Записать настройку в app_settings (создать или обновить); commit — на вызывающем."""
+    row = await session.get(AppSetting, key)
+    if row is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+
+
 async def update(session: AsyncSession, changes: dict) -> RuntimeConfig:
     global _cache
     merged = (await load(session, max_age=0)).model_dump() | changes
@@ -60,11 +70,7 @@ async def update(session: AsyncSession, changes: dict) -> RuntimeConfig:
         raise ValueError("ключи шаблонов ОС должны быть уникальными")
     dumped = config.model_dump()  # JSON-совместимые значения (шаблоны ОС — список словарей)
     for key in changes:
-        row = await session.get(AppSetting, key)
-        if row is None:
-            session.add(AppSetting(key=key, value=dumped[key]))
-        else:
-            row.value = dumped[key]
+        await put_setting(session, key, dumped[key])
     await session.commit()
     _cache = (time.monotonic(), config)
     return config

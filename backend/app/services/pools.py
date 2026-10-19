@@ -2,10 +2,10 @@
 import re
 
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound, Unprocessable
+from app.db.integrity import conflict_on_integrity_error
 from app.models import Computer, ComputerStatus, Department, EventType, Pool, User
 from app.schemas.admin import PoolOut, PoolSave
 from app.services import departments, runtime
@@ -69,11 +69,8 @@ async def create_pool(session: AsyncSession, data: PoolSave) -> Pool:
                 is_published=True if data.is_published is None else data.is_published)
     pool.departments = await departments.get_many(session, data.department_ids or [])
     session.add(pool)
-    try:
+    async with conflict_on_integrity_error(session, NAME_TAKEN):
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(NAME_TAKEN) from exc
     return await session.get(Pool, pool.id, populate_existing=True)
 
 
@@ -86,11 +83,8 @@ async def update_pool(session: AsyncSession, pool_id: int, data: PoolSave) -> Po
         pool.departments = await departments.get_many(session, changes.pop("department_ids") or [])
     for field, value in changes.items():
         setattr(pool, field, value)
-    try:
+    async with conflict_on_integrity_error(session, NAME_TAKEN):
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(NAME_TAKEN) from exc
     return next(p for p in await list_pools(session) if p.id == pool.id)
 
 

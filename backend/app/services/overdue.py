@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingStatus, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
+from app.services import runtime
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
 DIGEST_HOUR = 10  # во сколько слать сводку по местному времени
@@ -73,8 +74,5 @@ async def daily_digest(session: AsyncSession) -> None:
             lines.append(f"- ВМ **{vm.name}** (заказ №{vm.order_number}) — {vm.department.name}, "
                          f"{vm.requester_name}, срок {vm.expected_return_at:%d.%m}, +{days_overdue(vm.expected_return_at)} дн.")
         await notify("\n".join(lines))
-    if row is None:
-        session.add(AppSetting(key=DIGEST_KEY, value=now.date().isoformat()))
-    else:
-        row.value = now.date().isoformat()
+    await runtime.put_setting(session, DIGEST_KEY, now.date().isoformat())
     await session.commit()

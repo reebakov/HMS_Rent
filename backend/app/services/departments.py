@@ -1,9 +1,9 @@
 """Справочник отделов."""
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, NotFound
+from app.core.errors import NotFound
+from app.db.integrity import conflict_on_integrity_error
 from app.models import Department
 from app.schemas.department import DepartmentCreate, DepartmentUpdate
 
@@ -22,6 +22,14 @@ async def get(session: AsyncSession, department_id: int) -> Department:
     return dept
 
 
+async def get_active(session: AsyncSession, department_id: int) -> Department:
+    """Отдел, на который можно оформлять аренду: отключённый считается ненайденным."""
+    dept = await session.get(Department, department_id)
+    if dept is None or not dept.is_active:
+        raise NotFound("Отдел не найден")
+    return dept
+
+
 async def get_many(session: AsyncSession, ids: list[int]) -> list[Department]:
     if not ids:
         return []
@@ -34,11 +42,8 @@ async def get_many(session: AsyncSession, ids: list[int]) -> list[Department]:
 async def create(session: AsyncSession, data: DepartmentCreate) -> Department:
     dept = Department(name=data.name, code=data.code, head_name=data.head_name)
     session.add(dept)
-    try:
+    async with conflict_on_integrity_error(session, NAME_TAKEN):
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(NAME_TAKEN) from exc
     return dept
 
 
@@ -46,9 +51,6 @@ async def update(session: AsyncSession, department_id: int, data: DepartmentUpda
     dept = await get(session, department_id)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(dept, field, value)
-    try:
+    async with conflict_on_integrity_error(session, NAME_TAKEN):
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(NAME_TAKEN) from exc
     return dept

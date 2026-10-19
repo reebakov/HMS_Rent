@@ -3,15 +3,15 @@ import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
+from app.db.integrity import conflict_on_integrity_error
 from app.integrations.vsphere import client as vsphere
-from app.models import Department, User, VirtualMachine, VmStatus
+from app.models import User, VirtualMachine, VmStatus
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
-from app.services import runtime
+from app.services import departments, runtime
 from app.services.orders import next_order_number
 
 ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
@@ -84,9 +84,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
         raise DomainError("Эта ОС пока недоступна — выберите другую")
     if data.disk_gb < tmpl.min_disk_gb:
         raise DomainError(f"Для {tmpl.label} диск — не меньше {tmpl.min_disk_gb} ГБ")
-    dept = await session.get(Department, data.department_id)
-    if dept is None or not dept.is_active:
-        raise NotFound("Отдел не найден")
+    dept = await departments.get_active(session, data.department_id)
     vm = VirtualMachine(
         order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
@@ -95,11 +93,8 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
         purpose=data.purpose or None, expected_return_at=data.expected_return_at, attrs={},
     )
     session.add(vm)
-    try:
+    async with conflict_on_integrity_error(session, f"Имя «{vm.name}» уже занято — придумайте другое"):
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise Conflict(f"Имя «{vm.name}» уже занято — придумайте другое") from exc
     return await get_vm(session, vm.id)
 
 
