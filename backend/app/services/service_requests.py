@@ -106,14 +106,19 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
     await session.commit()
 
 
-async def list_for_user(session: AsyncSession, user: User) -> list[ServiceRequest]:
-    """Свои заявки и заявки команды (по её ПК и виртуалкам)."""
+def _visible_to(user: User):
+    """Условие доступа к заявке: своя или заявка по ПК и виртуалкам команды."""
     team_bookings = select(Booking.id).where(Booking.department_id == user.department_id)
     team_vms = select(VirtualMachine.id).where(VirtualMachine.department_id == user.department_id)
     cond = ServiceRequest.user_id == user.id
     if user.department_id:
         cond = or_(cond, ServiceRequest.booking_id.in_(team_bookings), ServiceRequest.vm_id.in_(team_vms))
-    stmt = select(ServiceRequest).where(cond).order_by(ServiceRequest.created_at.desc()).limit(200)
+    return cond
+
+
+async def list_for_user(session: AsyncSession, user: User) -> list[ServiceRequest]:
+    """Свои заявки и заявки команды (по её ПК и виртуалкам)."""
+    stmt = select(ServiceRequest).where(_visible_to(user)).order_by(ServiceRequest.created_at.desc()).limit(200)
     return list((await session.scalars(stmt)).unique().all())
 
 
@@ -121,7 +126,11 @@ async def _get_accessible(session: AsyncSession, user: User, request_id: int) ->
     req = await session.get(ServiceRequest, request_id)
     if req is None:
         raise NotFound("Заявка не найдена")
-    if not user.is_admin and req.id not in {r.id for r in await list_for_user(session, user)}:
+    # Проверка в SQL по одной заявке, а не по списку list_for_user: тот обрезан 200 строками, и старые заявки
+    # автора считались бы чужими
+    if not user.is_admin and await session.scalar(
+        select(ServiceRequest.id).where(ServiceRequest.id == request_id, _visible_to(user))
+    ) is None:
         raise Forbidden("Нет доступа к заявке")
     return req
 

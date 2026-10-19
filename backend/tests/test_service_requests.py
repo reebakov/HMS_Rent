@@ -317,6 +317,21 @@ async def test_get_with_comments_access(session, env, sd, who, ok):
         assert sd.status_calls == []
 
 
+@pytest.mark.parametrize("who, ok", [("owner", True), ("mate", True), ("stranger", False)])
+async def test_oldest_request_stays_accessible_beyond_list_limit(session, env, sd, who, ok):
+    """В списке — 200 свежих заявок; самая старая не должна становиться «чужой» для автора и команды."""
+    oldest = await add_req(session, env.owner, booking=env.booking, key="HMS-1")
+    session.add_all(ServiceRequest(kind="problem", user_id=env.owner.id, booking_id=env.booking.id, issue_key=f"HMS-{n}",
+                                   summary="s", description="d") for n in range(2, 202))
+    await session.commit()
+    assert oldest.id not in {r.id for r in await svc.list_for_user(session, env.owner)}
+    if ok:
+        assert (await svc.get_with_comments(session, getattr(env, who), oldest.id))[0].id == oldest.id
+    else:
+        with pytest.raises(Forbidden):
+            await svc.get_with_comments(session, env.stranger, oldest.id)
+
+
 async def test_get_with_comments_not_found(session, env, sd):
     with pytest.raises(NotFound):
         await svc.get_with_comments(session, env.owner, 999)
