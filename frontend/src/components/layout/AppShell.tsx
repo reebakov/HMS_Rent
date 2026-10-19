@@ -1,8 +1,9 @@
-import { useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
 import { useOverdue } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
+import { ShortcutsButton } from './Shortcuts'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
 
@@ -69,6 +70,34 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const isAdmin = session.user.role === 'admin'
+  const burger = useRef<HTMLButtonElement>(null)
+  const mobileMenu = useRef<HTMLElement>(null)
+  const main = useRef<HTMLElement>(null)
+
+  // Закрытие меню возвращает фокус на бургер: открытый пункт меню исчезает, и фокус иначе пропал бы
+  const closeMenu = () => {
+    if (!mobileOpen) return
+    setMobileOpen(false)
+    burger.current?.focus()
+  }
+
+  // Меню лежит в DOM раньше шапки, поэтому при открытии фокус переносится в него; Esc закрывает
+  useEffect(() => {
+    if (!mobileOpen) return
+    mobileMenu.current?.querySelector('a')?.focus()
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setMobileOpen(false)
+      burger.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mobileOpen])
+
+  const skipToContent = (e: MouseEvent) => {
+    e.preventDefault() // якорь #content не должен менять адрес страницы
+    main.current?.focus()
+  }
 
   const sidebar = (
     <div className="flex h-full flex-col bg-sidebar px-3 py-5 text-sidebar-foreground">
@@ -83,12 +112,12 @@ export function AppShell() {
       </div>
 
       <nav className="flex-1">
-        <NavGroup items={userNav} onNavigate={() => setMobileOpen(false)} />
+        <NavGroup items={userNav} onNavigate={closeMenu} />
         {isAdmin && (
           <NavGroup
             title="Администрирование"
             items={adminNav.map((i) => (i.to === '/admin/overdue' ? { ...i, badge: overdueCount } : i))}
-            onNavigate={() => setMobileOpen(false)}
+            onNavigate={closeMenu}
           />
         )}
       </nav>
@@ -122,20 +151,29 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen">
+      <a
+        href="#content"
+        onClick={skipToContent}
+        className="fixed left-4 top-4 z-50 -translate-y-20 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lift focus:translate-y-0"
+      >
+        Перейти к содержимому
+      </a>
+
       {/* Десктоп: фиксированный сайдбар */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">{sidebar}</aside>
 
       {/* Мобильный: выезжающее меню */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-slate-950/40" onClick={() => setMobileOpen(false)} />
-          <aside className="relative h-full w-64 animate-fade-in">{sidebar}</aside>
+          <div className="absolute inset-0 bg-slate-950/40" onClick={closeMenu} />
+          <aside ref={mobileMenu} className="relative h-full w-64 animate-fade-in">{sidebar}</aside>
         </div>
       )}
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
           <button
+            ref={burger}
             className="rounded-md p-1.5 hover:bg-muted lg:hidden"
             aria-label={mobileOpen ? 'Закрыть меню' : 'Открыть меню'}
             aria-expanded={mobileOpen}
@@ -154,10 +192,11 @@ export function AppShell() {
               Dev-вход
             </span>
           )}
+          <ShortcutsButton />
           <ThemeToggle />
         </header>
 
-        <main key={location.pathname} className="mx-auto max-w-7xl animate-fade-in px-4 py-8 lg:px-8">
+        <main ref={main} id="content" tabIndex={-1} key={location.pathname} className="mx-auto max-w-7xl animate-fade-in px-4 py-8 focus:outline-none lg:px-8">
           <Outlet />
         </main>
       </div>

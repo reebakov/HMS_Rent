@@ -159,12 +159,68 @@ describe('AppShell: мобильное меню', () => {
     expect(screen.getAllByRole('link', { name: 'Моя аренда' })).toHaveLength(1)
   })
 
+  it('при открытии фокус уходит в меню, Esc закрывает его и возвращает фокус на бургер', async () => {
+    const user = userEvent.setup()
+    mountShell()
+    await user.click(burger())
+    expect(screen.getAllByRole('link', { name: 'Каталог' })[1]).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.getAllByRole('link', { name: 'Каталог' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Открыть меню' })).toHaveFocus()
+  })
+
+  it('Esc при закрытом меню ничего не делает', async () => {
+    mountShell()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getAllByRole('link', { name: 'Каталог' })).toHaveLength(1)
+  })
+
+  it('выбор пункта с клавиатуры (Enter) закрывает меню и возвращает фокус на бургер', async () => {
+    const user = userEvent.setup()
+    mountShell()
+    await user.click(burger())
+    await user.tab() // следующий пункт после «Каталога»
+    await user.keyboard('{Enter}')
+    expect(screen.getByText('страница-аренда')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Открыть меню' })).toHaveFocus()
+  })
+
   it('клик по подложке закрывает меню', async () => {
     const { container } = mountShell()
     await userEvent.click(burger())
     const overlay = container.querySelector('.bg-slate-950\\/40')!
     fireEvent.click(overlay)
     expect(screen.getAllByRole('link', { name: 'Каталог' })).toHaveLength(1)
+  })
+})
+
+describe('AppShell: клавиатура', () => {
+  it('«Перейти к содержимому» — первая остановка Tab; Enter переносит фокус на содержимое без смены адреса', async () => {
+    const user = userEvent.setup()
+    mountShell()
+    await user.tab()
+    const skip = screen.getByRole('link', { name: 'Перейти к содержимому' })
+    expect(skip).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('main')).toHaveFocus()
+    expect(window.location.hash).toBe('')
+  })
+
+  it('в шапке есть кнопка «Горячие клавиши»: открывает окно, Esc закрывает и возвращает фокус', async () => {
+    const user = userEvent.setup()
+    mountShell()
+    const button = screen.getByRole('button', { name: 'Горячие клавиши' })
+    await user.click(button)
+    expect(screen.getByRole('dialog', { name: 'Горячие клавиши' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(button).toHaveFocus())
+  })
+
+  it('«?» на странице открывает окно горячих клавиш', async () => {
+    mountShell()
+    await userEvent.keyboard('?')
+    expect(screen.getByRole('dialog', { name: 'Горячие клавиши' })).toBeInTheDocument()
   })
 })
 
