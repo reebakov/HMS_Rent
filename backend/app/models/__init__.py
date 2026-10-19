@@ -2,7 +2,9 @@
 from app.models.booking import Booking
 from app.models.computer import Computer
 from app.models.department import Department
-from app.models.enums import BookingStatus, ComputerStatus, EventType, Tier, UserRole
+from app.models.enums import (
+    BookingStatus, ComputerStatus, EventType, ServiceRequestKind, SyncRunStatus, Tier, UserRole, VmStatus,
+)
 from app.models.event import AssetEvent, SyncRun
 from app.models.pool import Pool, pool_departments
 from app.models.service_request import ServiceRequest
@@ -20,10 +22,13 @@ __all__ = [
     "EventType",
     "Pool",
     "ServiceRequest",
+    "ServiceRequestKind",
     "SyncRun",
+    "SyncRunStatus",
     "Tier",
     "User",
     "UserRole",
     "VirtualMachine",
+    "VmStatus",
     "pool_departments",
 ]

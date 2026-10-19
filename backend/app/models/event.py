@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.computer import Computer
+from app.models.enums import SyncRunStatus
 from app.models.user import User
 
 
@@ -38,7 +39,7 @@ class SyncRun(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(16), default="running")  # running / success / failed
+    status: Mapped[str] = mapped_column(String(16), default=SyncRunStatus.running.value)
     mode: Mapped[str] = mapped_column(String(16))  # mock / live
     total: Mapped[int] = mapped_column(default=0)
     created: Mapped[int] = mapped_column(default=0)

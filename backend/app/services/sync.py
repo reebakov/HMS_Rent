@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.integrations.insight.factory import create_insight_source
 from app.integrations.insight.mapping import map_object
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, Pool, SyncRun
+from app.models import (
+    Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, Pool, SyncRun, SyncRunStatus,
+)
 from app.services.events import add_event
 from app.services.tiering import classify
 
@@ -92,7 +94,7 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         departments = {d.name.lower(): d for d in (await session.scalars(select(Department))).all()}
         now = datetime.now(timezone.utc)
         run = SyncRun(
-            mode=source.mode, status="success", started_at=started,
+            mode=source.mode, status=SyncRunStatus.success.value, started_at=started,
             total=len(objects), created=0, updated=0, archived=0,
         )
         new_computers: list[Computer] = []
@@ -254,7 +256,7 @@ async def _pull_rental_fields(
 
 async def _save_failed(session: AsyncSession, mode: str, error: str) -> SyncRun:
     now = datetime.now(timezone.utc)
-    run = SyncRun(mode=mode, status="failed", error=error[:2000], started_at=now, finished_at=now)
+    run = SyncRun(mode=mode, status=SyncRunStatus.failed.value, error=error[:2000], started_at=now, finished_at=now)
     session.add(run)
     await session.commit()
     return run

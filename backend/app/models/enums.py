@@ -25,6 +25,28 @@ class BookingStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class VmStatus(StrEnum):
+    """Жизненный цикл ВМ: queued → creating → ready → deleting → deleted; при ошибке — failed."""
+
+    queued = "queued"
+    creating = "creating"
+    ready = "ready"
+    deleting = "deleting"
+    deleted = "deleted"
+    failed = "failed"
+
+
+class SyncRunStatus(StrEnum):
+    running = "running"
+    success = "success"
+    failed = "failed"
+
+
+class ServiceRequestKind(StrEnum):
+    problem = "problem"  # «Сообщить о проблеме» из «Моей аренды»
+    return_ = "return"   # заявка на возврат ПК (return — зарезервированное слово)
+
+
 class EventType(StrEnum):
     booked = "booked"
     returned = "returned"

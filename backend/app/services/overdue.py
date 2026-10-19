@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.config import settings
 from app.integrations.notify import notify
-from app.models import AppSetting, Booking, BookingStatus, VirtualMachine
+from app.models import AppSetting, Booking, BookingStatus, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
@@ -25,7 +25,7 @@ async def list_overdue(session: AsyncSession) -> tuple[list[Booking], list[Virtu
         .order_by(Booking.expected_return_at)
     )).unique().all()
     vms = (await session.scalars(
-        select(VirtualMachine).where(VirtualMachine.status.in_(("ready", "failed")),
+        select(VirtualMachine).where(VirtualMachine.status.in_((VmStatus.ready, VmStatus.failed)),
                                      VirtualMachine.expected_return_at < today)
         .order_by(VirtualMachine.expected_return_at)
     )).unique().all()

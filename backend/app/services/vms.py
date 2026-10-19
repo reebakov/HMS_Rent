@@ -9,12 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations.vsphere import client as vsphere
-from app.models import Department, User, VirtualMachine
+from app.models import Department, User, VirtualMachine, VmStatus
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import runtime
 from app.services.orders import next_order_number
 
-ALIVE = ("queued", "creating", "ready", "deleting")
+ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
 VM_LIMIT_LOCK_KEY = 73010002  # пространство ключей advisory-lock для лимита ВМ на пользователя (свой ключ у sync.py)
 
 
@@ -90,7 +90,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
     vm = VirtualMachine(
         order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
-        status="queued", user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label,
+        status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label,
         requester_name=data.requester_name, requester_nick=data.requester_nick,
         purpose=data.purpose or None, expected_return_at=data.expected_return_at, attrs={},
     )
@@ -124,14 +124,14 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
         raise NotFound("Виртуалка не найдена")
     if vm.user_id != user.id and not user.is_admin:
         raise Forbidden("Удалить ВМ может её владелец или администратор")
-    if vm.status in ("deleting", "deleted"):
+    if vm.status in (VmStatus.deleting, VmStatus.deleted):
         raise Conflict("Виртуалка уже удаляется")
-    if vm.status == "creating":
+    if vm.status == VmStatus.creating:
         raise Conflict("Виртуалка ещё создаётся — подождите пару минут")
-    vm.status = "deleted" if vm.status == "queued" else "deleting"  # из очереди — сразу
+    vm.status = (VmStatus.deleted if vm.status == VmStatus.queued else VmStatus.deleting).value  # из очереди — сразу
     vm.released_at = datetime.now(timezone.utc)
     vm.released_by_id = user.id
-    if vm.status == "deleted":
+    if vm.status == VmStatus.deleted:
         vm.deleted_at = vm.released_at
     await session.commit()
     return await get_vm(session, vm.id)
@@ -142,5 +142,5 @@ async def list_vms(session: AsyncSession, user: User | None = None, include_dele
     if user is not None:
         stmt = stmt.where(VirtualMachine.user_id == user.id)
     if not include_deleted:
-        stmt = stmt.where(VirtualMachine.status != "deleted")
+        stmt = stmt.where(VirtualMachine.status != VmStatus.deleted)
     return list((await session.scalars(stmt)).unique().all())

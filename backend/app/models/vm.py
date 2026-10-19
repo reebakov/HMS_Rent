@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 from app.models.department import Department
+from app.models.enums import VmStatus
 from app.models.user import User
 
 
@@ -42,7 +43,7 @@ class VirtualMachine(Base, TimestampMixin):
     disk_gb: Mapped[int]
     template_key: Mapped[str | None] = mapped_column(String(32))  # ключ шаблона ОС из настроек (win10, ubuntu2204…)
     os_label: Mapped[str | None] = mapped_column(String(64))  # «Windows 10» — для отображения
-    status: Mapped[str] = mapped_column(String(16), index=True, default="queued")
+    status: Mapped[str] = mapped_column(String(16), index=True, default=VmStatus.queued.value)
     error: Mapped[str | None] = mapped_column(Text)
 
     order_number: Mapped[int] = mapped_column(unique=True)  # сквозной номер заказа (общий с бронями ПК), с 1

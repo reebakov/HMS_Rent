@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
-from app.models import Booking, ServiceRequest, User, VirtualMachine
+from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
 from app.schemas.service_request import RequestOut
 
 log = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
         raise DomainError("Укажите компьютер или виртуалку")
 
     req = ServiceRequest(
-        kind="problem", user_id=user.id, booking_id=booking_id, vm_id=vm_id, summary=summary,
+        kind=ServiceRequestKind.problem.value, user_id=user.id, booking_id=booking_id, vm_id=vm_id, summary=summary,
         description=f"{message}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
     try:
@@ -100,7 +100,7 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
     if b is None:
         return
     req = ServiceRequest(
-        kind="return", user_id=actor.id, booking_id=b.id,
+        kind=ServiceRequestKind.return_.value, user_id=actor.id, booking_id=b.id,
         summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
         description=_booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
         + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
