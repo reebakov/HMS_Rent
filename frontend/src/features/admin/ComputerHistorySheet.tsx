@@ -5,6 +5,7 @@ import { Sheet } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge, TierBadge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/card'
+import { Tabs } from '@/components/ui/tabs'
 import { DataState } from '@/components/ui/data-state'
 import { Field, Select, Textarea } from '@/components/ui/input'
 import { InsightAttributes, SpecGrid } from '@/features/catalog/SpecGrid'
@@ -13,7 +14,7 @@ import { EventTimeline } from './widgets'
 import { useComputerHistory, useReturnBooking, useUpdateComputer } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { Tier } from '@/lib/types'
-import { cn, errorMessage, formatDate, formatDateTime, formatDuration } from '@/lib/utils'
+import { errorMessage, formatDate, formatDateTime, formatDuration } from '@/lib/utils'
 
 const TABS = ['Обзор', 'История выдачи', 'События', 'Insight'] as const
 
@@ -90,19 +91,8 @@ export function ComputerHistorySheet({ computerId, onClose }: { computerId: numb
           const c = data.computer
           return (
             <>
-              <div className="mb-5 flex gap-1 rounded-lg bg-muted p-1">
-                {TABS.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={cn(
-                      'flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
-                      tab === t ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
+              <div className="mb-5">
+                <Tabs tabs={TABS} value={tab} onChange={setTab} />
               </div>
 
               {tab === 'Обзор' && (
