@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { VmBuilderDialog } from './VmBuilderDialog'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
+import { todayLocal } from '@/lib/utils'
 import type { VmOptions, VmTemplateOption } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -235,7 +236,7 @@ describe('VmBuilderDialog', () => {
     it('«Вернуть до» не позволяет выбрать прошедшую дату', async () => {
       await setup()
       const min = (screen.getByLabelText(/Вернуть до/) as HTMLInputElement).min
-      expect(min).toBe(new Date().toISOString().slice(0, 10))
+      expect(min).toBe(todayLocal())
     })
   })
 

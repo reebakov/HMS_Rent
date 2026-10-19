@@ -73,6 +73,20 @@ describe('BookingDialog', () => {
     expect(screen.getByText('Intel Core i5 · 6 ядер')).toBeInTheDocument()
   })
 
+  it('«Планирую вернуть»: min — сегодняшняя дата по местному времени, а не по UTC', async () => {
+    vi.stubEnv('TZ', 'Asia/Yekaterinburg')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T22:30:00Z')) // в Екатеринбурге уже 20 октября
+    try {
+      setup()
+      await waitForDepartments()
+      expect(screen.getByLabelText(/Планирую вернуть/)).toHaveAttribute('min', '2026-10-20')
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('кнопка отключена, пока не выбран отдел', async () => {
     setup()
     await waitForDepartments()

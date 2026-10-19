@@ -9,7 +9,7 @@ import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
 import { safeStorage } from '@/lib/storage'
-import { cn } from '@/lib/utils'
+import { cn, todayLocal } from '@/lib/utils'
 
 type Range = { min: number; max: number; step: number }
 
@@ -188,7 +188,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                   </Select>
                 </Field>
                 <Field label="Вернуть до" hint="Необязательно">
-                  <Input type="date" min={new Date().toISOString().slice(0, 10)} value={until} onChange={(e) => setUntil(e.target.value)} />
+                  <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
                 </Field>
                 <Field label="Имя и фамилия" required>
                   <Input value={person} onChange={(e) => setPerson(e.target.value)} />

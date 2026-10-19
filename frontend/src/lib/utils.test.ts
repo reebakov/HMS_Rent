@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cn, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural } from './utils'
+import { cn, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -76,5 +76,27 @@ describe('относительное время и длительность', ()
     expect(isOverdue('2025-06-15')).toBe(false)
     expect(isOverdue('2025-06-16')).toBe(false)
     expect(isOverdue(null)).toBe(false)
+  })
+})
+
+describe('todayLocal', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+  })
+
+  // 22:30 UTC — в Екатеринбурге (UTC+5) уже 03:30 следующего дня; toISOString() вернул бы вчерашнюю дату
+  it('даёт дату по местному времени, а не по UTC', () => {
+    vi.stubEnv('TZ', 'Asia/Yekaterinburg')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T22:30:00Z'))
+    expect(todayLocal()).toBe('2026-10-20')
+    expect(new Date().toISOString().slice(0, 10)).toBe('2026-10-19')
+  })
+
+  it('добавляет нули к месяцу и дню', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 0, 5, 12))
+    expect(todayLocal()).toBe('2026-01-05')
   })
 })

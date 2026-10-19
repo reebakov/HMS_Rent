@@ -11,6 +11,7 @@ import { useSession } from '@/auth/AuthProvider'
 import { useCreateBooking, useDepartments } from '@/lib/queries'
 import { safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
+import { todayLocal } from '@/lib/utils'
 
 const LAST_DEPARTMENT_KEY = 'hmsrent:last-department'
 
@@ -60,7 +61,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
   const valid = departmentId && name.trim().length >= 2 && nick.trim()
   const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
 
@@ -118,7 +118,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Планирую вернуть" hint="Необязательно">
-              <Input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} />
+              <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
             </Field>
             <Field label="Для чего нужен" hint="Необязательно">
               <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый сотрудник, тесты…" />

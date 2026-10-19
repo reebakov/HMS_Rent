@@ -37,6 +37,13 @@ export function plural(n: number, forms: [string, string, string]) {
   return forms[2]
 }
 
+/** Сегодняшняя дата по местному времени в виде YYYY-MM-DD: toISOString() даёт дату по UTC, и у границы суток min поля даты сдвигается на день */
+export function todayLocal() {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 export const isOverdue = (date?: string | null) => !!date && new Date(date + 'T23:59:59') < new Date()
 
 export function initials(name: string) {
