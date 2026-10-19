@@ -384,7 +384,12 @@ def bouncer_on(monkeypatch):
     monkeypatch.setattr(settings, "bouncer_authorize_url", "https://sso.example/authorize")
 
 
-@pytest.mark.parametrize("nxt,expected", [("/catalog", "/catalog"), ("//evil.com", "/"), ("https://evil.com", "/")])
+@pytest.mark.parametrize("nxt,expected", [
+    ("/catalog", "/catalog"), ("/ok", "/ok"), ("/a?b=1", "/a?b=1"), ("//evil.com", "/"), ("//x", "/"),
+    ("https://evil.com", "/"), ("/\\evil.com", "/"), ("/\\x", "/"), ("/a\\b", "/"), ("/\t/evil.com", "/"),
+    ("/\n/evil.com", "/"), ("/\r/evil.com", "/"), ("/\x7f", "/"), ("", "/"), ("evil.com", "/"),
+], ids=["path", "ok", "query", "double-slash", "double-slash-short", "absolute", "backslash", "backslash-short",
+        "inner-backslash", "tab", "newline", "carriage-return", "del", "empty", "relative"])
 async def test_bouncer_login_redirect_and_open_redirect_guard(client, api, bouncer_on, nxt, expected):
     r = await client.get(api("/auth/bouncer/login"), params={"next": nxt})
     assert r.status_code == 302 and r.headers["location"].startswith("https://sso.example/authorize?")

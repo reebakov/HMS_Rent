@@ -144,12 +144,22 @@ async def login(data: LoginIn, request: Request, response: Response, session: DB
     return _session_out(user)
 
 
+def _safe_next(path: str) -> str:
+    """Куда вернуть после входа: только путь на этом же сайте.
+
+    Браузеры читают «/\\evil.com» как «//evil.com», а табуляцию и перевод строки внутри URL выбрасывают
+    (после «/» и табуляции получается тот же «//»), поэтому обратная косая и управляющие символы отклоняются.
+    """
+    if not path.startswith("/") or path.startswith("//") or "\\" in path or any(c < " " or c == "\x7f" for c in path):
+        return "/"
+    return path
+
+
 @router.get("/bouncer/login")
 async def bouncer_login(next: str = "/") -> RedirectResponse:
     if not settings.bouncer_enabled:
         raise HTTPException(404, "Вход через Bouncer не настроен")
-    safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
-    state, nonce, cookie = create_oauth_state(safe_next)
+    state, nonce, cookie = create_oauth_state(_safe_next(next))
     resp = RedirectResponse(bouncer.authorization_url(state, nonce), status_code=302)
     resp.set_cookie(OAUTH_COOKIE, cookie, httponly=True, secure=settings.cookie_secure, samesite="lax", max_age=600, path="/")
     return resp
