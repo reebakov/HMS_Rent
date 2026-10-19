@@ -24,6 +24,7 @@ vi.mock('@/pages/admin/EventsPage', () => ({ EventsPage: () => <h1>stub:admin-ev
 vi.mock('@/pages/admin/SettingsPage', () => ({ SettingsPage: () => <h1>stub:admin-settings</h1> }))
 vi.mock('@/pages/admin/UsersPage', () => ({ UsersPage: () => <h1>stub:admin-users</h1> }))
 vi.mock('@/pages/admin/VmsPage', () => ({ VmsPage: () => <h1>stub:admin-vms</h1> }))
+vi.mock('@/pages/admin/OverduePage', () => ({ OverduePage: () => <h1>stub:admin-overdue</h1> }))
 
 const admin = () => makeSession({ username: 'admin', display_name: 'Админ', role: 'admin' })
 const employee = () => makeSession()
@@ -35,6 +36,7 @@ function mount(route: string, session: ReturnType<typeof makeSession> | null) {
       if (!session) throw new ApiError(401, 'нет сессии')
       return session
     }
+    if (path === '/admin/overdue') return [] // счётчик просрочек в меню админа
     throw new Error(`неожиданный GET ${path}`)
   })
   return renderWithProviders(
@@ -155,5 +157,19 @@ describe('App: истечение сессии', () => {
     act(() => screen.getByTitle('Выйти').click())
     await waitFor(() => expect(screen.getByText('stub:login')).toBeInTheDocument())
     expect(api.post).toHaveBeenCalledWith('/auth/logout')
+  })
+})
+
+describe('маршрут /admin/overdue', () => {
+  it('админ попадает на страницу просрочек внутри AppShell', async () => {
+    mount('/admin/overdue', admin())
+    expect(await screen.findByText('stub:admin-overdue')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^Просрочки/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('сотрудника гард отправляет в каталог', async () => {
+    mount('/admin/overdue', employee())
+    expect(await screen.findByText('stub:catalog')).toBeInTheDocument()
+    expect(screen.queryByText('stub:admin-overdue')).not.toBeInTheDocument()
   })
 })

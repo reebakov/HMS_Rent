@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
@@ -78,14 +79,17 @@ let bookings: Booking[]
 let vms: Vm[]
 let requests: ServiceRequest[]
 let comments: ServiceComment[]
-let sdEnabled: boolean
+let sdEnabled: boolean // включается в блоке «заявки Service Desk»
+
+const Where = () => <span data-testid="path">{useLocation().pathname}</span>
+const renderPage = () => renderWithProviders(<><MyBookingsPage /><Where /></>, { route: '/my' })
 
 beforeEach(() => {
-  bookings = [makeBooking()]
+  bookings = []
   vms = []
   requests = []
   comments = []
-  sdEnabled = true
+  sdEnabled = false
   vi.mocked(api.get).mockReset()
   vi.mocked(api.post).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
@@ -99,10 +103,199 @@ beforeEach(() => {
   })
 })
 
+describe('MyBookingsPage', () => {
+  it('пока грузится — скелетоны, без пустого состояния', () => {
+    vi.mocked(api.get).mockImplementation(() => new Promise(() => undefined))
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'Моя аренда' })).toBeInTheDocument()
+    expect(screen.queryByText('Активных бронирований нет')).not.toBeInTheDocument()
+  })
+
+  it('пустое состояние ведёт в каталог', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByText('Активных бронирований нет')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Открыть каталог' }))
+    expect(screen.getByTestId('path')).toHaveTextContent(/^\/$/)
+  })
+
+  it('«Забронировать ещё» переходит в каталог', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Активных бронирований нет')
+    await user.click(screen.getByRole('button', { name: 'Забронировать ещё' }))
+    expect(screen.getByTestId('path')).toHaveTextContent(/^\/$/)
+  })
+
+  it('при ошибке загрузки не выдаёт ошибку за пустой список; «Повторить» перезапрашивает', async () => {
+    const user = userEvent.setup()
+    let fail = true
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === '/bookings/my') {
+        if (fail) throw new ApiError(500, 'Сервер недоступен')
+        return [makeBooking()]
+      }
+      return []
+    })
+    renderPage()
+    expect(await screen.findByText('Не удалось загрузить бронирования')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Активных бронирований нет')).not.toBeInTheDocument()
+
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-010')).toBeInTheDocument()
+    expect(screen.queryByText('Не удалось загрузить бронирования')).not.toBeInTheDocument()
+  })
+
+  it('рисует карточку активной брони: заказ, характеристики, отдел, ответственный, цель', async () => {
+    bookings = [makeBooking({ purpose: 'Сборка релиза' })]
+    renderPage()
+    expect(await screen.findByText('PC-010')).toBeInTheDocument()
+    expect(screen.getByText('Заказ №100')).toBeInTheDocument()
+    expect(screen.getByText('Intel Core i5 · 16 ГБ')).toBeInTheDocument()
+    expect(screen.getByText('Разработка')).toBeInTheDocument()
+    expect(screen.getByText('(iivanov)')).toBeInTheDocument()
+    expect(screen.getByText('Сборка релиза')).toBeInTheDocument()
+    expect(screen.getByText('Активна')).toBeInTheDocument()
+    expect(screen.queryByText('Срок вышел')).not.toBeInTheDocument()
+    expect(screen.queryByText('История')).not.toBeInTheDocument()
+  })
+
+  it('без срока возврата — «Без срока», без цели — блока нет', async () => {
+    bookings = [makeBooking({ expected_return_at: null })]
+    renderPage()
+    expect(await screen.findByText('Без срока')).toBeInTheDocument()
+    expect(screen.getByText('Активна')).toBeInTheDocument()
+  })
+
+  it('просроченная бронь помечена «Срок вышел» вместо «Активна»', async () => {
+    bookings = [makeBooking({ expected_return_at: '2020-01-01' })]
+    renderPage()
+    expect(await screen.findByText('Срок вышел')).toBeInTheDocument()
+    expect(screen.queryByText('Активна')).not.toBeInTheDocument()
+  })
+
+  it('возвращённые брони уходят в историю, активные — в карточки', async () => {
+    bookings = [
+      makeBooking({ id: 1, order_number: 100 }),
+      makeBooking({
+        id: 2, order_number: 90, status: 'returned', returned_at: '2024-01-12T09:00:00Z',
+        computer: { id: 11, name: 'PC-011', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null },
+      }),
+      makeBooking({ id: 3, order_number: 80, status: 'cancelled', computer: { id: 12, name: 'PC-012', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null } }),
+    ]
+    renderPage()
+    await screen.findByText('История')
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('PC-011')).toBeInTheDocument()
+    expect(within(table).getByText('PC-012')).toBeInTheDocument()
+    expect(within(table).getByText('№90')).toBeInTheDocument()
+    expect(within(table).queryByText('PC-010')).not.toBeInTheDocument()
+    // длительность между «взят» и «возвращён»
+    expect(within(table).getByText('2 дня')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Вернуть компьютер/ })).toHaveLength(1)
+  })
+
+  it('если активных нет, но есть история — и пустое состояние, и таблица', async () => {
+    bookings = [makeBooking({ status: 'returned', returned_at: '2024-01-11T09:00:00Z' })]
+    renderPage()
+    expect(await screen.findByText('Активных бронирований нет')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+
+  describe('возврат', () => {
+    const openReturn = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(await screen.findByRole('button', { name: /Вернуть компьютер/ }))
+      return screen.getByRole('dialog', { name: 'Вернуть PC-010?' })
+    }
+
+    it('отправляет комментарий, показывает toast, закрывает окно и обновляет список', async () => {
+      bookings = [makeBooking()]
+      vi.mocked(api.post).mockImplementation(async () => {
+        bookings = [makeBooking({ status: 'returned', returned_at: '2024-01-11T09:00:00Z' })]
+        return bookings[0]
+      })
+      const user = userEvent.setup()
+      renderPage()
+      const dialog = await openReturn(user)
+      await user.type(within(dialog).getByLabelText(/Комментарий/), 'Шумит кулер')
+      await user.click(within(dialog).getByRole('button', { name: 'Вернуть' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(api.post).toHaveBeenCalledWith('/bookings/1/return', { comment: 'Шумит кулер' })
+      expect(toast.success).toHaveBeenCalledWith('PC-010 возвращён')
+      // список перезапрошен: карточки нет, бронь в истории
+      expect(await screen.findByText('Активных бронирований нет')).toBeInTheDocument()
+      expect(within(screen.getByRole('table')).getByText('PC-010')).toBeInTheDocument()
+    })
+
+    it('пустой комментарий уходит как undefined', async () => {
+      bookings = [makeBooking()]
+      vi.mocked(api.post).mockResolvedValue(bookings[0])
+      const user = userEvent.setup()
+      renderPage()
+      const dialog = await openReturn(user)
+      await user.click(within(dialog).getByRole('button', { name: 'Вернуть' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalled())
+      expect(vi.mocked(api.post).mock.calls[0]).toEqual(['/bookings/1/return', { comment: undefined }])
+    })
+
+    it('возвращает именно выбранную бронь', async () => {
+      bookings = [
+        makeBooking({ id: 1, order_number: 100 }),
+        makeBooking({ id: 2, order_number: 101, computer: { id: 11, name: 'PC-011', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null } }),
+      ]
+      vi.mocked(api.post).mockResolvedValue(bookings[1])
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByText('PC-011')
+      await user.click(screen.getAllByRole('button', { name: /Вернуть компьютер/ })[1])
+      const dialog = screen.getByRole('dialog', { name: 'Вернуть PC-011?' })
+      await user.click(within(dialog).getByRole('button', { name: 'Вернуть' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings/2/return', { comment: undefined }))
+    })
+
+    it('«Отмена» закрывает окно без запроса', async () => {
+      bookings = [makeBooking()]
+      const user = userEvent.setup()
+      renderPage()
+      const dialog = await openReturn(user)
+      await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('комментарий не переносится в следующее открытие окна', async () => {
+      bookings = [makeBooking()]
+      const user = userEvent.setup()
+      renderPage()
+      let dialog = await openReturn(user)
+      await user.type(within(dialog).getByLabelText(/Комментарий/), 'черновик')
+      await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      dialog = await openReturn(user)
+      expect(within(dialog).getByLabelText(/Комментарий/)).toHaveValue('')
+    })
+
+    it('ошибка API — toast с текстом, окно остаётся открытым', async () => {
+      bookings = [makeBooking()]
+      vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Бронь уже закрыта'))
+      const user = userEvent.setup()
+      renderPage()
+      const dialog = await openReturn(user)
+      await user.click(within(dialog).getByRole('button', { name: 'Вернуть' }))
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Бронь уже закрыта'))
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(screen.getByRole('dialog', { name: 'Вернуть PC-010?' })).toBeInTheDocument()
+    })
+  })
+})
+
 /** Маркер «конфиг Service Desk уже загружен» — по нему проверяем отсутствие кнопки */
 const CfgProbe = () => <span data-testid="cfg">{useSdConfig().isFetched ? 'loaded' : 'loading'}</span>
 const cfgLoaded = () => waitFor(() => expect(screen.getByTestId('cfg')).toHaveTextContent('loaded'))
-const renderPage = () => renderWithProviders(<><MyBookingsPage /><CfgProbe /></>, { route: '/my' })
+const renderSdPage = () => renderWithProviders(<><MyBookingsPage /><CfgProbe /></>, { route: '/my' })
 /** Карточка активной брони или строка ВМ по имени */
 const cardOf = (name: string) => within(screen.getByText(name).closest('.rounded-xl, .flex-wrap') as HTMLElement)
 
@@ -113,8 +306,13 @@ const card = async (name: string) => {
 }
 
 describe('MyBookingsPage: заявки Service Desk', () => {
+  beforeEach(() => {
+    bookings = [makeBooking()]
+    sdEnabled = true
+  })
+
   it('запрашивает конфиг и список заявок', async () => {
-    renderPage()
+    renderSdPage()
     await screen.findByText('PC-010')
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/requests/my'))
     expect(api.get).toHaveBeenCalledWith('/requests/config')
@@ -126,7 +324,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       makeBooking({ id: 2, order_number: 101, computer: { id: 11, name: 'PC-011', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null } }),
     ]
     requests = [makeRequest({ id: 5, booking_id: 1 }), makeRequest({ id: 6, booking_id: 2, issue_key: 'HMS-202', status: 'Открыта', status_category: 'new' })]
-    renderPage()
+    renderSdPage()
     await screen.findByText('PC-011')
 
     const first = cardOf('PC-010')
@@ -145,7 +343,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       makeRequest({ id: 7, booking_id: null, vm_id: 1, issue_key: 'HMS-VM', summary: 'Нет интернета' }),
       makeRequest({ id: 8, booking_id: 1, vm_id: null, issue_key: 'HMS-PC' }),
     ]
-    renderPage()
+    renderSdPage()
     await screen.findByText('rent-design-01')
     expect(await cardOf('rent-design-01').findByRole('button', { name: /HMS-VM/ })).toBeInTheDocument()
     expect(cardOf('rent-design-01').queryByRole('button', { name: /HMS-PC/ })).not.toBeInTheDocument()
@@ -156,7 +354,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
   it('Service Desk выключен — кнопки «Сообщить о проблеме» нет ни у ПК, ни у ВМ', async () => {
     sdEnabled = false
     vms = [makeVm()]
-    renderPage()
+    renderSdPage()
     await screen.findByText('rent-design-01')
     await cfgLoaded()
     expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
@@ -165,7 +363,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
   it('ВМ в статусе «Удаляется» — без кнопки «Сообщить о проблеме»', async () => {
     bookings = []
     vms = [makeVm({ status: 'deleting' })]
-    renderPage()
+    renderSdPage()
     await screen.findByText('rent-design-01')
     await cfgLoaded()
     expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
@@ -178,7 +376,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       if (path === '/requests/config') return { enabled: true }
       throw new ApiError(500, 'Сервер недоступен')
     })
-    renderPage()
+    renderSdPage()
     expect(await screen.findByText('PC-010')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Сообщить о проблеме' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Заявка / })).not.toBeInTheDocument()
@@ -191,7 +389,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
         requests = [makeRequest({ id: 9, issue_key: 'HMS-300', status: 'Открыта', status_category: 'new' })]
         return requests[0]
       })
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: 'Сообщить о проблеме' }))
       const dialog = screen.getByRole('dialog', { name: 'Проблема с PC-010' })
       await user.type(within(dialog).getByLabelText(/Что случилось/), 'Не включается')
@@ -208,7 +406,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       bookings = []
       vms = [makeVm({ id: 3 })]
       vi.mocked(api.post).mockResolvedValue(makeRequest({ vm_id: 3, booking_id: null }))
-      renderPage()
+      renderSdPage()
       await user.click(await screen.findByRole('button', { name: 'Сообщить о проблеме' }))
       const dialog = screen.getByRole('dialog', { name: 'Проблема с rent-design-01' })
       await user.type(within(dialog).getByLabelText(/Что случилось/), 'Нет интернета')
@@ -219,7 +417,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     it('ошибка API — окно остаётся открытым, toast с причиной', async () => {
       const user = userEvent.setup()
       vi.mocked(api.post).mockRejectedValue(new ApiError(502, 'Jira недоступна'))
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: 'Сообщить о проблеме' }))
       await user.type(screen.getByLabelText(/Что случилось/), 'Не включается')
       await user.click(screen.getByRole('button', { name: 'Отправить' }))
@@ -229,7 +427,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
 
     it('«Отмена» закрывает окно без запроса', async () => {
       const user = userEvent.setup()
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: 'Сообщить о проблеме' }))
       await user.click(screen.getByRole('button', { name: 'Отмена' }))
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -242,7 +440,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       const user = userEvent.setup()
       requests = [makeRequest({ id: 5, url: 'https://jira.example.com/browse/HMS-101' })]
       comments = [{ author: 'Админ Петров', body: 'Заберите ПК в ИТ-отдел', created: '2024-01-10T10:00:00Z', from_portal: false }]
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: 'Заявка HMS-101 · В работе' }))
       expect(await screen.findByRole('dialog', { name: 'Заявка HMS-101' })).toBeInTheDocument()
       expect(await screen.findByText('Заберите ПК в ИТ-отдел')).toBeInTheDocument()
@@ -253,7 +451,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     it('ответ из панели уходит в POST /requests/{id}/comments', async () => {
       const user = userEvent.setup()
       requests = [makeRequest({ id: 5 })]
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: /Заявка HMS-101/ }))
       const box = await screen.findByPlaceholderText('Ответить администраторам…')
       await user.type(box, 'Спасибо')
@@ -264,7 +462,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     it('Escape закрывает панель', async () => {
       const user = userEvent.setup()
       requests = [makeRequest({ id: 5 })]
-      renderPage()
+      renderSdPage()
       await user.click(await (await card('PC-010')).findByRole('button', { name: /Заявка HMS-101/ }))
       await screen.findByRole('dialog', { name: 'Заявка HMS-101' })
       await user.keyboard('{Escape}')
@@ -276,7 +474,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       bookings = []
       vms = [makeVm({ id: 3 })]
       requests = [makeRequest({ id: 7, booking_id: null, vm_id: 3, issue_key: 'HMS-VM' })]
-      renderPage()
+      renderSdPage()
       await user.click(await screen.findByRole('button', { name: /HMS-VM/ }))
       expect(await screen.findByRole('dialog', { name: 'Заявка HMS-VM' })).toBeInTheDocument()
       expect(api.get).toHaveBeenCalledWith('/requests/7')
@@ -290,7 +488,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     it('в таблице есть колонка «Заявки»; заявка «Возврат» стоит в строке своей брони', async () => {
       bookings = [returned(), makeBooking({ id: 3, order_number: 91, status: 'cancelled', computer: { id: 12, name: 'PC-012', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null } })]
       requests = [makeRequest({ id: 11, kind: 'return', booking_id: 2, issue_key: 'HMS-900', status: 'Выполнено', status_category: 'done' })]
-      renderPage()
+      renderSdPage()
       const table = await screen.findByRole('table')
       expect(within(table).getByRole('columnheader', { name: 'Заявки' })).toBeInTheDocument()
       const row = (name: string) => within(within(table).getByText(name).closest('tr')!)
@@ -302,7 +500,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       const user = userEvent.setup()
       bookings = [returned()]
       requests = [makeRequest({ id: 11, kind: 'return', booking_id: 2, issue_key: 'HMS-900', status: 'Выполнено', status_category: 'done' })]
-      renderPage()
+      renderSdPage()
       const table = await screen.findByRole('table')
       expect(within(table).queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
       await user.click(await within(table).findByRole('button', { name: /Возврат HMS-900/ }))

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { VmBuilderDialog } from './VmBuilderDialog'
 import { api, ApiError } from '@/lib/api'
 import { makeSession, renderWithProviders } from '@/test/helpers'
-import type { VmOptions } from '@/lib/types'
+import type { VmOptions, VmTemplateOption } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -38,6 +38,14 @@ const makeOptions = (over: Partial<VmOptions> = {}): VmOptions => ({
   templates: [{ key: 'win10-tpl', label: 'Windows 10', os: 'windows', min_disk_gb: 50, available: true }],
   ...over,
 })
+
+const win10: VmTemplateOption = { key: 'win10', label: 'Windows 10', os: 'windows', min_disk_gb: 50, available: true }
+const win11: VmTemplateOption = { key: 'win11', label: 'Windows 11', os: 'windows', min_disk_gb: 100, available: true }
+const ubuntu: VmTemplateOption = { key: 'ubuntu', label: 'Ubuntu 22.04', os: 'linux', min_disk_gb: 30, available: false }
+
+/** Настройки для блоков про шаблоны ОС: свой набор шаблонов, диск по умолчанию 40, ВМ у пользователя нет */
+const makeTemplateOptions = (templates: VmTemplateOption[], over: Partial<VmOptions> = {}): VmOptions =>
+  makeOptions({ template: 'win10', min_disk_gb: 40, used_by_me: 0, templates, ...over })
 
 let options: VmOptions
 
@@ -259,5 +267,146 @@ describe('VmBuilderDialog', () => {
       expect(onClose).toHaveBeenCalledOnce()
       expect(api.post).not.toHaveBeenCalled()
     })
+  })
+})
+
+/** Начальное состояние (шаблон, диск, имя) выставляет эффект после загрузки /vms/options, а порядок ответов опций и
+ * отделов не гарантирован: ждём результат эффекта, иначе слайдер можно прочитать до него */
+async function setupTemplates() {
+  const ctx = await setup()
+  await screen.findByDisplayValue('Иван Иванов')
+  return ctx.user
+}
+
+const osButton = (label: string) => screen.getByRole('button', { name: new RegExp(label) })
+const diskSlider = () => sliders()[2]
+const description = (text: string) => screen.getByText(text, { exact: false })
+
+
+describe('VmBuilderDialog: выбор ОС', () => {
+  beforeEach(() => {
+    options = makeTemplateOptions([win10, win11, ubuntu])
+  })
+
+  it('рисует все шаблоны: доступные с минимальным диском, недоступные — «скоро» и отключены', async () => {
+    await setupTemplates()
+    expect(screen.getByText('Операционная система')).toBeInTheDocument()
+    expect(osButton('Windows 10')).toHaveTextContent('диск от 50 ГБ')
+    expect(osButton('Windows 10')).toBeEnabled()
+    expect(osButton('Windows 11')).toHaveTextContent('диск от 100 ГБ')
+    expect(osButton('Ubuntu 22.04')).toHaveTextContent('скоро')
+    expect(osButton('Ubuntu 22.04')).not.toHaveTextContent('диск от')
+    expect(osButton('Ubuntu 22.04')).toBeDisabled()
+  })
+
+  it('по умолчанию выбран первый доступный шаблон, недоступный в начале списка пропускается', async () => {
+    options = makeTemplateOptions([ubuntu, win11, win10])
+    await setupTemplates()
+    expect(osButton('Windows 11')).toHaveClass('border-primary')
+    expect(osButton('Windows 10')).not.toHaveClass('border-primary')
+    expect(osButton('Ubuntu 22.04')).not.toHaveClass('border-primary')
+    expect(description('будет создана на Windows 11')).toBeInTheDocument()
+  })
+
+  it('клик по другому доступному шаблону переключает выбор и описание', async () => {
+    const user = await setupTemplates()
+    expect(description('будет создана на Windows 10')).toBeInTheDocument()
+    await user.click(osButton('Windows 11'))
+    expect(osButton('Windows 11')).toHaveClass('border-primary')
+    expect(osButton('Windows 10')).not.toHaveClass('border-primary')
+    expect(description('будет создана на Windows 11')).toBeInTheDocument()
+  })
+
+  it('шаблон «скоро» не выбирается кликом', async () => {
+    const user = await setupTemplates()
+    await user.click(osButton('Ubuntu 22.04'))
+    expect(osButton('Ubuntu 22.04')).not.toHaveClass('border-primary')
+    expect(osButton('Windows 10')).toHaveClass('border-primary')
+    expect(description('будет создана на Windows 10')).toBeInTheDocument()
+  })
+
+  it('нет доступных шаблонов — выбора нет, описание нейтральное, создать нельзя', async () => {
+    options = makeTemplateOptions([{ ...ubuntu }, { ...win10, available: false }])
+    const user = await setupTemplates()
+    expect(screen.getByText('Выберите операционную систему и ресурсы')).toBeInTheDocument()
+    expect(osButton('Ubuntu 22.04')).toBeDisabled()
+    expect(osButton('Windows 10')).toBeDisabled()
+    await fillValid(user)
+    expect(submit()).toBeDisabled()
+  })
+
+  it('пустой список шаблонов — создать нельзя', async () => {
+    options = makeTemplateOptions([])
+    const user = await setupTemplates()
+    expect(screen.queryByText('Операционная система')).toBeInTheDocument()
+    await fillValid(user)
+    expect(submit()).toBeDisabled()
+  })
+})
+
+describe('VmBuilderDialog: минимальный диск от шаблона', () => {
+  beforeEach(() => {
+    options = makeTemplateOptions([win10, win11, ubuntu])
+  })
+
+  it('шаблон строже общего лимита — слайдер стартует с минимума шаблона', async () => {
+    options = makeTemplateOptions([win11], { min_disk_gb: 40 })
+    await setupTemplates()
+    expect([diskSlider().min, diskSlider().max, diskSlider().value]).toEqual(['100', '200', '100'])
+  })
+
+  it('шаблон мягче общего лимита — действует общий минимум', async () => {
+    options = makeTemplateOptions([{ ...win10, min_disk_gb: 20 }], { min_disk_gb: 40 })
+    await setupTemplates()
+    expect([diskSlider().min, diskSlider().value]).toEqual(['40', '40'])
+  })
+
+  it('смена шаблона пересчитывает минимум и поднимает значение диска', async () => {
+    const user = await setupTemplates()
+    expect([diskSlider().min, diskSlider().value]).toEqual(['50', '50'])
+    await user.click(osButton('Windows 11'))
+    expect([diskSlider().min, diskSlider().value]).toEqual(['100', '100'])
+    expect(screen.getByText('100', { selector: 'span.tabular' })).toBeInTheDocument()
+  })
+
+  it('выбранный пользователем диск выше минимума нового шаблона сохраняется', async () => {
+    const user = await setupTemplates()
+    fireEvent.change(diskSlider(), { target: { value: '150' } })
+    await user.click(osButton('Windows 11'))
+    expect(diskSlider().value).toBe('150')
+  })
+
+  it('на отправку уходит диск не меньше минимума шаблона', async () => {
+    const user = await setupTemplates()
+    fireEvent.change(diskSlider(), { target: { value: '60' } })
+    await user.click(osButton('Windows 11'))
+    await fillValid(user)
+    await user.click(submit())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ template_key: 'win11', disk_gb: 100 })
+  })
+})
+
+describe('VmBuilderDialog: отправка с шаблоном', () => {
+  beforeEach(() => {
+    options = makeTemplateOptions([win10, win11, ubuntu])
+  })
+
+  it('по умолчанию уходит template_key первого доступного шаблона', async () => {
+    options = makeTemplateOptions([ubuntu, win10, win11])
+    const user = await setupTemplates()
+    await fillValid(user)
+    await user.click(submit())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ template_key: 'win10', disk_gb: 50 }))
+  })
+
+  it('уходит template_key выбранного шаблона', async () => {
+    const user = await setupTemplates()
+    await user.click(osButton('Windows 11'))
+    await fillValid(user)
+    await user.click(submit())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ template_key: 'win11' }))
   })
 })
