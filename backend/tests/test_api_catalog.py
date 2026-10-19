@@ -339,3 +339,37 @@ async def test_return_by_stranger_is_403_admin_can(client, shop, login, make_use
     login(await make_user("boss", role=ADMIN))
     r = await client.post(api(f"/bookings/{bid}/return"), json={"comment": "забрали"})
     assert r.status_code == 200 and r.json()["returned_by"]["username"] == "boss"
+
+
+# ---------- продление ----------
+
+async def test_extend_booking_via_api(client, shop, api):
+    booking = (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).json()
+    new = (clock.today() + timedelta(days=5)).isoformat()
+    r = await client.post(api(f"/bookings/{booking['id']}/extend"), json={"expected_return_at": new, "comment": "тесты"})
+    assert r.status_code == 200, r.text
+    assert r.json()["expected_return_at"] == new
+    mine = (await client.get(api("/bookings/my"))).json()
+    assert mine[0]["expected_return_at"] == new
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"expected_return_at": None}, {"expected_return_at": ""},
+    {"expected_return_at": (clock.today() - timedelta(days=1)).isoformat()},
+    {"expected_return_at": (clock.today() + timedelta(days=1)).isoformat(), "comment": "x" * 2001},
+])
+async def test_extend_validation_422(client, shop, api, body):
+    booking = (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).json()
+    assert (await client.post(api(f"/bookings/{booking['id']}/extend"), json=body)).status_code == 422
+
+
+async def test_extend_not_later_is_409_and_foreign_is_403(client, shop, api, login, make_user):
+    booking = (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).json()
+    url = api(f"/bookings/{booking['id']}/extend")
+    same = {"expected_return_at": booking["expected_return_at"]}
+    r = await client.post(url, json=same)
+    assert r.status_code == 409 and "позже текущего" in r.json()["detail"]
+    client.cookies.clear()
+    login(await make_user("other"))
+    later = {"expected_return_at": (clock.today() + timedelta(days=1)).isoformat()}
+    assert (await client.post(url, json=later)).status_code == 403

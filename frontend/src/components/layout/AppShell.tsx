@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
-import { useOverdue } from '@/lib/queries'
+import { useExtensions, useOverdue } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ShortcutsButton } from './Shortcuts'
 import { ThemeToggle } from './ThemeToggle'
@@ -11,7 +11,7 @@ interface NavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
-  badge?: number // красный счётчик справа (например, сколько просрочек)
+  badge?: number // красный счётчик справа (например, сколько просрочек и новых продлений)
 }
 
 const userNav: NavItem[] = [
@@ -24,7 +24,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/inventory', label: 'Инвентаризация', icon: Boxes },
   { to: '/admin/pools', label: 'Пулы выдачи', icon: Layers },
   { to: '/admin/journal', label: 'Журнал выдачи', icon: ArrowLeftRight },
-  { to: '/admin/overdue', label: 'Просрочки', icon: AlarmClock },
+  { to: '/admin/overdue', label: 'Сроки аренды', icon: AlarmClock },
   { to: '/admin/vms', label: 'Виртуалки', icon: Cloud },
   { to: '/admin/departments', label: 'Отделы', icon: Building2 },
   { to: '/admin/users', label: 'Сотрудники', icon: Users },
@@ -65,11 +65,13 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
 
 export function AppShell() {
   const session = useSession()
-  const overdueCount = useOverdue(session.user.role === 'admin').data?.length ?? 0
+  const isAdmin = session.user.role === 'admin'
+  // «Сроки аренды» требуют внимания: просрочки и продления, которые ещё не отметили «Принято»
+  const deadlinesCount =
+    (useOverdue(isAdmin).data?.length ?? 0) + (useExtensions(isAdmin).data?.filter((e) => !e.acknowledged_at).length ?? 0)
   const { logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
-  const isAdmin = session.user.role === 'admin'
   const burger = useRef<HTMLButtonElement>(null)
   const mobileMenu = useRef<HTMLElement>(null)
   const main = useRef<HTMLElement>(null)
@@ -116,7 +118,7 @@ export function AppShell() {
         {isAdmin && (
           <NavGroup
             title="Администрирование"
-            items={adminNav.map((i) => (i.to === '/admin/overdue' ? { ...i, badge: overdueCount } : i))}
+            items={adminNav.map((i) => (i.to === '/admin/overdue' ? { ...i, badge: deadlinesCount } : i))}
             onNavigate={closeMenu}
           />
         )}

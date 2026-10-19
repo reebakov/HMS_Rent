@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { BookingDialog } from './BookingDialog'
+import { BookingDialog, ExtendDialog, type ExtendTarget } from './BookingDialog'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
+import { addDays, formatDate, todayLocal } from '@/lib/utils'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -217,6 +218,80 @@ describe('BookingDialog', () => {
   it('«Отмена» закрывает окно без запроса', async () => {
     const { onClose, user } = setup()
     await waitForDepartments()
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('ExtendDialog', () => {
+  const today = todayLocal()
+  const setupExtend = (target: ExtendTarget = { id: 7, name: 'PC-042', due: addDays(today, 3) }, onClose = vi.fn()) => {
+    renderWithProviders(<ExtendDialog target={target} onClose={onClose} />)
+    return { onClose, user: userEvent.setup() }
+  }
+  const dateInput = () => screen.getByLabelText(/Новый срок/)
+  const extendButton = () => screen.getByRole('button', { name: 'Продлить' })
+
+  beforeEach(() => {
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.post).mockResolvedValue({})
+    vi.mocked(toast.success).mockReset()
+  })
+
+  it('показывает текущий срок; новый должен быть позже него', async () => {
+    const due = addDays(today, 3)
+    const { user } = setupExtend()
+    expect(screen.getByText(`Текущий срок — ${formatDate(due)}. Администраторы увидят продление.`)).toBeInTheDocument()
+    expect(dateInput()).toHaveAttribute('min', addDays(due, 1))
+    expect(extendButton()).toBeDisabled()
+    await user.type(dateInput(), due)
+    expect(extendButton()).toBeDisabled()
+    await user.clear(dateInput())
+    await user.type(dateInput(), addDays(due, 1))
+    expect(extendButton()).toBeEnabled()
+  })
+
+  it.each([
+    ['просрочена', addDays(today, -5)],
+    ['без срока', null],
+  ])('бронь %s — продлить можно с сегодняшнего дня', async (_, due) => {
+    const { user } = setupExtend({ id: 7, name: 'PC-042', due })
+    expect(dateInput()).toHaveAttribute('min', today)
+    await user.type(dateInput(), today)
+    expect(extendButton()).toBeEnabled()
+  })
+
+  it('отправляет новый срок и причину, показывает тост и закрывается', async () => {
+    const { onClose, user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.type(screen.getByLabelText(/Причина/), 'Тесты ещё идут')
+    await user.click(extendButton())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledWith('/bookings/7/extend', { expected_return_at: '2099-12-31', comment: 'Тесты ещё идут' })
+    expect(toast.success).toHaveBeenCalledWith(`Аренда PC-042 продлена до ${formatDate('2099-12-31')}`)
+  })
+
+  it('пустая причина не отправляется', async () => {
+    const { user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.click(extendButton())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(vi.mocked(api.post).mock.calls[0][1]).toEqual({ expected_return_at: '2099-12-31' })
+  })
+
+  it('ошибка API показывается в форме, окно остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Бронирование уже закрыто'))
+    const { onClose, user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.click(extendButton())
+    expect(await screen.findByText('Бронирование уже закрыто')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('«Отмена» закрывает окно без запроса', async () => {
+    const { onClose, user } = setupExtend()
     await user.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(api.post).not.toHaveBeenCalled()

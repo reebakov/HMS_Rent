@@ -37,11 +37,19 @@ export function plural(n: number, forms: [string, string, string]) {
   return forms[2]
 }
 
-/** Сегодняшняя дата по местному времени в виде YYYY-MM-DD: toISOString() даёт дату по UTC, и у границы суток min поля даты сдвигается на день */
-export function todayLocal() {
-  const d = new Date()
+/** Дата по местному времени в виде YYYY-MM-DD: toISOString() даёт дату по UTC, и у границы суток min поля даты сдвигается на день */
+function localIso(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export const todayLocal = () => localIso(new Date())
+
+/** YYYY-MM-DD через days дней от даты YYYY-MM-DD */
+export function addDays(date: string, days: number) {
+  const d = new Date(`${date}T00:00:00`)
+  d.setDate(d.getDate() + days)
+  return localIso(d)
 }
 
 export const isOverdue = (date?: string | null) => !!date && new Date(date + 'T23:59:59') < new Date()

@@ -61,6 +61,7 @@ export const canReleaseVm = (status: VmStatus) => status === 'ready' || status =
 export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',
   returned: 'Возврат',
+  extended: 'Продление',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',

@@ -6,7 +6,7 @@ import { AppShell } from './AppShell'
 import { ThemeToggle } from './ThemeToggle'
 import { api } from '@/lib/api'
 import { makeSession, renderWithProviders } from '@/test/helpers'
-import type { OverdueItem, Session } from '@/lib/types'
+import type { BookingExtension, OverdueItem, Session } from '@/lib/types'
 
 let session: Session
 const logout = vi.fn()
@@ -43,15 +43,20 @@ const item = (id: number): OverdueItem => ({
   email: null, taken_at: null, due: '2026-10-01', days: 2,
 })
 let overdue: OverdueItem[]
+const extension = (id: number, acknowledged: boolean) =>
+  ({ id, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as BookingExtension
+let extensions: BookingExtension[]
 
 beforeEach(() => {
   session = makeSession()
   overdue = []
+  extensions = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
-  // меню админа запрашивает просрочки для счётчика
+  // меню админа запрашивает просрочки и продления для счётчика
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/admin/overdue') return overdue
+    if (path === '/admin/extensions') return extensions
     throw new Error(`неожиданный GET ${path}`)
   })
   document.documentElement.classList.remove('dark')
@@ -256,14 +261,14 @@ describe('ThemeToggle', () => {
   })
 })
 
-const overdueLink = () => screen.getByRole('link', { name: /^Просрочки/ })
+const overdueLink = () => screen.getByRole('link', { name: /^Сроки аренды/ })
 
-describe('AppShell: «Просрочки»', () => {
+describe('AppShell: «Сроки аренды»', () => {
   beforeEach(() => {
     session = makeSession({ role: 'admin' })
     overdue = [item(1), item(2), item(3)]
   })
-  it('админ видит пункт «Просрочки», ведущий на /admin/overdue', async () => {
+  it('админ видит пункт «Сроки аренды», ведущий на /admin/overdue', async () => {
     mountShell()
     expect(overdueLink()).toHaveAttribute('href', '/admin/overdue')
     await screen.findByText('3')
@@ -275,18 +280,33 @@ describe('AppShell: «Просрочки»', () => {
     expect(api.get).toHaveBeenCalledWith('/admin/overdue')
   })
 
+  it('к просрочкам добавляются только непринятые продления', async () => {
+    extensions = [extension(1, false), extension(2, false), extension(3, true)]
+    mountShell()
+    expect(await within(overdueLink()).findByText('5')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/admin/extensions')
+  })
+
+  it('без просрочек счётчик показывает новые продления', async () => {
+    overdue = []
+    extensions = [extension(1, false)]
+    mountShell()
+    expect(await within(overdueLink()).findByText('1')).toBeInTheDocument()
+  })
+
   it('счётчик красный (плашка bg-danger) и стоит внутри самой ссылки', async () => {
     mountShell()
     expect(await within(overdueLink()).findByText('3')).toHaveClass('bg-danger')
   })
 
-  it('при нуле просрочек счётчика нет, пункт остаётся', async () => {
+  it('без просрочек и новых продлений счётчика нет, пункт остаётся', async () => {
     overdue = []
+    extensions = [extension(1, true)]
     mountShell()
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/overdue'))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/extensions'))
     expect(overdueLink()).toBeInTheDocument()
     expect(overdueLink().querySelector('.bg-danger')).toBeNull()
-    expect(overdueLink()).toHaveTextContent(/^Просрочки$/)
+    expect(overdueLink()).toHaveTextContent(/^Сроки аренды$/)
   })
 
   it('ошибка загрузки просрочек: меню работает, счётчика нет', async () => {
@@ -296,7 +316,7 @@ describe('AppShell: «Просрочки»', () => {
     expect(overdueLink().querySelector('.bg-danger')).toBeNull()
   })
 
-  it('счётчик только у «Просрочки»: другие пункты без плашки', async () => {
+  it('счётчик только у «Сроки аренды»: другие пункты без плашки', async () => {
     const { container } = mountShell()
     await within(overdueLink()).findByText('3')
     expect(container.querySelectorAll('nav .bg-danger')).toHaveLength(1)
@@ -313,7 +333,7 @@ describe('AppShell: «Просрочки»', () => {
     mountShell()
     await within(overdueLink()).findByText('3')
     await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
-    const links = screen.getAllByRole('link', { name: /^Просрочки/ })
+    const links = screen.getAllByRole('link', { name: /^Сроки аренды/ })
     expect(links).toHaveLength(2)
     for (const l of links) expect(within(l).getByText('3')).toBeInTheDocument()
   })
@@ -326,11 +346,11 @@ describe('AppShell: «Просрочки»', () => {
     expect(overdueLink()).toHaveAttribute('aria-current', 'page')
   })
 
-  it('сотрудник: пункта «Просрочки» нет и запрос просрочек не уходит', async () => {
+  it('сотрудник: пункта «Сроки аренды» нет и запрос просрочек не уходит', async () => {
     session = makeSession()
     mountShell()
     await screen.findByText('страница-каталог')
-    expect(screen.queryByRole('link', { name: /Просрочки/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Сроки аренды/ })).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalled()
   })
 })

@@ -46,3 +46,23 @@ class Booking(Base, TimestampMixin):
     department: Mapped[Department] = relationship(lazy="joined")
     user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
     returned_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[returned_by_id])
+
+
+class BookingExtension(Base):
+    """Продление брони: срок был → стал. Пока админ не отметил «Принято», продление считается новым."""
+
+    __tablename__ = "booking_extensions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))  # кто продлил: арендатор или админ
+    old_return_at: Mapped[date | None] = mapped_column(Date)  # у старых броней срока могло не быть
+    new_return_at: Mapped[date] = mapped_column(Date)
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    booking: Mapped[Booking] = relationship(lazy="joined")
+    user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
+    acknowledged_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[acknowledged_by_id])

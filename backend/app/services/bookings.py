@@ -12,8 +12,8 @@ from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source, get_mapping
 from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
-from app.schemas.booking import BookingCreate
+from app.models import Booking, BookingExtension, BookingStatus, Computer, ComputerStatus, EventType, User
+from app.schemas.booking import BookingCreate, BookingExtend
 from app.services.events import add_event
 from app.services.orders import next_order_number
 from app.services import departments, runtime, service_requests
@@ -112,19 +112,25 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     return await get_booking(session, booking.id)
 
 
-async def return_booking(session: AsyncSession, user: User, booking_id: int, comment: str | None) -> Booking:
+async def _lock_active(session: AsyncSession, user: User, booking_id: int, action: str) -> tuple[Booking, Computer]:
+    """Активная бронь и её ПК под блокировкой; менять её может арендатор или администратор."""
     booking = await session.scalar(
         select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
     )
     if booking is None:
         raise NotFound("Бронирование не найдено")
     if booking.user_id != user.id and not user.is_admin:
-        raise Forbidden("Вернуть ПК может тот, кто его бронировал, или администратор")
+        raise Forbidden(f"{action} может тот, кто бронировал ПК, или администратор")
     if booking.status != BookingStatus.active:
         raise Conflict("Бронирование уже закрыто")
     comp = await session.scalar(
         select(Computer).where(Computer.id == booking.computer_id).with_for_update(of=Computer)
     )
+    return booking, comp
+
+
+async def return_booking(session: AsyncSession, user: User, booking_id: int, comment: str | None) -> Booking:
+    booking, comp = await _lock_active(session, user, booking_id, "Вернуть ПК")
 
     booking.status = BookingStatus.returned.value
     booking.returned_at = datetime.now(timezone.utc)
@@ -149,6 +155,35 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
     await session.commit()
 
     await notify(f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")
+    return await get_booking(session, booking.id)
+
+
+async def extend_booking(session: AsyncSession, user: User, booking_id: int, data: BookingExtend) -> Booking:
+    booking, comp = await _lock_active(session, user, booking_id, "Продлить аренду")
+    old, new = booking.expected_return_at, data.expected_return_at
+    if old is not None and new <= old:
+        raise Conflict(f"Новый срок должен быть позже текущего ({old:%d.%m.%Y})")
+    comment = data.comment or None
+
+    booking.expected_return_at = new
+    comp.usage_until = new
+    comp.writeback_pending = runtime.current().insight_writeback
+    # продление админа уже им «принято»: в счётчик новых попадают только продления арендаторов
+    acknowledged = datetime.now(timezone.utc) if user.is_admin else None
+    session.add(BookingExtension(
+        booking_id=booking.id, user_id=user.id, old_return_at=old, new_return_at=new, comment=comment,
+        acknowledged_at=acknowledged, acknowledged_by_id=user.id if user.is_admin else None,
+    ))
+    add_event(
+        session,
+        computer_id=comp.id,
+        booking_id=booking.id,
+        actor_id=user.id,
+        event_type=EventType.extended,
+        message=f"Заказ №{booking.order_number}: срок продлён "
+                f"{f'с {old:%d.%m.%Y} ' if old else ''}до {new:%d.%m.%Y}" + (f": {comment}" if comment else ""),
+    )
+    await session.commit()
     return await get_booking(session, booking.id)
 
 

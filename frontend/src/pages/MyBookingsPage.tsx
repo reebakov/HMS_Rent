@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CalendarClock, Inbox, Undo2 } from 'lucide-react'
+import { CalendarClock, CalendarPlus, Inbox, Undo2 } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { DataState, QueryError } from '@/components/ui/data-state'
-import { ReturnDialog } from '@/features/booking/BookingDialog'
+import { ExtendDialog, ReturnDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
 import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
@@ -19,6 +19,7 @@ export function MyBookingsPage() {
   const data = bookings.data
   const returnMutation = useReturnBooking()
   const [returning, setReturning] = useState<Booking | null>(null)
+  const [extending, setExtending] = useState<ExtendTarget | null>(null)
   const requests = useMyRequests()
   const [problem, setProblem] = useState<ProblemTarget>(null)
   const [openedRequest, setOpenedRequest] = useState<number | null>(null)
@@ -130,6 +131,14 @@ export function MyBookingsPage() {
                     <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
                     <div className="ml-auto flex gap-1">
                     <ReportProblemButton onClick={() => setProblem({ bookingId: b.id, name: b.computer.name })} />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExtending({ id: b.id, name: b.computer.name, due: b.expected_return_at })}
+                    >
+                      <CalendarPlus className="h-3.5 w-3.5" />
+                      Продлить
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setReturning(b)}>
                       <Undo2 className="h-3.5 w-3.5" />
                       Вернуть компьютер
@@ -191,6 +200,7 @@ export function MyBookingsPage() {
         onConfirm={confirmReturn}
         onClose={() => setReturning(null)}
       />
+      <ExtendDialog target={extending} onClose={() => setExtending(null)} />
       <ReportProblemDialog target={problem} onClose={() => setProblem(null)} />
       <RequestSheet id={openedRequest} onClose={() => setOpenedRequest(null)} />
     </>

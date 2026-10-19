@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, status
 
 from app.api.deps import DB, CurrentUser
 from app.models import Booking
-from app.schemas.booking import BookingCreate, BookingOut, BookingReturn
+from app.schemas.booking import BookingCreate, BookingExtend, BookingOut, BookingReturn
 from app.services import bookings as service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -27,4 +27,13 @@ async def return_booking(
     booking = await service.return_booking(session, user, booking_id, data.comment)
     tasks.add_task(service.push_to_insight)
     tasks.add_task(service.create_return_request, booking.id, user.id)
+    return booking
+
+
+@router.post("/{booking_id}/extend", response_model=BookingOut)
+async def extend_booking(
+    booking_id: int, data: BookingExtend, user: CurrentUser, session: DB, tasks: BackgroundTasks
+) -> Booking:
+    booking = await service.extend_booking(session, user, booking_id, data)
+    tasks.add_task(service.push_to_insight)  # новый «Срок использования» в Insight
     return booking

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
-  Booking, BookingCreate, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
+  Booking, BookingCreate, BookingExtend, BookingExtension, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, RequestDetail, VsphereCheck,
 } from './types'
@@ -71,6 +71,14 @@ export function useReturnBooking() {
   return useMutation({
     mutationFn: ({ id, comment }: { id: number; comment?: string }) =>
       api.post<Booking>(`/bookings/${id}/return`, { comment }),
+    onSettled: invalidate,
+  })
+}
+
+export function useExtendBooking() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, ...data }: BookingExtend & { id: number }) => api.post<Booking>(`/bookings/${id}/extend`, data),
     onSettled: invalidate,
   })
 }
@@ -296,10 +304,26 @@ export function useAddComment() {
   })
 }
 
-// ---------- Просрочки и детали синхронизации ----------
+// ---------- Сроки аренды и детали синхронизации ----------
 
 export const useOverdue = (enabled = true) =>
   useQuery({ queryKey: ['admin', 'overdue'], queryFn: () => api.get<OverdueItem[]>('/admin/overdue'), enabled, refetchInterval: 60_000 })
+
+export const useExtensions = (enabled = true) =>
+  useQuery({
+    queryKey: ['admin', 'extensions'],
+    queryFn: () => api.get<BookingExtension[]>('/admin/extensions'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+export function useAckExtension() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<BookingExtension>(`/admin/extensions/${id}/ack`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'extensions'] }),
+  })
+}
 
 export const useSyncRunDetails = (id: number | null) =>
   useQuery({

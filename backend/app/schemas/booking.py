@@ -18,6 +18,11 @@ class BookingReturn(InputModel):
     comment: str | None = Field(default=None, max_length=2000)
 
 
+class BookingExtend(InputModel):
+    expected_return_at: ReturnDate
+    comment: str | None = Field(default=None, max_length=2000)
+
+
 class BookingOut(ORMModel):
     id: int
     order_number: int

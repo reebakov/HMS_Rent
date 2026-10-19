@@ -1,22 +1,24 @@
-"""Просрочки: ПК и виртуалки, которые должны были вернуть, но не вернули.
+"""Сроки аренды: просрочки ПК и виртуалок и продления броней.
 
-Видно в Админке → «Просрочки» (+ счётчик в меню). Раз в день worker шлёт сводку в Mattermost,
-если задан MATTERMOST_WEBHOOK_URL.
+Видно в Админке → «Сроки аренды» (+ счётчик просрочек и непринятых продлений в меню). Раз в день worker шлёт
+сводку просрочек в Mattermost, если задан MATTERMOST_WEBHOOK_URL.
 """
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.config import settings
+from app.core.errors import NotFound
 from app.integrations.notify import notify
-from app.models import AppSetting, Booking, BookingStatus, VirtualMachine, VmStatus
+from app.models import AppSetting, Booking, BookingExtension, BookingStatus, User, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
 from app.services import runtime
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
 DIGEST_HOUR = 10  # во сколько слать сводку по местному времени
+RECENT_EXTENSIONS_DAYS = 14  # сколько дней принятые продления остаются в списке
 
 
 async def list_overdue(session: AsyncSession) -> tuple[list[Booking], list[VirtualMachine]]:
@@ -49,6 +51,30 @@ async def list_items(session: AsyncSession) -> list[OverdueItem]:
         for v in vms
     ]
     return sorted(items, key=lambda i: -i.days)
+
+
+async def list_extensions(session: AsyncSession) -> list[BookingExtension]:
+    """Непринятые продления и принятые за последние дни: сначала непринятые, внутри — свежие сверху."""
+    since = datetime.now(timezone.utc) - timedelta(days=RECENT_EXTENSIONS_DAYS)
+    rows = await session.scalars(
+        select(BookingExtension)
+        .where(BookingExtension.acknowledged_at.is_(None) | (BookingExtension.created_at >= since))
+        .order_by(BookingExtension.acknowledged_at.is_not(None), BookingExtension.created_at.desc())
+    )
+    return list(rows.unique().all())
+
+
+async def acknowledge_extension(session: AsyncSession, admin: User, extension_id: int) -> BookingExtension:
+    """«Принято»: продление больше не считается новым. Повторный вызов ничего не меняет."""
+    ext = await session.get(BookingExtension, extension_id)
+    if ext is None:
+        raise NotFound("Продление не найдено")
+    if ext.acknowledged_at is None:
+        ext.acknowledged_at = datetime.now(timezone.utc)
+        ext.acknowledged_by_id = admin.id
+        await session.commit()
+        await session.refresh(ext, ["acknowledged_by"])
+    return ext
 
 
 def days_overdue(due: date | None) -> int:

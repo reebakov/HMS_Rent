@@ -50,6 +50,7 @@ class ServiceRequestKind(StrEnum):
 class EventType(StrEnum):
     booked = "booked"
     returned = "returned"
+    extended = "extended"
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"
