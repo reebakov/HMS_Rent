@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { CircleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, Skeleton } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 /** Минимум от результата useQuery, который нужен для показа загрузки и ошибки */
 export interface QueryLike<T> {
@@ -23,6 +24,15 @@ export function ErrorNotice({ title, error, onRetry }: { title: string; error?: 
       <Button variant="outline" size="sm" onClick={() => onRetry()}>
         Повторить
       </Button>
+    </div>
+  )
+}
+
+/** Плашка с ошибкой отправки формы (мутации): сообщение сервера внутри диалога или формы */
+export function FormError({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger', className)}>
+      {children}
     </div>
   )
 }

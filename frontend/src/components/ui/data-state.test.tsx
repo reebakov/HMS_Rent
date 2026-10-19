@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DataState, ErrorNotice, QueryError, RowsSkeleton, type QueryLike } from './data-state'
+import { DataState, ErrorNotice, FormError, QueryError, RowsSkeleton, type QueryLike } from './data-state'
 
 const query = (over: Partial<QueryLike<string[]>> = {}): QueryLike<string[]> => ({
   data: undefined,
@@ -112,5 +112,12 @@ describe('RowsSkeleton', () => {
   it('рисует заданное число строк', () => {
     const { container } = render(<RowsSkeleton rows={3} className="h-4" />)
     expect(container.querySelectorAll('.h-4')).toHaveLength(3)
+  })
+})
+
+describe('FormError', () => {
+  it('показывает текст ошибки и принимает дополнительный класс', () => {
+    render(<FormError className="mb-4">Имя занято</FormError>)
+    expect(screen.getByText('Имя занято')).toHaveClass('text-danger', 'mb-4')
   })
 })

@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { DataState, QueryError } from '@/components/ui/data-state'
+import { DataState, FormError, QueryError } from '@/components/ui/data-state'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
@@ -205,11 +205,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                 («Управление дисками» → «Расширить том»).
               </p>
 
-              {create.error && (
-                <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">
-                  {create.error.message}
-                </div>
-              )}
+              {create.error && <FormError>{create.error.message}</FormError>}
             </div>
           )
         }

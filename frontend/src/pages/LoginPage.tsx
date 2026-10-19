@@ -4,7 +4,7 @@ import { ChevronDown, Cloud, LockKeyhole, Monitor, MonitorSmartphone, ShieldChec
 import { useAuth } from '@/auth/AuthProvider'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
-import { QueryError } from '@/components/ui/data-state'
+import { FormError, QueryError } from '@/components/ui/data-state'
 import { api } from '@/lib/api'
 import { useAuthConfig } from '@/lib/queries'
 import { cn, errorMessage } from '@/lib/utils'
@@ -187,9 +187,7 @@ export function LoginPage() {
             </p>
           </div>
 
-          {error && (
-            <div className="mb-4 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">{error}</div>
-          )}
+          {error && <FormError className="mb-4">{error}</FormError>}
 
           <QueryError query={authConfig} title="Не удалось загрузить настройки входа" />
 

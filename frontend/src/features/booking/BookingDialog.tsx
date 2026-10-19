@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { QueryError } from '@/components/ui/data-state'
+import { FormError, QueryError } from '@/components/ui/data-state'
 import { Field, Input, Select, Textarea } from '@/components/ui/input'
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
@@ -122,11 +122,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
             </Field>
           </div>
 
-          {create.error && (
-            <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">
-              {create.error.message}
-            </div>
-          )}
+          {create.error && <FormError>{create.error.message}</FormError>}
         </form>
       )}
     </Dialog>
