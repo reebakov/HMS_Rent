@@ -13,8 +13,36 @@ permissions:
   contents: read
 
 jobs:
+  # Тесты нужны, только если менялся код, на который они опираются. Правка документации, скриптов выкатки и compose-файлов
+  # их не затрагивает. Образы при этом собираются всегда (из кэша, ~25 с): deploy.sh ждёт образ с тегом-sha у каждого коммита.
+  changes:
+    name: Что изменилось
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Менялся ли код
+        id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          code=true   # по умолчанию тесты запускаются: неизвестная база (первый push, force push) тоже даёт полный прогон
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            files="$(git diff --name-only "$BASE" "$HEAD")"
+            if ! grep -qE '^(backend/|frontend/|\.github/|docker-compose\.test\.yml$)' <<<"$files"; then code=false; fi
+            echo "Изменённые файлы:"; echo "$files"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Тесты нужны: $code"
+
   backend:
     name: Backend (pytest)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -55,6 +83,8 @@ jobs:
 
   frontend:
     name: Frontend (typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -77,8 +107,9 @@ jobs:
 
   images:
     name: Образы (${{ matrix.name }})
-    needs: [backend, frontend]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, backend, frontend]
+    # !failure() вместо неявного success(): образы строятся и тогда, когда тесты пропущены (код не менялся)
+    if: ${{ !cancelled() && !failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

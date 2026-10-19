@@ -143,4 +143,4 @@ cd frontend && npm install && npm run dev
 - `make test-down` — остановить и удалить тестовые контейнеры и тома.
 - Без Docker: `cd frontend && npm run test` (или `npm run test:watch`), `cd backend && pytest`.
 - Тесты фронтенда лежат рядом с кодом (`*.test.ts(x)`), общие хелперы — в `frontend/src/test/`.
-- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`.
+- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`. Если менялась только документация, скрипты выкатки или compose-файлы прода (изменений в `backend/`, `frontend/`, `.github/` и `docker-compose.test.yml` нет), тесты пропускаются; образы на push в `main` собираются всегда.
