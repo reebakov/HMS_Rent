@@ -54,6 +54,8 @@ jobs:
         run: |
           bash -n scripts/deploy.sh
           shellcheck scripts/deploy.sh   # shellcheck есть на ubuntu-latest
+      - name: Все настройки Settings описаны в .env.example
+        run: python3 scripts/check_env_example.py
       - name: docker compose config (разработка, прод, прод с HTTPS)
         run: |
           cp .env.example .env   # env_file: .env обязателен; заодно проверяется, что пример разбирается

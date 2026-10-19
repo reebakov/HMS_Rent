@@ -52,6 +52,7 @@ hms-rent/
 ├── .env.example              # все настройки с комментариями
 ├── Makefile                  # make up / test / test-frontend / dev-*
 ├── scripts/deploy.sh         # выкатка на сервере: образы, дамп БД, перезапуск, автооткат
+├── scripts/check_env_example.py  # CI: каждая настройка из config.py есть в .env.example
 ├── deploy/nginx/tls.conf     # nginx в режиме HTTPS (server-блоки с TLS; locations берёт из frontend/nginx/app.inc)
 ├── .github/workflows/ci.yml  # CI: тесты, проверка конфигов, публикация образов
 ├── docs/
