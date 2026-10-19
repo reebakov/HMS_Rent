@@ -56,6 +56,14 @@ describe('CatalogPage', () => {
     expect(screen.getByPlaceholderText(/Имя, процессор/)).toHaveValue('rtx')
   })
 
+  it('неизвестные tier и sort в адресной строке заменяются значениями по умолчанию, страница не падает', async () => {
+    renderWithProviders(<CatalogPage />, { route: '/?tier=foo&sort=bar' })
+    expect(await screen.findByText('PC-001')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Средние' })).toBeInTheDocument()
+    expect(lastComputerQuery()).toMatchObject({ tier: 'medium', sort: 'name' })
+    expect(screen.getByDisplayValue('По имени')).toBeInTheDocument()
+  })
+
   it('поиск уходит в API с задержкой (debounce), а не на каждую букву', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CatalogPage />)

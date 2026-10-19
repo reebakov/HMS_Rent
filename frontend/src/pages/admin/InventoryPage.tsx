@@ -17,12 +17,17 @@ import { cn, formatDate, isOverdue } from '@/lib/utils'
 
 const PAGE = 100
 
+// «unavailable» — составной фильтр бэкенда, остальные значения — статусы ПК; неизвестное из адресной строки игнорируется
+const statusFromUrl = (value: string | null) =>
+  value === 'unavailable' || (value && Object.keys(STATUSES).includes(value)) ? value : undefined
+
 export function InventoryPage() {
   const [params] = useSearchParams()
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<InventoryFilters>({
     issues_only: params.get('issues') === '1' || undefined,
     pool_id: params.get('pool') ?? undefined,
+    status: statusFromUrl(params.get('status')) || undefined,
   })
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(new Set())

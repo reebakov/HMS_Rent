@@ -153,6 +153,25 @@ describe('InventoryPage', () => {
     expect(screen.getByLabelText('Только с проблемами')).toBeChecked()
   })
 
+  it('фильтр статуса из адресной строки (ссылка «Недоступно» из обзора) попадает в запрос и в селект', async () => {
+    renderWithProviders(<InventoryPage />, { route: '/?status=unavailable' })
+    await screen.findByText('PC-001')
+    expect(lastQuery()).toMatchObject({ status: 'unavailable' })
+    expect(screen.getByDisplayValue('⚠️ Недоступные')).toBeInTheDocument()
+  })
+
+  it('известный статус в адресной строке применяется, неизвестный — игнорируется', async () => {
+    const { unmount } = renderWithProviders(<InventoryPage />, { route: '/?status=maintenance' })
+    await screen.findByText('PC-001')
+    expect(lastQuery()).toMatchObject({ status: 'maintenance' })
+    unmount()
+    vi.mocked(api.get).mockClear()
+    renderWithProviders(<InventoryPage />, { route: '/?status=foo' })
+    await screen.findByText('PC-001')
+    expect(lastQuery().status).toBeUndefined()
+    expect(screen.getByDisplayValue('Все статусы')).toBeInTheDocument()
+  })
+
   it('селекты и чекбоксы фильтров попадают в запрос, «Все …» сбрасывает', async () => {
     const user = userEvent.setup()
     renderWithProviders(<InventoryPage />)
