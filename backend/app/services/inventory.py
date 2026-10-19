@@ -49,7 +49,7 @@ async def _active_bookings(session: AsyncSession, computer_ids: list[int] | None
     return {b.computer_id: b for b in rows.unique().all()}
 
 
-def _row(comp: Computer, booking: Booking | None) -> InventoryRow:
+def inventory_row(comp: Computer, booking: Booking | None) -> InventoryRow:
     row = InventoryRow.model_validate(comp)
     row.booking = InventoryBooking.model_validate(booking) if booking else None
     row.issues = computer_issues(comp, booking)
@@ -104,7 +104,7 @@ async def list_inventory(
     if issues_only:
         computers = (await session.scalars(ordered.where(_MAY_HAVE_ISSUES))).unique().all()
         bookings = await _active_bookings(session, [c.id for c in computers])
-        rows = [r for r in (_row(c, bookings.get(c.id)) for c in computers) if r.issues]
+        rows = [r for r in (inventory_row(c, bookings.get(c.id)) for c in computers) if r.issues]
         return rows[offset: offset + limit if limit is not None else None], len(rows)
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
@@ -112,7 +112,7 @@ async def list_inventory(
         ordered = ordered.limit(limit).offset(offset)
     computers = (await session.scalars(ordered)).unique().all()
     bookings = await _active_bookings(session, [c.id for c in computers])
-    return [_row(c, bookings.get(c.id)) for c in computers], total or 0
+    return [inventory_row(c, bookings.get(c.id)) for c in computers], total or 0
 
 
 async def get_stats(session: AsyncSession) -> StatsOut:

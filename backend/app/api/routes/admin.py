@@ -1,25 +1,18 @@
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import Response
-from sqlalchemy import select
-from app.schemas.admin import EventPage
 
 from app.api.deps import DB, AdminUser
 from app.core import clock
-from app.core.config import settings
-from app.models import Booking, Computer, Department, EventType, Pool, SyncRun
+from app.models import Booking, Department, Pool, SyncRun
 from app.schemas.admin import (
-    ComputerAdminUpdate, ComputerHistoryOut, DepartmentUsage, EventOut, InventoryPage, InventoryRow,
+    ComputerAdminUpdate, ComputerHistoryOut, DepartmentUsage, EventOut, EventPage, InventoryPage, InventoryRow,
     PoolAssign, PoolAssignResult, PoolOut, PoolSave, StatsOut, SyncInfoOut, SyncRunOut,
 )
 from app.schemas.booking import BookingOut
 from app.schemas.department import DepartmentCreate, DepartmentOut, DepartmentUpdate
-from app.services import departments, inventory, pools
-from app.services.events import add_event
-from app.services.sync import run_sync
-from app.services.tiering import classify
-from app.services import runtime
+from app.services import computers, departments, inventory, pools, sync_runs
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -70,42 +63,12 @@ async def inventory_export(
 
 @router.get("/computers/{computer_id}", response_model=ComputerHistoryOut)
 async def computer_history(computer_id: int, _: AdminUser, session: DB) -> ComputerHistoryOut:
-    comp = await session.get(Computer, computer_id)
-    if comp is None:
-        raise HTTPException(404, "Компьютер не найден")
-    bookings = (await session.scalars(
-        select(Booking).where(Booking.computer_id == comp.id).order_by(Booking.booked_at.desc())
-    )).unique().all()
-    active = next((b for b in bookings if b.status == "active"), None)
-    events, _ = await inventory.list_events(session, computer_id=comp.id, limit=200)
-    return ComputerHistoryOut(
-        computer=inventory._row(comp, active),
-        attributes=comp.attributes or {},
-        bookings=[BookingOut.model_validate(b) for b in bookings],
-        events=[EventOut.model_validate(e) for e in events],
-)
+    return await computers.get_history(session, computer_id)
 
 
 @router.patch("/computers/{computer_id}", response_model=InventoryRow)
 async def update_computer(computer_id: int, data: ComputerAdminUpdate, admin: AdminUser, session: DB) -> InventoryRow:
-    comp = await session.get(Computer, computer_id)
-    if comp is None:
-        raise HTTPException(404, "Компьютер не найден")
-    changes = data.model_dump(exclude_unset=True)
-    if "tier_override" in changes:
-        comp.tier_override = changes["tier_override"].value if changes["tier_override"] else None
-        comp.tier = comp.tier_override or classify(is_virtual=comp.is_virtual, ram_gb=comp.ram_gb, gpu=comp.gpu)
-    if "note" in changes:
-        comp.note = changes["note"] or None
-    add_event(
-        session, computer_id=comp.id, actor_id=admin.id, event_type=EventType.admin_update,
-        message="Изменено админом: " + ", ".join(changes) if changes else "Без изменений",
-        payload={k: str(v) for k, v in changes.items()},
-    )
-    await session.commit()
-    comp = await session.get(Computer, computer_id, populate_existing=True)
-    active = await session.scalar(select(Booking).where(Booking.computer_id == comp.id, Booking.status == "active"))
-    return inventory._row(comp, active)
+    return await computers.update(session, admin, computer_id, data)
 
 
 # ---------- Пулы выдачи ----------
@@ -189,19 +152,9 @@ async def update_department(department_id: int, data: DepartmentUpdate, _: Admin
 
 @router.get("/sync", response_model=SyncInfoOut)
 async def sync_info(_: AdminUser, session: DB) -> SyncInfoOut:
-    runs = (await session.scalars(select(SyncRun).order_by(SyncRun.id.desc()).limit(20))).all()
-    return SyncInfoOut(
-        mode=settings.insight_mode,
-        jira_url=settings.jira_url,
-        interval_sec=(await runtime.load(session)).insight_sync_interval_min * 60,
-        writeback=runtime.current().insight_writeback,
-        runs=[SyncRunOut.model_validate(r) for r in runs],
-    )
+    return await sync_runs.get_info(session)
 
 
 @router.post("/sync", response_model=SyncRunOut)
 async def sync_now(_: AdminUser, session: DB) -> SyncRun:
-    run = await run_sync(session)
-    if run is None:
-        raise HTTPException(409, "Синхронизация уже выполняется, попробуйте через минуту")
-    return run
+    return await sync_runs.run_now(session)

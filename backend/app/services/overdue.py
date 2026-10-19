@@ -12,6 +12,7 @@ from app.core import clock
 from app.core.config import settings
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingStatus, VirtualMachine
+from app.schemas.admin import OverdueItem
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
 DIGEST_HOUR = 10  # во сколько слать сводку по местному времени
@@ -29,6 +30,24 @@ async def list_overdue(session: AsyncSession) -> tuple[list[Booking], list[Virtu
         .order_by(VirtualMachine.expected_return_at)
     )).unique().all()
     return list(bookings), list(vms)
+
+
+async def list_items(session: AsyncSession) -> list[OverdueItem]:
+    """Просрочки ПК и ВМ одним списком, самые долгие сверху."""
+    bookings, vms = await list_overdue(session)
+    items = [
+        OverdueItem(kind="pc", id=b.id, order_number=b.order_number, name=b.computer.name, department=b.department.name,
+                    requester_name=b.requester_name, requester_nick=b.requester_nick, email=b.user.email,
+                    taken_at=b.booked_at, due=b.expected_return_at, days=days_overdue(b.expected_return_at))
+        for b in bookings
+    ] + [
+        OverdueItem(kind="vm", id=v.id, order_number=v.order_number, name=v.name, department=v.department.name,
+                    requester_name=v.requester_name, requester_nick=v.requester_nick, email=v.user.email,
+                    taken_at=v.ready_at or v.created_at, due=v.expected_return_at,
+                    days=days_overdue(v.expected_return_at))
+        for v in vms
+    ]
+    return sorted(items, key=lambda i: -i.days)
 
 
 def days_overdue(due: date | None) -> int:

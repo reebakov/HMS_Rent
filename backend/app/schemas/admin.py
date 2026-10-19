@@ -53,6 +53,20 @@ class DepartmentUsage(BaseModel):
     last_booked_at: datetime | None
 
 
+class OverdueItem(BaseModel):
+    kind: str  # pc / vm
+    id: int  # booking_id или vm_id
+    order_number: int | None
+    name: str
+    department: str
+    requester_name: str
+    requester_nick: str
+    email: str | None
+    taken_at: datetime | None
+    due: date
+    days: int
+
+
 class InventoryBooking(ORMModel):
     id: int
     requester_name: str
