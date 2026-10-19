@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
-from app.schemas.common import ORMModel, reject_explicit_null
+from app.schemas.common import InputModel, ORMModel, reject_explicit_null
 
 
 class DepartmentOut(ORMModel):
@@ -11,17 +11,13 @@ class DepartmentOut(ORMModel):
     is_active: bool
 
 
-class DepartmentCreate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)  # «   » не проходит min_length
-
+class DepartmentCreate(InputModel):
     name: str = Field(min_length=2, max_length=255)
     code: str | None = Field(default=None, max_length=64)
     head_name: str | None = Field(default=None, max_length=255)
 
 
-class DepartmentUpdate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
+class DepartmentUpdate(InputModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
     code: str | None = Field(default=None, max_length=64)
     head_name: str | None = Field(default=None, max_length=255)

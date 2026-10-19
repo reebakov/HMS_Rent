@@ -133,7 +133,7 @@ async def list_pools(_: AdminUser, session: DB) -> list[PoolOut]:
 async def create_pool(data: PoolSave, _: AdminUser, session: DB) -> Pool:
     if not data.name:
         raise HTTPException(422, "Укажите название пула")
-    pool = Pool(name=data.name.strip(), description=data.description,
+    pool = Pool(name=data.name, description=data.description,
                 is_published=True if data.is_published is None else data.is_published)
     pool.departments = await _departments(session, data.department_ids or [])
     session.add(pool)
@@ -154,7 +154,7 @@ async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -
     if "department_ids" in changes:
         pool.departments = await _departments(session, changes.pop("department_ids") or [])
     for field, value in changes.items():
-        setattr(pool, field, value.strip() if isinstance(value, str) else value)
+        setattr(pool, field, value)
     try:
         await session.commit()
     except IntegrityError as exc:
@@ -218,7 +218,7 @@ async def departments_usage(_: AdminUser, session: DB) -> list[DepartmentUsage]:
 
 @router.post("/departments", response_model=DepartmentOut, status_code=201)
 async def create_department(data: DepartmentCreate, _: AdminUser, session: DB) -> Department:
-    dept = Department(name=data.name.strip(), code=data.code, head_name=data.head_name)
+    dept = Department(name=data.name, code=data.code, head_name=data.head_name)
     session.add(dept)
     try:
         await session.commit()
@@ -234,7 +234,7 @@ async def update_department(department_id: int, data: DepartmentUpdate, _: Admin
     if dept is None:
         raise HTTPException(404, "Отдел не найден")
     for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(dept, field, value.strip() if isinstance(value, str) else value)
+        setattr(dept, field, value)
     try:
         await session.commit()
     except IntegrityError as exc:

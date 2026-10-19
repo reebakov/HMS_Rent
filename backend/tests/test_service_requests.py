@@ -119,11 +119,11 @@ async def fresh(req_id: int) -> ServiceRequest:
 # ---------- create_problem ----------
 
 async def test_create_problem_for_booking(session, env, sd):
-    req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="  Не включается  ")
+    req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
     type_id, summary, description, behalf = sd.created[0]
     assert (type_id, behalf) == (1248, "owner")
     assert "A001" in summary and f"заказ №{env.booking.order_number}" in summary
-    assert description.startswith("Не включается\n\n---\n")  # сообщение без лишних пробелов
+    assert description.startswith("Не включается\n\n---\n")
     for part in ["Компьютер: A001 (ITAM-1)", f"Заказ №{env.booking.order_number}", "i9 · 64 ГБ · 2 TB · RTX 4090",
                  "Команда-получатель: QA", "Арендатор: Иван Иванов (ivan)", "Обращение отправил: Иван Иванов (ivan@corp.test)"]:
         assert part in description
@@ -324,9 +324,9 @@ async def test_get_with_comments_not_found(session, env, sd):
 
 # ---------- add_comment ----------
 
-async def test_add_comment_sends_author_and_stripped_text(session, env, sd):
+async def test_add_comment_sends_author_and_text(session, env, sd):
     req = await add_req(session, env.owner, booking=env.booking)
-    await svc.add_comment(session, env.mate, req.id, "  спасибо  ")
+    await svc.add_comment(session, env.mate, req.id, "спасибо")
     assert sd.sent == [("HMS-100", "mate", "спасибо")]  # display_name пользователя mate == логин
 
 

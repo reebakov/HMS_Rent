@@ -1,11 +1,11 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import Tier
 from app.schemas.booking import BookingOut
-from app.schemas.common import DepartmentShort, ORMModel, UserShort, reject_explicit_null
+from app.schemas.common import DepartmentShort, InputModel, ORMModel, UserShort, reject_explicit_null
 from app.schemas.computer import ComputerOut
 
 
@@ -94,9 +94,7 @@ class PoolOut(PoolShort):
     booked: int = 0
 
 
-class PoolSave(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)  # «   » не проходит min_length
-
+class PoolSave(InputModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
     is_published: bool | None = None
@@ -108,7 +106,7 @@ class PoolSave(BaseModel):
         return self
 
 
-class PoolAssign(BaseModel):
+class PoolAssign(InputModel):
     """В пул по id (из таблицы инвентаризации) или списком имён/ключей Insight («A24, A432 …»)."""
 
     pool_id: int | None  # None — убрать из пулов
@@ -138,7 +136,7 @@ class EventOut(ORMModel):
     created_at: datetime
 
 
-class ComputerAdminUpdate(BaseModel):
+class ComputerAdminUpdate(InputModel):
     """Поля, которые админ может менять на портале. Статус «железа» меняется в Insight."""
 
     tier_override: Tier | None = None

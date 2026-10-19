@@ -246,6 +246,7 @@ async def test_booking_unknown_or_inactive_department_is_404(client, shop, make_
 
 @pytest.mark.parametrize("patch", [
     {"requester_name": "И"}, {"requester_nick": ""}, {"purpose": "x" * 2001},
+    {"requester_name": "     "}, {"requester_nick": "   "},  # одни пробелы — это пустое значение
     {"expected_return_at": (date.today() - timedelta(days=1)).isoformat()}, {"expected_return_at": "not-a-date"},
 ])
 async def test_booking_validation_422(client, shop, api, patch):

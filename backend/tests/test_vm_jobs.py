@@ -193,6 +193,14 @@ async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
     assert (await client.post(api("/vms"), json=body | {"name": "big", "cpu": 64})).status_code == 400
 
 
+@pytest.mark.parametrize("patch", [{"requester_name": "     "}, {"requester_nick": "   "}], ids=["name", "nick"])
+async def test_create_api_whitespace_only_requester_is_422(client, login, api, vm_on, ctx, patch):
+    login(ctx.user)
+    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+            "requester_name": "Иван", "requester_nick": "iv"} | patch
+    assert (await client.post(api("/vms"), json=body)).status_code == 422
+
+
 # ---------- worker: создание ----------
 
 async def test_create_next_success(session, vm_on, ctx, vsphere, notify):

@@ -7,13 +7,13 @@ from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.integrations import servicedesk as sd
 from app.models import ServiceRequest
-from app.schemas.common import ORMModel
+from app.schemas.common import InputModel, ORMModel
 from app.services import service_requests as service
 
 router = APIRouter(prefix="/requests", tags=["service-desk"])
 
 
-class RequestCreate(BaseModel):
+class RequestCreate(InputModel):
     booking_id: int | None = None
     vm_id: int | None = None
     message: str = Field(min_length=5, max_length=5000)
@@ -51,7 +51,7 @@ class RequestDetail(BaseModel):
     comments: list[CommentOut]
 
 
-class CommentIn(BaseModel):
+class CommentIn(InputModel):
     message: str = Field(min_length=1, max_length=5000)
 
 

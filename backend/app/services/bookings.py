@@ -84,9 +84,9 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         department_id=dept.id,
         user_id=user.id,
         order_number=order_number,
-        requester_name=data.requester_name.strip(),
-        requester_nick=data.requester_nick.strip(),
-        purpose=(data.purpose or "").strip() or None,
+        requester_name=data.requester_name,
+        requester_nick=data.requester_nick,
+        purpose=data.purpose or None,
         expected_return_at=data.expected_return_at,
         status=BookingStatus.active.value,
     )

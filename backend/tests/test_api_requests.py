@@ -92,6 +92,13 @@ async def test_create_request_for_booking_201(client, login, api, env, sd):
     assert [x.issue_key for x in await rows()] == ["HMS-1"]
 
 
+async def test_create_request_trims_message(client, login, api, env, sd):
+    login(env.owner)
+    r = await client.post(api("/requests"), json={"booking_id": env.booking.id, "message": "  Не включается  \n"})
+    assert r.status_code == 201
+    assert sd.created[0][2].startswith("Не включается\n\n---\n")
+
+
 async def test_create_request_for_vm_201(client, login, api, env, sd):
     login(env.mate)  # коллега по команде
     r = await client.post(api("/requests"), json={"vm_id": env.vm.id, "message": "Нет сети"})
@@ -106,7 +113,9 @@ async def test_create_request_for_vm_201(client, login, api, env, sd):
     {"booking_id": 1},
     {"booking_id": 1, "message": "x" * 5001},
     {"booking_id": 0, "message": "Проблема"},  # 0 — «не указан»
-], ids=["no-target", "both", "short", "empty", "no-message", "too-long", "zero-id"])
+    {"booking_id": 1, "message": "         "},  # одни пробелы не должны превращаться в пустую заявку в Jira
+    {"booking_id": 1, "message": "  abc  "},  # после обрезки пробелов короче 5 символов
+], ids=["no-target", "both", "short", "empty", "no-message", "too-long", "zero-id", "spaces", "short-after-trim"])
 async def test_create_request_validation_422(client, login, api, env, sd, body):
     login(env.owner)
     assert (await client.post(api("/requests"), json=body)).status_code == 422
@@ -205,7 +214,8 @@ async def test_add_comment_204(client, login, api, session, env, sd):
     assert sd.sent == [("HMS-100", "mate", "Спасибо")]
 
 
-@pytest.mark.parametrize("body", [{"message": ""}, {}, {"message": "x" * 5001}], ids=["empty", "missing", "too-long"])
+@pytest.mark.parametrize("body", [{"message": ""}, {}, {"message": "x" * 5001}, {"message": "   \n "}],
+                         ids=["empty", "missing", "too-long", "spaces"])
 async def test_add_comment_validation_422(client, login, api, session, env, sd, body):
     req = await add_req(session, env.owner)
     login(env.owner)

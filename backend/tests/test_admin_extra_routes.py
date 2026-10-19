@@ -249,6 +249,12 @@ async def test_add_user_with_name_and_department(client, boss, api, make_departm
     assert (await fresh_user(r.json()["id"])).department_id == dept.id
 
 
+async def test_add_user_trims_whitespace(client, boss, api):
+    r = await client.post(api("/admin/users"), json={"email": " Pad@Corp.io ", "display_name": "   "})
+    assert r.status_code == 201
+    assert r.json()["username"] == "pad@corp.io" and r.json()["display_name"] == "pad"  # «   » — как «не указано»
+
+
 async def test_add_user_in_admins_file_shows_admin_role(client, boss, api, admins_file):
     admins_file("future-boss@corp.io")
     r = await client.post(api("/admin/users"), json={"email": "future-boss@corp.io"})
@@ -271,7 +277,7 @@ async def test_add_user_unknown_department_404(client, boss, api):
     assert await users_count() == before
 
 
-@pytest.mark.parametrize("body", [{}, {"email": None}, {"email": "no-at-sign"}, {"email": "a b@c.io"}, {"email": " a@b.io"},
+@pytest.mark.parametrize("body", [{}, {"email": None}, {"email": "no-at-sign"}, {"email": "a b@c.io"}, {"email": "   "},
                                   {"email": "a@b"}, {"email": "@b.io"}, {"email": "a@"}, {"email": "x" * 256 + "@b.io"},
                                   {"email": "a@b.io", "display_name": "n" * 256}, {"email": "a@b.io", "department_id": "x"}])
 async def test_add_user_validation_422(client, boss, api, body):

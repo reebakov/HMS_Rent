@@ -1,11 +1,11 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 
-from app.schemas.common import ComputerShort, DepartmentShort, ORMModel, UserShort
+from app.schemas.common import ComputerShort, DepartmentShort, InputModel, ORMModel, UserShort
 
 
-class BookingCreate(BaseModel):
+class BookingCreate(InputModel):
     computer_id: int
     department_id: int
     requester_name: str = Field(min_length=2, max_length=255)
@@ -21,7 +21,7 @@ class BookingCreate(BaseModel):
         return value
 
 
-class BookingReturn(BaseModel):
+class BookingReturn(InputModel):
     comment: str | None = Field(default=None, max_length=2000)
 
 

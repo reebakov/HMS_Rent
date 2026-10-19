@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 from sqlalchemy import select
 
 from app.api.deps import DB, AdminUser
@@ -11,7 +11,7 @@ from app.core.admins import is_admin_email
 from app.core.config import settings
 from app.integrations.vsphere import client as vsphere
 from app.models import Department, User
-from app.schemas.common import DepartmentShort, ORMModel, reject_explicit_null
+from app.schemas.common import DepartmentShort, InputModel, ORMModel, reject_explicit_null
 from app.services import runtime
 from app.services.runtime import RuntimeConfig
 
@@ -67,13 +67,13 @@ class UserAdminOut(ORMModel):
     last_login_at: datetime | None
 
 
-class UserCreate(BaseModel):
+class UserCreate(InputModel):
     email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+$")
     display_name: str | None = Field(default=None, max_length=255)
     department_id: int | None = None
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(InputModel):
     department_id: int | None = None
     is_active: bool | None = None
 
@@ -98,7 +98,7 @@ async def list_users(_: AdminUser, session: DB) -> list[UserAdminOut]:
 @router.post("/users", response_model=UserAdminOut, status_code=201)
 async def add_user(data: UserCreate, _: AdminUser, session: DB) -> UserAdminOut:
     """Заранее завести сотрудника с отделом: при первом входе через Bouncer он сразу его получит."""
-    email = data.email.strip().lower()
+    email = data.email.lower()
     if await session.scalar(select(User).where(User.username == email)):
         raise HTTPException(409, "Такой сотрудник уже есть")
     if data.department_id is not None and await session.get(Department, data.department_id) is None:

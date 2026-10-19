@@ -73,7 +73,7 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
 
     req = ServiceRequest(
         kind="problem", user_id=user.id, booking_id=booking_id, vm_id=vm_id, summary=summary,
-        description=f"{message.strip()}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
+        description=f"{message}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
     try:
         await _send(req, settings.sd_request_type_problem, user.username)
@@ -146,7 +146,7 @@ async def add_comment(session: AsyncSession, user: User, request_id: int, text: 
     if not req.issue_key:
         raise DomainError("Заявка не была создана в Jira")
     try:
-        await sd.add_comment(req.issue_key, user.display_name, text.strip())
+        await sd.add_comment(req.issue_key, user.display_name, text)
     except sd.ServiceDeskError as exc:
         raise DomainError(f"Не удалось отправить сообщение: {exc}") from exc
 

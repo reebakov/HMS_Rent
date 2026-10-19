@@ -2,10 +2,10 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.common import DepartmentShort, ORMModel, UserShort
+from app.schemas.common import DepartmentShort, InputModel, ORMModel, UserShort
 
 
-class VmCreate(BaseModel):
+class VmCreate(InputModel):
     name: str = Field(min_length=3, max_length=20, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     cpu: int = Field(ge=1, le=64)
     ram_gb: int = Field(ge=1, le=512)
@@ -20,7 +20,7 @@ class VmCreate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def lower(cls, value: str) -> str:
-        return value.strip().lower() if isinstance(value, str) else value
+        return value.lower() if isinstance(value, str) else value
 
     @field_validator("expected_return_at")
     @classmethod
