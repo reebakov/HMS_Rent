@@ -6,6 +6,7 @@
 # git fetch + fast-forward (compose-файл, настройки, сам скрипт) -> перезапуск backend, worker, frontend на новых образах
 # -> ожидание /api/health. Если сервис не поднялся, возвращает прежний коммит и его образы.
 # Не трогает .env и данные БД. Миграции применяет backend при старте (alembic upgrade head).
+# HTTPS включается сам, когда на сервере есть certs/fullchain.pem и certs/privkey.pem (docs/DOMAIN_TLS.md).
 #   --dry-run    только показать, какие коммиты приедут, и проверить наличие образов в реестре
 #   --redeploy   без git fetch/merge перезапустить текущий коммит (например, при переходе со сборки на сервере на образы)
 #   --ref X      выкатить указанный коммит или ветку (по умолчанию origin/<текущая ветка>)
@@ -28,7 +29,7 @@ main() {
       --redeploy) REDEPLOY=1 ;;
       --force-ref) FORCE_REF=1 ;;
       --ref) REF="${2:?после --ref нужна ветка или коммит}"; shift ;;
-      -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}"; return 0 ;;
+      -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; return 0 ;;
       *) echo "Неизвестный аргумент: $1" >&2; return 2 ;;
     esac
     shift
@@ -37,7 +38,13 @@ main() {
   log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
   warn() { printf '\033[1;33m!! %s\033[0m\n' "$*" >&2; }
   die()  { printf '\033[1;31mОшибка: %s\033[0m\n' "$*" >&2; exit 1; }
-  dc()   { docker compose -f "$COMPOSE_FILE" "$@"; }
+  # HTTPS-режим включается наличием сертификата; проверяется при каждом вызове, поэтому учитывает и состояние после git merge
+  tls_enabled() { [[ -s certs/fullchain.pem && -s certs/privkey.pem && -f docker-compose.tls.yml ]]; }
+  dc() {
+    local files=(-f "$COMPOSE_FILE")
+    if tls_enabled; then files+=(-f docker-compose.tls.yml); fi
+    docker compose "${files[@]}" "$@"
+  }
 
   cd "$ROOT"
 
@@ -66,7 +73,20 @@ main() {
   PREV="$(git rev-parse HEAD)"
   PORT="$(grep -E '^HTTP_PORT=' .env | tail -1 | cut -d= -f2 | tr -d '[:space:]' || true)"
   PORT="${PORT:-8080}"
+  local TLS_PORT
+  TLS_PORT="$(grep -E '^HTTPS_PORT=' .env | tail -1 | cut -d= -f2 | tr -d '[:space:]' || true)"
+  TLS_PORT="${TLS_PORT:-443}"
   echo "Ветка: $BRANCH, сейчас: $(git log --oneline -1)"
+  if tls_enabled; then
+    echo "HTTPS: включён (certs/fullchain.pem найден)"
+    if command -v openssl >/dev/null; then
+      echo "Сертификат: $(openssl x509 -in certs/fullchain.pem -noout -subject -enddate 2>/dev/null | paste -sd' ')"
+      openssl x509 -in certs/fullchain.pem -noout -checkend 1209600 >/dev/null 2>&1 \
+        || warn "сертификат истекает менее чем через 14 дней (или уже истёк) — замените certs/fullchain.pem и privkey.pem"
+    fi
+  else
+    echo "HTTPS: выключен (нет certs/fullchain.pem и certs/privkey.pem) — приложение отдаётся по http на порту ${PORT}"
+  fi
 
   # ---------- 2. Что выкатываем ----------
   if [[ $REDEPLOY -eq 1 ]]; then
@@ -128,7 +148,9 @@ main() {
       sleep 3
     done
   }
-  http_ok() { curl -fsS -m 5 "http://localhost:${PORT}/api/health"; }
+  http_ok() { curl -fsS -m 5 "http://127.0.0.1:${PORT}/api/health"; }
+  # в HTTPS-режиме проверяем и сам TLS (сертификат не проверяем: обращаемся по 127.0.0.1)
+  serving_ok() { http_ok && { ! tls_enabled || curl -fsSk -m 5 "https://127.0.0.1:${TLS_PORT}/api/health"; }; }
 
   # rollout <sha>: db не трогаем (--no-deps); worker стартует только после healthy backend (миграции применены)
   rollout() {
@@ -136,7 +158,7 @@ main() {
     dc up -d --no-deps --force-recreate backend || return 1
     wait_for backend_healthy || return 1
     dc up -d --no-deps --force-recreate worker frontend || return 1
-    wait_for http_ok
+    wait_for serving_ok
   }
 
   rollback() {
@@ -149,7 +171,7 @@ main() {
       warn "образов для ${PREV:0:7} нет — откат сборкой из исходников (docker-compose.yml)"
       docker compose up -d --build --force-recreate "${SERVICES[@]}" || true
     fi
-    if wait_for http_ok; then
+    if wait_for serving_ok; then
       warn "Откат выполнен, сервис работает на ${PREV:0:7}. Причина: docker compose -f $COMPOSE_FILE logs backend worker"
     else
       warn "После отката сервис тоже не отвечает! Бэкап БД: $DUMP"
@@ -159,6 +181,14 @@ main() {
   if [[ $REDEPLOY -eq 0 ]]; then
     log "Обновление кода: ${PREV:0:7} -> ${NEW:0:7}"
     if [[ $FORCE_REF -eq 1 ]]; then git reset --hard "$NEW"; else git merge --ff-only "$NEW"; fi
+  fi
+
+  if tls_enabled; then
+    log "Проверка конфигурации nginx (HTTPS)"
+    if ! IMAGE_TAG="$NEW" dc run --rm --no-deps --entrypoint nginx frontend -t; then
+      if [[ $REDEPLOY -eq 0 ]]; then git reset --hard "$PREV" >/dev/null; fi
+      die "nginx не принимает конфигурацию (сертификат и ключ не читаются или не совпадают?). Код возвращён на ${PREV:0:7}, контейнеры не тронуты."
+    fi
   fi
 
   log "Перезапуск: ${SERVICES[*]} (образы ${NEW:0:7})"
@@ -174,7 +204,8 @@ main() {
   # старые образы проекта (только наши, по метке из CI) старше 30 суток и не занятые контейнерами
   docker image prune -af --filter "until=720h" --filter "label=org.opencontainers.image.source=https://github.com/reebakov/HMS_Rent" >/dev/null 2>&1 || true
   echo
-  echo "Сервис отвечает: http://localhost:${PORT}/api/health"
+  if tls_enabled; then echo "Сервис отвечает: https://<домен>/ (проверено локально на порту ${TLS_PORT}); http :${PORT} только с самого сервера"
+  else echo "Сервис отвечает: http://localhost:${PORT}/api/health"; fi
   echo "Версия: $(git log --oneline -1)"
   echo "Откат: sudo ./scripts/deploy.sh --force-ref --ref ${PREV}"
   echo "Бэкап до выкатки: $DUMP"

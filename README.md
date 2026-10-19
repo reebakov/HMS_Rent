@@ -116,6 +116,8 @@ backend при старте. Откат на конкретный коммит: 
 Переход со сборки на сервере на образы: `sudo git pull --ff-only origin main && sudo ./scripts/deploy.sh --redeploy`.
 Параметры окружения скрипта: `IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`.
 
+HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md). Включается сам, когда в `certs/` лежат `fullchain.pem` и `privkey.pem`.
+
 ## Локальная разработка без Docker
 
 ```bash
