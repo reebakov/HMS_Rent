@@ -17,4 +17,5 @@ certs/
 *.key
 *.sql
 *.sql.gz
-HMS_Rent_context.md
+# рабочие заметки и разборы, не часть проекта
+HMS_Rent_*.md
