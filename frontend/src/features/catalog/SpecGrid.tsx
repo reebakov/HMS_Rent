@@ -34,6 +34,20 @@ export function SpecGrid({ computer, className }: { computer: Computer; classNam
   )
 }
 
+/** Атрибуты ПК из Insight «ключ — значение» списком */
+export function InsightAttributes({ attributes }: { attributes: Record<string, string> }) {
+  return (
+    <div className="divide-y rounded-xl border">
+      {Object.entries(attributes).map(([key, value]) => (
+        <div key={key} className="flex gap-4 px-4 py-2.5 text-[13px]">
+          <span className="w-40 shrink-0 text-muted-foreground">{key}</span>
+          <span className="min-w-0 break-words font-medium">{String(value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Location({ value }: { value: string | null }) {
   if (!value) return null
   return (

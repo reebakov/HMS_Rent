@@ -7,7 +7,7 @@ import { Badge, StatusBadge, TierBadge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/card'
 import { DataState } from '@/components/ui/data-state'
 import { Field, Select, Textarea } from '@/components/ui/input'
-import { SpecGrid } from '@/features/catalog/SpecGrid'
+import { InsightAttributes, SpecGrid } from '@/features/catalog/SpecGrid'
 import { ReturnDialog } from '@/features/booking/BookingDialog'
 import { EventTimeline } from './widgets'
 import { useComputerHistory, useReturnBooking, useUpdateComputer } from '@/lib/queries'
@@ -188,16 +188,7 @@ export function ComputerHistorySheet({ computerId, onClose }: { computerId: numb
 
               {tab === 'События' && <EventTimeline events={data.events} showComputer={false} />}
 
-              {tab === 'Insight' && (
-                <div className="divide-y rounded-xl border">
-                  {Object.entries(data.attributes).map(([key, value]) => (
-                    <div key={key} className="flex gap-4 px-4 py-2.5 text-[13px]">
-                      <span className="w-40 shrink-0 text-muted-foreground">{key}</span>
-                      <span className="min-w-0 break-words font-medium">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {tab === 'Insight' && <InsightAttributes attributes={data.attributes} />}
 
               <ReturnDialog
                 open={returnOpen}

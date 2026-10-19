@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cn, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
+import { cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -110,5 +110,16 @@ describe('errorMessage', () => {
   })
   it('запасной текст можно задать', () => {
     expect(errorMessage(null, 'Не удалось войти')).toBe('Не удалось войти')
+  })
+})
+
+describe('computerSpecs', () => {
+  it.each([
+    [{ cpu: 'Intel Core i5', ram_gb: 16, gpu: 'RTX 4070' }, 'Intel Core i5 · 16 ГБ · RTX 4070'],
+    [{ cpu: 'Intel Core i5', ram_gb: 16, gpu: null }, 'Intel Core i5 · 16 ГБ'],
+    [{ cpu: null, ram_gb: 0, gpu: 'RTX 4070' }, 'RTX 4070'],
+    [{ cpu: null, ram_gb: null, gpu: null }, ''],
+  ])('%j -> «%s»', (computer, expected) => {
+    expect(computerSpecs(computer)).toBe(expected)
   })
 })

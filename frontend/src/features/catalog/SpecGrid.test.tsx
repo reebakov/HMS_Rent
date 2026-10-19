@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { Location, SpecGrid } from './SpecGrid'
+import { InsightAttributes, Location, SpecGrid } from './SpecGrid'
 import { makeComputer } from '@/test/helpers'
 
 /** Значение под подписью характеристики */
@@ -67,5 +67,18 @@ describe('Location', () => {
   it.each([[null], ['']])('пустое значение (%j) — ничего не рисует', (value) => {
     const { container } = render(<Location value={value} />)
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('InsightAttributes', () => {
+  it('показывает каждый атрибут: ключ и значение', () => {
+    render(<InsightAttributes attributes={{ Hostname: 'PC-001', 'Инв. номер': '42' }} />)
+    expect(screen.getByText('Hostname').nextElementSibling).toHaveTextContent('PC-001')
+    expect(screen.getByText('Инв. номер').nextElementSibling).toHaveTextContent('42')
+  })
+
+  it('без атрибутов — пустой список', () => {
+    const { container } = render(<InsightAttributes attributes={{}} />)
+    expect(container.firstElementChild).toBeEmptyDOMElement()
   })
 })

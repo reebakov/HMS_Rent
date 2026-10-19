@@ -4,6 +4,7 @@ import { EmptyState, Skeleton } from '@/components/ui/card'
 import { DataState, type QueryLike } from '@/components/ui/data-state'
 import { Location, SpecGrid } from './SpecGrid'
 import type { Computer } from '@/lib/types'
+import { computerSpecs } from '@/lib/utils'
 
 interface RowsProps {
   computers: Computer[]
@@ -30,9 +31,7 @@ function CompactRows({ computers, onOpen, onBook }: RowsProps) {
             </button>
 
             <div className="hidden min-w-0 flex-1 items-center gap-3 text-xs text-muted-foreground sm:flex">
-              <span className="truncate">
-                {[c.cpu, c.ram_gb ? `${c.ram_gb} ГБ` : null, c.gpu].filter(Boolean).join(' · ')}
-              </span>
+              <span className="truncate">{computerSpecs(c)}</span>
             </div>
           </div>
 

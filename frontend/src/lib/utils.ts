@@ -55,5 +55,9 @@ export function initials(name: string) {
     .join('')
 }
 
+/** Краткие характеристики ПК для списков: «Intel Core i5 · 16 ГБ · RTX 4070»; пустые части пропускаются */
+export const computerSpecs = (c: { cpu: string | null; ram_gb: number | null; gpu: string | null }) =>
+  [c.cpu, c.ram_gb ? `${c.ram_gb} ГБ` : null, c.gpu].filter(Boolean).join(' · ')
+
 /** Текст ошибки для тоста: сообщение Error (его формирует api.ts) или запасной текст */
 export const errorMessage = (e: unknown, fallback = 'Ошибка') => (e instanceof Error ? e.message : fallback)

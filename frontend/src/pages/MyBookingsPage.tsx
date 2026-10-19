@@ -11,7 +11,7 @@ import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
 import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
 import type { Booking } from '@/lib/types'
-import { errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
+import { computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
 export function MyBookingsPage() {
   const navigate = useNavigate()
@@ -94,7 +94,7 @@ export function MyBookingsPage() {
                       </div>
                       <p className="mt-0.5 text-xs font-medium text-muted-foreground">Заказ №{b.order_number}</p>
                       <p className="mt-0.5 text-[13px] text-muted-foreground">
-                        {[b.computer.cpu, b.computer.ram_gb && `${b.computer.ram_gb} ГБ`, b.computer.gpu].filter(Boolean).join(' · ')}
+                        {computerSpecs(b.computer)}
                       </p>
                     </div>
                     {overdue ? <Badge tone="danger">Срок вышел</Badge> : <Badge tone="primary" dot>Активна</Badge>}
