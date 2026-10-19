@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
-import { Input, Select } from '@/components/ui/input'
+import { DepartmentOptions, SearchInput, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Pagination } from '@/components/ui/pagination'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
@@ -94,10 +94,7 @@ export function InventoryPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" aria-label="Поиск по инвентаризации" placeholder="Имя, ключ Insight, IP, CPU…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
+          <SearchInput className="sm:w-72" label="Поиск по инвентаризации" placeholder="Имя, ключ Insight, IP, CPU…" value={search} onChange={setSearch} />
           <Select className="w-44" aria-label="Фильтр по пулу" value={filters.pool_id ?? ''} onChange={(e) => set({ pool_id: e.target.value || undefined })}>
             <option value="">Все пулы</option>
             <option value="none">Без пула (не выдаются)</option>
@@ -131,11 +128,7 @@ export function InventoryPage() {
             onChange={(e) => set({ department_id: e.target.value ? Number(e.target.value) : undefined })}
           >
             <option value="">Все отделы</option>
-            {departments.data?.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
+            <DepartmentOptions departments={departments.data} />
           </Select>
           <label className="flex cursor-pointer items-center gap-2 text-[13px]">
             <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={!!filters.issues_only} onChange={(e) => set({ issues_only: e.target.checked || undefined })} />

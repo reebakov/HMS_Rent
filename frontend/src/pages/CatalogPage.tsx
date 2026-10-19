@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search } from 'lucide-react'
 import { PageHeader } from '@/components/ui/card'
-import { Input, Select } from '@/components/ui/input'
+import { SearchInput, Select } from '@/components/ui/input'
 import { CategoryCards } from '@/features/catalog/CategoryCards'
 import { ComputerList } from '@/features/catalog/ComputerList'
 import { ComputerSheet } from '@/features/catalog/ComputerSheet'
@@ -78,16 +77,7 @@ export function CatalogPage() {
           </p>
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            aria-label="Поиск по каталогу"
-            placeholder="Имя, процессор, видеокарта…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        <SearchInput className="sm:w-64" label="Поиск по каталогу" placeholder="Имя, процессор, видеокарта…" value={search} onChange={setSearch} />
         <Select
           className="w-36"
           aria-label="Минимум ОЗУ"

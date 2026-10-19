@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { FormError, QueryError } from '@/components/ui/data-state'
-import { Field, Input, Select, Textarea } from '@/components/ui/input'
+import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/ui/input'
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { useSession } from '@/auth/AuthProvider'
@@ -95,11 +95,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
               <option value="" disabled>
                 {departments.isLoading ? 'Загрузка…' : 'Выберите отдел'}
               </option>
-              {departments.data?.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
+              <DepartmentOptions departments={departments.data} />
             </Select>
           </Field>
           <QueryError query={departments} title="Не удалось загрузить отделы" />

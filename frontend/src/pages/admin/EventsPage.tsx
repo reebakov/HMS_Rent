@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Activity, Search } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
-import { Input, Select } from '@/components/ui/input'
+import { DateRange, SearchInput, Select } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import { useDebouncedSearch } from '@/lib/hooks'
 import { useEvents, type EventFilters } from '@/lib/queries'
@@ -35,18 +35,12 @@ export function EventsPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
-          <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" aria-label="Поиск по логам" placeholder="ПК, текст события..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
+          <SearchInput className="sm:w-64" label="Поиск по логам" placeholder="ПК, текст события..." value={search} onChange={setSearch} />
           <Select className="w-56" aria-label="Тип события" value={filters.event_type ?? ''} onChange={(e) => set({ event_type: e.target.value || undefined })}>
             <option value="">Все типы событий</option>
             {Object.entries(EVENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            с <Input type="date" className="w-40" aria-label="Дата с" value={filters.date_from ?? ''} onChange={(e) => set({ date_from: e.target.value || undefined })} />
-            по <Input type="date" className="w-40" aria-label="Дата по" value={filters.date_to ?? ''} onChange={(e) => set({ date_to: e.target.value || undefined })} />
-          </div>
+          <DateRange from={filters.date_from} to={filters.date_to} onChange={set} />
         </div>
 
         <DataState

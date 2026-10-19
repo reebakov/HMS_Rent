@@ -7,7 +7,7 @@ import { DataTable, Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
-import { Field, Input, Select } from '@/components/ui/input'
+import { DepartmentOptions, Field, Input, Select } from '@/components/ui/input'
 import { useAdminUsers, useDepartments, useSaveUser } from '@/lib/queries'
 import { errorMessage, formatRelative } from '@/lib/utils'
 
@@ -93,11 +93,7 @@ export function UsersPage() {
                   <td className="px-4 py-3">
                     <Select className="h-8 w-52" aria-label={`Отдел: ${u.display_name}`} value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
                       <option value="">— без отдела —</option>
-                      {departments.data?.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
+                      <DepartmentOptions departments={departments.data} />
                     </Select>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{u.last_login_at ? formatRelative(u.last_login_at) : 'ещё не входил'}</td>
@@ -136,11 +132,7 @@ export function UsersPage() {
           <Field label="Отдел">
             <Select value={deptForNew} onChange={(e) => setDeptForNew(e.target.value)}>
               <option value="">— без отдела —</option>
-              {departments.data?.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
+              <DepartmentOptions departments={departments.data} />
             </Select>
           </Field>
         </div>

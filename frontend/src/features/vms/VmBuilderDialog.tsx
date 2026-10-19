@@ -5,7 +5,7 @@ import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { DataState, FormError, QueryError } from '@/components/ui/data-state'
-import { Field, Input, Select } from '@/components/ui/input'
+import { DepartmentOptions, Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
@@ -180,11 +180,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                     <option value="" disabled>
                       Выберите отдел
                     </option>
-                    {departments.data?.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
+                    <DepartmentOptions departments={departments.data} />
                   </Select>
                 </Field>
                 <Field label="Вернуть до" hint="Необязательно">
