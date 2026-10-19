@@ -18,7 +18,9 @@ from app.services import service_requests as svc
 
 from .sync_fakes import add_booking
 
-NOW = datetime.now(timezone.utc)
+def _now() -> datetime:
+    """Текущее время в момент вызова: константа при импорте старела за время прогона и ломала проверки «свежая заявка»."""
+    return datetime.now(timezone.utc)
 
 
 class FakeSd:
@@ -259,15 +261,15 @@ async def test_list_for_user_without_department_only_own(session, env, sd):
 async def test_list_for_user_newest_first(session, env, sd):
     old = await add_req(session, env.owner, key="HMS-1")
     new = await add_req(session, env.owner, key="HMS-2")
-    old.created_at = NOW - timedelta(days=2)
-    new.created_at = NOW - timedelta(days=1)
+    old.created_at = _now() - timedelta(days=2)
+    new.created_at = _now() - timedelta(days=1)
     await session.commit()
     assert [r.issue_key for r in await svc.list_for_user(session, env.owner)] == ["HMS-2", "HMS-1"]
 
 
 async def test_list_for_user_limit_200(session, env, sd):
     session.add_all([ServiceRequest(kind="problem", user_id=env.owner.id, summary="s", description="d",
-                                    issue_key=f"HMS-{i}", created_at=NOW - timedelta(minutes=i)) for i in range(205)])
+                                    issue_key=f"HMS-{i}", created_at=_now() - timedelta(minutes=i)) for i in range(205)])
     await session.commit()
     got = await svc.list_for_user(session, env.owner)
     assert len(got) == 200 and got[0].issue_key == "HMS-0" and got[-1].issue_key == "HMS-199"
@@ -360,10 +362,11 @@ async def test_add_comment_access_and_not_found(session, env, sd):
 # ---------- refresh_open ----------
 
 async def test_refresh_open_only_open_and_stale(session, env, sd):
-    stale = NOW - timedelta(minutes=3)
+    started = _now()
+    stale = started - timedelta(minutes=3)
     never = await add_req(session, env.owner, key="HMS-1")  # ни разу не проверялась
     stale_open = await add_req(session, env.owner, key="HMS-2", status_category="indeterminate", last_checked_at=stale)
-    fresh_open = await add_req(session, env.owner, key="HMS-3", status_category="new", last_checked_at=NOW - timedelta(seconds=30))
+    fresh_open = await add_req(session, env.owner, key="HMS-3", status_category="new", last_checked_at=_now() - timedelta(seconds=30))
     done = await add_req(session, env.owner, key="HMS-4", status_category="done", last_checked_at=stale)
     no_key = await add_req(session, env.owner, key=None, kind="return", error="x")
     sd.status = real_sd.SdStatus("Решено", "done")
@@ -371,7 +374,7 @@ async def test_refresh_open_only_open_and_stale(session, env, sd):
     assert sorted(sd.status_calls) == ["HMS-1", "HMS-2"]
     for r in (never, stale_open):
         saved = await fresh(r.id)
-        assert (saved.status, saved.status_category) == ("Решено", "done") and saved.last_checked_at > NOW
+        assert (saved.status, saved.status_category) == ("Решено", "done") and saved.last_checked_at > started
     assert (await fresh(fresh_open.id)).status_category == "new"
     assert (await fresh(done.id)).last_checked_at.replace(microsecond=0) == stale.replace(microsecond=0)
     assert (await fresh(no_key.id)).last_checked_at is None
@@ -385,16 +388,16 @@ async def test_refresh_open_not_more_than_once_per_two_minutes(session, env, sd)
 
 
 async def test_refresh_open_rechecks_after_interval(session, env, sd):
-    req = await add_req(session, env.owner, key="HMS-1", last_checked_at=NOW - timedelta(minutes=3))
+    req = await add_req(session, env.owner, key="HMS-1", last_checked_at=_now() - timedelta(minutes=3))
     await svc.refresh_open(session)
-    req.last_checked_at = NOW - timedelta(minutes=3)  # прошло ещё две минуты
+    req.last_checked_at = _now() - timedelta(minutes=3)  # прошло ещё две минуты
     await session.commit()
     await svc.refresh_open(session)
     assert sd.status_calls == ["HMS-1", "HMS-1"]
 
 
 async def test_refresh_open_batch_takes_never_checked_first(session, env, sd):
-    old = NOW - timedelta(hours=1)
+    old = _now() - timedelta(hours=1)
     await add_req(session, env.owner, key="HMS-OLD1", last_checked_at=old)
     await add_req(session, env.owner, key="HMS-OLD2", last_checked_at=old + timedelta(minutes=1))
     await add_req(session, env.owner, key="HMS-NEW1")
