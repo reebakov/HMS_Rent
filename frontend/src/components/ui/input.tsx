@@ -1,5 +1,6 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
+import { useHotkey } from '@/lib/hooks'
 import type { Department } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -60,7 +61,7 @@ export function Field({
   )
 }
 
-/** Поле поиска со значком лупы; className задаёт ширину обёртки (sm:w-64). Дебаунс — useDebouncedSearch в lib/hooks */
+/** Поле поиска со значком лупы; клавиша «/» ставит в него фокус. className — ширина обёртки (sm:w-64). Дебаунс — useDebouncedSearch в lib/hooks */
 export function SearchInput({
   value,
   onChange,
@@ -74,10 +75,20 @@ export function SearchInput({
   placeholder: string
   className?: string
 }) {
+  const input = useRef<HTMLInputElement>(null)
+  useHotkey('/', () => input.current?.focus())
   return (
     <div className={cn('relative w-full', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input className="pl-9" aria-label={label} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        ref={input}
+        className="pl-9"
+        aria-label={label}
+        title={`${label} (/)`}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   )
 }

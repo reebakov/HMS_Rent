@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { useDebouncedSearch } from './hooks'
+import { useDebouncedSearch, useHotkey } from './hooks'
 
 describe('useDebouncedSearch', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -64,5 +64,64 @@ describe('useDebouncedSearch', () => {
     rerender({ search: 'pc', applied: 'pc' }) // поиск уже применён другим путём (например, из адреса)
     wait(250)
     expect(apply).not.toHaveBeenCalled()
+  })
+})
+
+describe('useHotkey', () => {
+  const press = (key: string, init: KeyboardEventInit = {}, target: Element = document.body) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
+
+  const setup = () => {
+    const handler = vi.fn()
+    const hook = renderHook(() => useHotkey('/', handler))
+    return { handler, ...hook }
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('вызывает обработчик по своей клавише и гасит действие браузера', () => {
+    const { handler } = setup()
+    expect(press('/')).toBe(false) // preventDefault вызван
+    expect(handler).toHaveBeenCalledOnce()
+  })
+
+  it('чужую клавишу и сочетания с Ctrl/Alt/⌘ игнорирует', () => {
+    const { handler } = setup()
+    press('a')
+    press('/', { ctrlKey: true })
+    press('/', { altKey: true })
+    press('/', { metaKey: true })
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it.each(['input', 'select', 'textarea'])('не срабатывает, пока фокус в <%s>', (tag) => {
+    const { handler } = setup()
+    const field = document.body.appendChild(document.createElement(tag))
+    press('/', {}, field)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('не срабатывает при открытом окне', () => {
+    const { handler } = setup()
+    const dialog = document.body.appendChild(document.createElement('div'))
+    dialog.setAttribute('role', 'dialog')
+    press('/')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('после размонтирования обработчик снят', () => {
+    const { handler, unmount } = setup()
+    unmount()
+    press('/')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('клавиша «?» (Shift+/) работает как отдельная', () => {
+    const handler = vi.fn()
+    renderHook(() => useHotkey('?', handler))
+    press('?', { shiftKey: true })
+    expect(handler).toHaveBeenCalledOnce()
   })
 })

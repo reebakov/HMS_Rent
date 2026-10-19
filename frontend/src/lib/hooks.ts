@@ -18,3 +18,27 @@ export function useDebouncedSearch(search: string, applied: string | undefined, 
     return () => clearTimeout(timer)
   }, [search, delay])
 }
+
+/** Можно ли отреагировать на одиночную клавишу: человек не печатает в поле, нет сочетания с Ctrl/Alt/⌘ и не открыто окно */
+export function canUseHotkey(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false
+  const target = e.target as HTMLElement | null
+  if (target && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName))) return false
+  return !document.querySelector('[role="dialog"]')
+}
+
+/** Горячая клавиша на всю страницу (key — значение KeyboardEvent.key, например «/» или «?»); см. canUseHotkey */
+export function useHotkey(key: string, handler: () => void) {
+  const latest = useRef(handler)
+  latest.current = handler
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== key || !canUseHotkey(e)) return
+      e.preventDefault()
+      latest.current()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [key])
+}

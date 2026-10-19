@@ -23,6 +23,54 @@ describe('SearchInput', () => {
     expect(onChange).toHaveBeenLastCalledWith('ab')
   })
 
+  describe('горячая клавиша «/»', () => {
+    const renderPage = () =>
+      render(
+        <>
+          <button>другая кнопка</button>
+          <input aria-label="Другое поле" />
+          <SearchInput label="Поиск по журналу" placeholder="…" value="" onChange={() => undefined} />
+        </>,
+      )
+
+    it('ставит фокус в поле поиска, с подсказкой в title', async () => {
+      renderPage()
+      expect(screen.getByRole('textbox', { name: 'Поиск по журналу' })).toHaveAttribute('title', 'Поиск по журналу (/)')
+      await userEvent.click(screen.getByRole('button', { name: 'другая кнопка' }))
+      await userEvent.keyboard('/')
+      expect(screen.getByRole('textbox', { name: 'Поиск по журналу' })).toHaveFocus()
+    })
+
+    it('символ «/» в самом поле поиска вводится как обычно', async () => {
+      render(<SearchInput label="Поиск" placeholder="…" value="" onChange={() => undefined} />)
+      const field = screen.getByRole('textbox', { name: 'Поиск' })
+      await userEvent.click(field)
+      await userEvent.keyboard('/')
+      expect(field).toHaveFocus()
+    })
+
+    it('в другом поле ввода не перехватывается', async () => {
+      renderPage()
+      const other = screen.getByRole('textbox', { name: 'Другое поле' })
+      await userEvent.type(other, 'a/b')
+      expect(other).toHaveFocus()
+      expect(other).toHaveValue('a/b')
+    })
+
+    it('при открытом окне не срабатывает', async () => {
+      render(
+        <>
+          <button>открыть</button>
+          <SearchInput label="Поиск" placeholder="…" value="" onChange={() => undefined} />
+          <div role="dialog" aria-label="окно" />
+        </>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'открыть' }))
+      await userEvent.keyboard('/')
+      expect(screen.getByRole('button', { name: 'открыть' })).toHaveFocus()
+    })
+  })
+
   it('className задаёт ширину обёртки', () => {
     const { container } = render(<SearchInput className="sm:w-64" label="Поиск" placeholder="…" value="" onChange={() => undefined} />)
     expect(container.firstElementChild).toHaveClass('w-full', 'sm:w-64')
