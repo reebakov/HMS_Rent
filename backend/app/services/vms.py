@@ -1,4 +1,5 @@
 """Виртуалки из конструктора: заявка → очередь → worker клонирует шаблон в vSphere → «Моя аренда»."""
+import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
+from app.integrations.vsphere import client as vsphere
 from app.models import Department, User, VirtualMachine
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import runtime
@@ -51,6 +53,15 @@ async def options(session: AsyncSession, user: User) -> VmOptions:
             for t in cfg.vm_templates if t.enabled  # включён, но без шаблона — в конструкторе «скоро»
         ],
     )
+
+
+async def check_vcenter() -> dict:
+    """Проверка подключения к vCenter и наличия включённых шаблонов (кнопка в «Настройках»)."""
+    try:
+        names = [t.template for t in _available_templates(runtime.current())]
+        return {"ok": True, **(await asyncio.to_thread(vsphere.check, names))}
+    except vsphere.VSphereError as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 async def create_request(session: AsyncSession, user: User, data: VmCreate) -> VirtualMachine:

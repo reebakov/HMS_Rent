@@ -1,4 +1,4 @@
-"""Шаблоны ОС конструктора ВМ: настройки (runtime.VmTemplate), заявка (vms), воркер (vm_jobs), проверка vCenter.
+"""Шаблоны ОС конструктора ВМ: настройки (schemas.settings.VmTemplate), заявка (vms), воркер (vm_jobs), проверка vCenter.
 
 vSphere — фейки: без pyVmomi-соединения и сети. Общие хелперы test_vm_jobs.py не импортируем, свои — ниже.
 """
@@ -16,9 +16,10 @@ from app.db.session import SessionLocal
 from app.integrations.vsphere import client as vsphere_client
 from app.integrations.vsphere.client import VmInfo, VSphereError
 from app.models import AppSetting, VirtualMachine
+from app.schemas.settings import VmTemplate, default_templates
 from app.schemas.vm import VmCreate, VmOut
 from app.services import runtime, vm_jobs, vms
-from app.services.runtime import RuntimeConfig, VmTemplate
+from app.services.runtime import RuntimeConfig
 
 DEFAULT_KEYS = ["win10", "win11", "winsrv2022", "ubuntu2204"]
 
@@ -141,7 +142,7 @@ def test_template_requires_key_and_label():
 def test_default_templates(monkeypatch):
     monkeypatch.setattr(settings, "vcenter_template_windows", "Tpl-W10")
     monkeypatch.setattr(settings, "vcenter_customization_spec", "sysprep-spec")
-    by_key = {t.key: t for t in runtime._default_templates()}
+    by_key = {t.key: t for t in default_templates()}
     assert list(by_key) == DEFAULT_KEYS
     win10 = by_key["win10"]
     assert (win10.template, win10.customization_spec, win10.os, win10.enabled) == ("Tpl-W10", "sysprep-spec", "windows", True)
@@ -153,7 +154,7 @@ def test_default_templates(monkeypatch):
 
 def test_default_templates_are_taken_from_settings_at_call_time(monkeypatch):
     monkeypatch.setattr(settings, "vcenter_template_windows", "A")
-    assert runtime._default_templates()[0].template == "A"
+    assert default_templates()[0].template == "A"
     monkeypatch.setattr(settings, "vcenter_template_windows", "B")
     assert RuntimeConfig().vm_templates[0].template == "B"
 
@@ -548,7 +549,7 @@ async def test_create_next_passes_selected_template_and_spec(session, vm_on, ctx
 async def test_create_next_default_template_comes_from_settings(session, vm_on, ctx, vsphere, monkeypatch):
     monkeypatch.setattr(settings, "vcenter_template_windows", "Tpl-W10")
     monkeypatch.setattr(settings, "vcenter_customization_spec", "sysprep")
-    await runtime.update(session, {"vm_templates": [t.model_dump() for t in runtime._default_templates()]})
+    await runtime.update(session, {"vm_templates": [t.model_dump() for t in default_templates()]})
     await request(session, ctx)
     await vm_jobs.create_next(session)
     assert [(c["template"], c["spec"]) for c in vsphere.created] == [("Tpl-W10", "sysprep")]
