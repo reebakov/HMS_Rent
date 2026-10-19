@@ -113,7 +113,10 @@ describe('VmBuilderDialog', () => {
   })
 
   it('ползунки ограничены лимитами из настроек', async () => {
-    options = makeOptions({ min_cpu: 1, max_cpu: 4, min_ram_gb: 2, max_ram_gb: 8, min_disk_gb: 30, max_disk_gb: 100 })
+    options = makeOptions({ 
+      min_cpu: 1, max_cpu: 4, min_ram_gb: 2, max_ram_gb: 8, min_disk_gb: 30, max_disk_gb: 100,
+      templates: [{ key: 'win10-tpl', label: 'Windows 10', os: 'windows', min_disk_gb: 30, available: true }]
+    })
     await setup()
     const [cpu, ram, disk] = sliders()
     expect([cpu.min, cpu.max, cpu.step]).toEqual(['1', '4', '1'])
@@ -219,6 +222,7 @@ describe('VmBuilderDialog', () => {
         ram_gb: 12,
         disk_gb: 120,
         department_id: 2,
+        template_key: 'win10-tpl', // <-- Добавлена эта строка
         requester_name: 'Иван Иванов',
         requester_nick: 'i.ivanov',
         expected_return_at: '2099-12-31',
