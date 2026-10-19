@@ -2,8 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core import clock
-from app.schemas.common import DepartmentShort, InputModel, ORMModel, UserShort
+from app.schemas.common import DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
 
 
 class VmCreate(InputModel):
@@ -15,20 +14,13 @@ class VmCreate(InputModel):
     requester_name: str = Field(min_length=2, max_length=255)
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
-    expected_return_at: date | None = None
+    expected_return_at: ReturnDate | None = None
     template_key: str | None = None  # шаблон ОС; пусто — первый доступный
 
     @field_validator("name", mode="before")
     @classmethod
     def lower(cls, value: str) -> str:
         return value.lower() if isinstance(value, str) else value
-
-    @field_validator("expected_return_at")
-    @classmethod
-    def not_in_past(cls, value: date | None) -> date | None:
-        if value is not None and value < clock.today():
-            raise ValueError("Дата возврата не может быть в прошлом")
-        return value
 
 
 class VmOut(ORMModel):

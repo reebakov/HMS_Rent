@@ -1,9 +1,8 @@
 from datetime import date, datetime
 
-from pydantic import Field, field_validator
+from pydantic import Field
 
-from app.core import clock
-from app.schemas.common import ComputerShort, DepartmentShort, InputModel, ORMModel, UserShort
+from app.schemas.common import ComputerShort, DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
 
 
 class BookingCreate(InputModel):
@@ -12,14 +11,7 @@ class BookingCreate(InputModel):
     requester_name: str = Field(min_length=2, max_length=255)
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
-    expected_return_at: date
-
-    @field_validator("expected_return_at")
-    @classmethod
-    def not_in_past(cls, value: date) -> date:
-        if value < clock.today():
-            raise ValueError("Дата возврата не может быть в прошлом")
-        return value
+    expected_return_at: ReturnDate
 
 
 class BookingReturn(InputModel):
