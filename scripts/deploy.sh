@@ -7,6 +7,7 @@
 # -> ожидание /api/health. Если сервис не поднялся, возвращает прежний коммит и его образы.
 # Не трогает .env и данные БД. Миграции применяет backend при старте (alembic upgrade head).
 # HTTPS включается сам, когда на сервере есть certs/fullchain.pem и certs/privkey.pem (docs/DOMAIN_TLS.md).
+# Дампы БД содержат персональные данные и хэши паролей: каталог создаётся с правами 700, файлы 600 (docs/SECRETS.md).
 #   --dry-run    только показать, какие коммиты приедут, и проверить наличие образов в реестре
 #   --redeploy   без git fetch/merge перезапустить текущий коммит (например, при переходе со сборки на сервере на образы)
 #   --ref X      выкатить указанный коммит или ветку (по умолчанию origin/<текущая ветка>)
@@ -29,7 +30,7 @@ main() {
       --redeploy) REDEPLOY=1 ;;
       --force-ref) FORCE_REF=1 ;;
       --ref) REF="${2:?после --ref нужна ветка или коммит}"; shift ;;
-      -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; return 0 ;;
+      -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}"; return 0 ;;
       *) echo "Неизвестный аргумент: $1" >&2; return 2 ;;
     esac
     shift
@@ -56,9 +57,16 @@ main() {
   docker compose version >/dev/null 2>&1 || die "не найден плагин docker compose"
   [[ -f .env ]] || die "нет файла .env в $ROOT — скопируйте .env.example и заполните"
   [[ -f $COMPOSE_FILE ]] || die "нет $COMPOSE_FILE — выполните git pull --ff-only"
+  # секреты не должны читаться остальными пользователями сервера; автоматически права не меняем, только предупреждаем
+  local secret_file mode
+  for secret_file in .env certs/privkey.pem; do
+    [[ -f $secret_file ]] || continue
+    mode="$(stat -c %a "$secret_file")"
+    [[ "$mode" =~ ^[0-7]00$ ]] || warn "$secret_file доступен остальным пользователям (права $mode): sudo chmod 600 $ROOT/$secret_file"
+  done
   if [[ $DRY_RUN -eq 0 ]]; then
     docker info >/dev/null 2>&1 || die "нет доступа к Docker (запустите через sudo или добавьте пользователя в группу docker)"
-    mkdir -p "$BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
     exec 9>/tmp/hms-rent-deploy.lock
     flock -n 9 || die "выкатка уже идёт (lock /tmp/hms-rent-deploy.lock)"
   fi
@@ -130,11 +138,12 @@ main() {
   dc ps --status running --services | grep -qx db \
     || die "контейнер db не запущен — бэкап невозможен. Первый запуск стека: IMAGE_TAG=<sha> docker compose -f $COMPOSE_FILE up -d"
   DUMP="$BACKUP_DIR/hmsrent_$(date +%F_%H%M%S)_${PREV:0:7}.sql.gz"
-  dc exec -T db pg_dump -U hmsrent hmsrent | gzip > "$DUMP" || { rm -f "$DUMP"; die "pg_dump завершился с ошибкой"; }
+  (umask 077; dc exec -T db pg_dump -U hmsrent hmsrent | gzip > "$DUMP") || { rm -f "$DUMP"; die "pg_dump завершился с ошибкой"; }
   [[ -s "$DUMP" && "$(gzip -dc "$DUMP" | wc -c)" -gt 0 ]] || { rm -f "$DUMP"; die "бэкап пустой, выкатка отменена"; }
   echo "Бэкап: $DUMP ($(du -h "$DUMP" | cut -f1))"
   # shellcheck disable=SC2012  # имена дампов формирует сам скрипт
   ls -1t "$BACKUP_DIR"/hmsrent_*.sql.gz 2>/dev/null | tail -n +"$((BACKUP_KEEP + 1))" | xargs -r rm -f
+  chmod 600 "$BACKUP_DIR"/hmsrent_*.sql.gz 2>/dev/null || true   # заодно закрываем дампы, сделанные прежними версиями скрипта
 
   # ---------- 5. Выкатка ----------
   backend_healthy() {  # healthcheck контейнера backend: к этому моменту применены миграции
