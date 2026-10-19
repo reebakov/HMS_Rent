@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Activity, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
-import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
+import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import { useDebouncedSearch } from '@/lib/hooks'

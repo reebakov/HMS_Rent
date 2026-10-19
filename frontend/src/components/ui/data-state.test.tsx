@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DataState, ErrorNotice, RowsSkeleton, type QueryLike } from './data-state'
+import { DataState, ErrorNotice, QueryError, RowsSkeleton, type QueryLike } from './data-state'
 
 const query = (over: Partial<QueryLike<string[]>> = {}): QueryLike<string[]> => ({
   data: undefined,
@@ -81,6 +81,30 @@ describe('ErrorNotice', () => {
     render(<ErrorNotice title="Не удалось" onRetry={vi.fn()} />)
     expect(screen.getByText('Не удалось')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
+  })
+})
+
+describe('QueryError', () => {
+  it('грузится или успешен — ничего не рисует', () => {
+    const { container, rerender } = render(<QueryError query={query()} title="Не удалось" />)
+    expect(container).toBeEmptyDOMElement()
+    rerender(<QueryError query={query({ data: ['x'] })} title="Не удалось" />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('ошибка без данных — заголовок, текст и «Повторить»; с cardClass — в карточке', async () => {
+    const refetch = vi.fn()
+    render(<QueryError query={query({ isError: true, error: new Error('сбой'), refetch })} title="Не удалось" cardClass="mb-8" />)
+    expect(screen.getByText('Не удалось')).toBeInTheDocument()
+    expect(screen.getByText('сбой')).toBeInTheDocument()
+    expect(screen.getByRole('alert').parentElement).toHaveClass('mb-8')
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('ошибка при уже имеющихся данных (фоновое обновление) не показывается', () => {
+    const { container } = render(<QueryError query={query({ data: [], isError: true, error: new Error('сбой') })} title="Не удалось" />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
 

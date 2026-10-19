@@ -9,11 +9,9 @@ import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateBooking, useDepartments } from '@/lib/queries'
-import { safeStorage } from '@/lib/storage'
+import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
 import { todayLocal } from '@/lib/utils'
-
-const LAST_DEPARTMENT_KEY = 'hmsrent:last-department'
 
 export function BookingDialog({ computer, onClose }: { computer: Computer | null; onClose: () => void }) {
   const session = useSession()
@@ -36,7 +34,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     setUntil('')
     setPurpose('')
     create.reset()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computer?.id])
 
   const submit = async (e: FormEvent) => {

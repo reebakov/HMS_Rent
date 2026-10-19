@@ -8,7 +8,7 @@ import { DataState, QueryError } from '@/components/ui/data-state'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
-import { safeStorage } from '@/lib/storage'
+import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import { cn, todayLocal } from '@/lib/utils'
 
 type Range = { min: number; max: number; step: number }
@@ -75,12 +75,11 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     setRam(o.min_ram_gb)
     setDisk(o.min_disk_gb)
     setTemplateKey(o.templates.find((t) => t.available)?.key ?? '')
-    setDepartmentId(String(session.user.department_id ?? safeStorage.get('hmsrent:last-department') ?? ''))
+    setDepartmentId(String(session.user.department_id ?? safeStorage.get(LAST_DEPARTMENT_KEY) ?? ''))
     setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
     create.reset()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, o?.min_cpu])
 
   const nameOk = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(name)

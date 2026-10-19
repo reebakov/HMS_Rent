@@ -44,7 +44,7 @@ export function EventTimeline({ events, showComputer = true }: { events: AssetEv
 }
 
 /** Горизонтальные полоски — распределение по категориям/отделам без библиотек графиков */
-export function BarList({ items }: { items: { label: string; value: number; hint?: string; className?: string }[] }) {
+export function BarList({ items }: { items: { label: string; value: number; hint?: string }[] }) {
   const max = Math.max(1, ...items.map((i) => i.value))
   return (
     <div className="space-y-3">
@@ -58,7 +58,7 @@ export function BarList({ items }: { items: { label: string; value: number; hint
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div
-              className={cn('h-full rounded-full bg-primary transition-all', item.className)}
+              className="h-full rounded-full bg-primary transition-all"
               style={{ width: `${(item.value / max) * 100}%` }}
             />
           </div>
