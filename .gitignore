@@ -13,3 +13,8 @@ htmlcov/
 coverage/
 certs/
 *.zip
+*.pem
+*.key
+*.sql
+*.sql.gz
+HMS_Rent_context.md
