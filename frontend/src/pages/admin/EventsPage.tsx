@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Activity, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useDebouncedSearch } from '@/lib/hooks'
 import { useEvents, type EventFilters } from '@/lib/queries'
 import { EVENT_LABELS } from '@/lib/dictionaries'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -20,18 +21,12 @@ export function EventsPage() {
   const rows = data?.items ?? []
   const total = data?.total ?? 0
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setFilters(f => ({ ...f, q: search.trim() || undefined }))
-      setPage(0)
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [search])
-
   const set = (patch: Partial<EventFilters>) => {
     setFilters(f => ({ ...f, ...patch }))
     setPage(0)
   }
+
+  useDebouncedSearch(search, filters.q, (q) => set({ q }))
 
   const from = total ? page * PAGE + 1 : 0
   const to = Math.min(total, (page + 1) * PAGE)

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EventsPage } from './EventsPage'
 import { api } from '@/lib/api'
@@ -65,6 +65,29 @@ describe('EventsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(await screen.findByText('PC-010')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('поиск уходит в API с debounce и обрезает пробелы', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<EventsPage />)
+    await screen.findByText('PC-010')
+    await user.type(screen.getByPlaceholderText(/ПК, текст события/), '  pc-7 ')
+    await waitFor(() => expect(lastQuery()).toMatchObject({ q: 'pc-7' }))
+    expect(new Set(eventCalls().map((q) => q.q).filter(Boolean))).toEqual(new Set(['pc-7']))
+  })
+
+  it('таймер поиска после открытия страницы не сбрасывает уже выбранную страницу', async () => {
+    total = 750 // 8 страниц по 100
+    const user = userEvent.setup()
+    renderWithProviders(<EventsPage />)
+    await screen.findByText('1–100 из 750')
+    // кнопки пагинации по порядку: «в начало», «назад», «вперёд», «в конец»
+    const next = within(screen.getByText(/Стр\. 1 из 8/).parentElement!).getAllByRole('button')[2]
+    await user.click(next)
+    await screen.findByText('101–200 из 750')
+    await new Promise((r) => setTimeout(r, 400)) // дольше дебаунса поиска в 250 мс
+    expect(screen.getByText('101–200 из 750')).toBeInTheDocument()
+    expect(lastQuery()).toMatchObject({ offset: 100 })
   })
 
   it('фильтр типа события попадает в запрос', async () => {

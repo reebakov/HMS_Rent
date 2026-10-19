@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
@@ -11,6 +11,7 @@ import { ComputerHistorySheet } from '@/features/admin/ComputerHistorySheet'
 import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
 import { useAssignPool, useDepartments, useInventory, usePools, inventoryExportUrl, type InventoryFilters } from '@/lib/queries'
 import { STATUSES, TIERS, TIER_ORDER } from '@/lib/dictionaries'
+import { useDebouncedSearch } from '@/lib/hooks'
 import type { ComputerStatus } from '@/lib/types'
 import { cn, formatDate, isOverdue } from '@/lib/utils'
 
@@ -42,18 +43,8 @@ export function InventoryPage() {
   const rows = data?.items ?? []
   const total = data?.total ?? 0
 
-  // set() сбрасывает выбор и страницу: без проверки таймер, сработавший через 250 мс после открытия страницы,
-  // стирал уже отмеченные ПК, хотя поиск никто не менял
-  const qRef = useRef(filters.q)
-  qRef.current = filters.q
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const q = search.trim() || undefined
-      if (q !== qRef.current) set({ q })
-    }, 250)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  // set() сбрасывает выбор и страницу, поэтому поиск применяется только при реальном изменении
+  useDebouncedSearch(search, filters.q, (q) => set({ q }))
 
   function set(patch: Partial<InventoryFilters>) {
     setFilters((f) => ({ ...f, ...patch }))

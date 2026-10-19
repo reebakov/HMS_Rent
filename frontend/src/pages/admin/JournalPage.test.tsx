@@ -93,6 +93,26 @@ describe('JournalPage', () => {
     await waitFor(() => expect(screen.queryByText('Не удалось загрузить отделы')).not.toBeInTheDocument())
   })
 
+  it('поиск уходит в API с debounce, обрезает пробелы и возвращается к «без поиска» при очистке', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<JournalPage />)
+    await screen.findByText('PC-010')
+    const input = screen.getByPlaceholderText(/ПК, имя или ник/)
+    await user.type(input, '  pc-7 ')
+    await waitFor(() => expect(lastQuery()).toMatchObject({ q: 'pc-7' }))
+    expect(new Set(journalCalls().map((q) => q.q).filter(Boolean))).toEqual(new Set(['pc-7']))
+
+    await user.clear(input)
+    await waitFor(() => expect(lastQuery().q).toBeUndefined())
+  })
+
+  it('без ввода в поиск лишних запросов после монтирования нет', async () => {
+    renderWithProviders(<JournalPage />)
+    await screen.findByText('PC-010')
+    await new Promise((r) => setTimeout(r, 400)) // дольше дебаунса поиска в 250 мс
+    expect(journalCalls()).toHaveLength(1)
+  })
+
   it('фильтры статуса и отдела попадают в запрос', async () => {
     const user = userEvent.setup()
     renderWithProviders(<JournalPage />)

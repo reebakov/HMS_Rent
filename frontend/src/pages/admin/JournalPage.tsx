@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ArrowLeftRight, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { Input, Select } from '@/components/ui/input'
 import { Badge, TierBadge } from '@/components/ui/badge'
+import { useDebouncedSearch } from '@/lib/hooks'
 import { useDepartments, useJournal, type JournalFilters } from '@/lib/queries'
 import { cn, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
@@ -15,12 +16,9 @@ export function JournalPage() {
   const journal = useJournal(filters)
   const { data, isFetching } = journal
 
-  useEffect(() => {
-    const timer = setTimeout(() => setFilters((f) => ({ ...f, q: search.trim() || undefined })), 250)
-    return () => clearTimeout(timer)
-  }, [search])
-
   const set = (patch: Partial<JournalFilters>) => setFilters((f) => ({ ...f, ...patch }))
+
+  useDebouncedSearch(search, filters.q, (q) => set({ q }))
 
   return (
     <>

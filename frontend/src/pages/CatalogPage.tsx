@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { PageHeader } from '@/components/ui/card'
@@ -10,6 +10,7 @@ import { BookingDialog } from '@/features/booking/BookingDialog'
 import { VmBuilderDialog } from '@/features/vms/VmBuilderDialog'
 import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
 import { useSession } from '@/auth/AuthProvider'
+import { useDebouncedSearch } from '@/lib/hooks'
 import { useCatalogSummary, useComputers, type ComputerFilters } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { Computer, Tier } from '@/lib/types'
@@ -42,8 +43,6 @@ export function CatalogPage() {
   const [openedId, setOpenedId] = useState<number | null>(null)
   const [booking, setBooking] = useState<Computer | null>(null)
   const [search, setSearch] = useState(filters.q ?? '')
-  const qRef = useRef(filters.q)
-  qRef.current = filters.q
 
   const update = (patch: Record<string, string | undefined>) =>
     setParams(
@@ -56,13 +55,7 @@ export function CatalogPage() {
     )
 
   // поиск с задержкой, чтобы не дёргать API на каждую букву
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if ((search.trim() || undefined) !== qRef.current) update({ q: search.trim() || undefined })
-    }, 250)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  useDebouncedSearch(search, filters.q, (q) => update({ q }))
 
   const count = computers.data?.length ?? 0
 
