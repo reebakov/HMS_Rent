@@ -242,6 +242,26 @@ describe('InventoryPage', () => {
     expect(screen.getByTestId('sheet')).toHaveTextContent('карточка 2')
   })
 
+  it.each([['подробная таблица', false], ['компактная таблица', true]])(
+    'с клавиатуры (%s): Tab доходит до имени ПК, Enter открывает карточку, пробел на чекбоксе не открывает',
+    async (_name, compact) => {
+      const user = userEvent.setup()
+      renderWithProviders(<InventoryPage />)
+      await screen.findByText('PC-002')
+      if (compact) await user.click(screen.getByTitle('Списком — только номера'))
+      const row = screen.getByText('PC-002').closest('tr')!
+      const box = within(row).getByRole('checkbox')
+      box.focus()
+      await user.keyboard(' ')
+      expect(box).toBeChecked()
+      expect(screen.queryByTestId('sheet')).not.toBeInTheDocument()
+      await user.tab()
+      expect(within(row).getByRole('button', { name: 'PC-002' })).toHaveFocus()
+      await user.keyboard('{Enter}')
+      expect(screen.getByTestId('sheet')).toHaveTextContent('карточка 2')
+    },
+  )
+
   it('выбор строк показывает панель, «выбрать все» и «снять выделение»', async () => {
     const user = userEvent.setup()
     renderWithProviders(<InventoryPage />)

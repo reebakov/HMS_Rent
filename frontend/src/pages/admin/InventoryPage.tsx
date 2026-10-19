@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CircleAlert, Download, Search, X, MapPin } from 'lucide-react'
@@ -21,6 +21,18 @@ const PAGE = 100
 // «unavailable» — составной фильтр бэкенда, остальные значения — статусы ПК; неизвестное из адресной строки игнорируется
 const statusFromUrl = (value: string | null) =>
   value === 'unavailable' || (value && Object.keys(STATUSES).includes(value)) ? value : undefined
+
+/**
+ * Имя ПК — кнопка для клавиатуры (Tab, Enter, пробел): строка целиком открывает карточку по клику мыши, а
+ * клик по кнопке всплывает до строки и срабатывает тот же обработчик.
+ */
+function OpenButton({ children }: { children: ReactNode }) {
+  return (
+    <button type="button" className="text-left font-semibold hover:text-primary">
+      {children}
+    </button>
+  )
+}
 
 export function InventoryPage() {
   const [params] = useSearchParams()
@@ -208,7 +220,9 @@ export function InventoryPage() {
                         <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Выбрать ${c.name}`} />
                         </td>
-                        <td className="px-3 py-1.5 font-semibold text-[13px]">{c.name}</td>
+                        <td className="px-3 py-1.5 text-[13px]">
+                          <OpenButton>{c.name}</OpenButton>
+                        </td>
                         <td className="px-3 py-1.5">
                           <StatusBadge status={c.status} />
                         </td>
@@ -271,7 +285,7 @@ export function InventoryPage() {
                           <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label={`Выбрать ${c.name}`} />
                         </td>
                         <td className="px-3 py-3">
-                          <p className="font-semibold">{c.name}</p>
+                          <OpenButton>{c.name}</OpenButton>
                           <p className="font-mono text-xs text-muted-foreground">{c.insight_key}</p>
                           {c.location && (
                             <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
