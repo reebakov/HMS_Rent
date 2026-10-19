@@ -27,6 +27,20 @@ async def _step(name: str, coro_factory) -> None:
         log.exception("%s упал", name)
 
 
+async def _tick(next_sync: float, clock=time.monotonic) -> float:
+    """Один проход цикла. Возвращает момент (по clock), когда нужна следующая синхронизация с Insight."""
+    async with SessionLocal() as session:
+        cfg = await runtime.load(session, max_age=0)
+    if clock() >= next_sync:
+        await _step("Синхронизация", run_sync)
+        next_sync = clock() + cfg.insight_sync_interval_min * 60
+    await _step("Запись в Insight", push_pending)
+    await _step("Виртуалки", vm_jobs.run_once)
+    await _step("Заявки Service Desk", service_requests.refresh_open)
+    await _step("Сводка просрочек", overdue.daily_digest)
+    return next_sync
+
+
 async def main() -> None:
     log.info("Воркер запущен: insight=%s, vSphere=%s", settings.insight_mode,
              settings.vcenter_host if settings.vsphere_configured else "не настроен")
@@ -34,15 +48,7 @@ async def main() -> None:
         await _step("Восстановление очереди ВМ", vm_jobs.recover)
     next_sync = 0.0
     while True:
-        async with SessionLocal() as session:
-            cfg = await runtime.load(session, max_age=0)
-        if time.monotonic() >= next_sync:
-            await _step("Синхронизация", run_sync)
-            next_sync = time.monotonic() + cfg.insight_sync_interval_min * 60
-        await _step("Запись в Insight", push_pending)
-        await _step("Виртуалки", vm_jobs.run_once)
-        await _step("Заявки Service Desk", service_requests.refresh_open)
-        await _step("Сводка просрочек", overdue.daily_digest)
+        next_sync = await _tick(next_sync)
         await asyncio.sleep(TICK_SEC)
 
 
