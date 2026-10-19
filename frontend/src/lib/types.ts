@@ -339,7 +339,7 @@ export interface AdminUserRow {
   username: string
   display_name: string
   email: string | null
-  auth_source: 'bouncer' | 'local' | 'dev'
+  auth_source: 'bouncer' | 'microsoft' | 'local' | 'dev'
   role: 'user' | 'admin'
   is_active: boolean
   department: Ref | null
