@@ -51,7 +51,7 @@
 | `asset_events` | журнал всего, что происходило с ПК: бронь, возврат, смена статуса в Insight, появление/исчезновение, правки админа, ошибки записи |
 | `departments` | справочник отделов (название, код, руководитель, активен) |
 | `pools`, `pool_departments` | пулы выдачи и отделы, которые их видят; `computers.pool_id` — в каком пуле ПК (нет пула — сотрудники его не видят) |
-| `users` | сотрудники, создаются при первом входе (логин, ФИО, почта, роль, отдел, `auth_source`: `bouncer` / `local` / `dev`) |
+| `users` | сотрудники, создаются при первом входе (логин, ФИО, почта, роль, отдел, `auth_source`: `bouncer` / `local` / `dev` / `microsoft`; `microsoft` — сотрудники, заведённые заранее администратором («Сотрудники → Добавить сотрудника заранее»), и старые записи) |
 | `sync_runs` | журнал синхронизаций с Insight; `details` (JSONB) — что именно изменилось в запуске |
 | `app_settings` | настройки с сайта (ключ → JSON), в том числе список шаблонов ОС `vm_templates` |
 
@@ -162,20 +162,21 @@
 ## Доставка и окружения
 
 * **Разработка и демо:** `docker-compose.yml` собирает образы из исходников, режим `INSIGHT_MODE=mock`.
-* **CI** (GitHub Actions): тесты backend и frontend (пропускаются, если менялись только документация, скрипты и
-  compose-файлы) и публикация образов `ghcr.io/reebakov/hms-rent-backend` и `-frontend` с тегом-sha коммита.
-* **Прод:** `docker-compose.prod.yml` на готовых образах, обновление командой `sudo ./scripts/deploy.sh` (образы нужного
-  коммита, дамп БД, перезапуск, проверка `/api/health`, автооткат). С диска сервера читаются только `backend/config`
-  и, для HTTPS, конфиги nginx из `deploy/nginx` и сертификат.
+* **CI** (GitHub Actions, `.github/workflows/ci.yml`): тесты backend и frontend (правило пропуска — `AGENTS.md`,
+  «Тесты»), проверка конфигов (`deploy.sh`, compose, nginx) и публикация образов `ghcr.io/reebakov/hms-rent-backend` и
+  `-frontend` с тегом-sha коммита.
+* **Прод:** `docker-compose.prod.yml` на готовых образах, обновление командой `sudo ./scripts/deploy.sh` (порядок шагов
+  и откат — `README.md`, «Деплой на сервер»). С диска сервера читаются только `backend/config` и, для HTTPS, конфиги
+  nginx из `deploy/nginx` и сертификат.
 * **HTTPS:** `docker-compose.tls.yml` подключается сам, если есть `certs/fullchain.pem` и `certs/privkey.pem`
-  (`docs/DOMAIN_TLS.md`). Секреты и права файлов — `docs/SECRETS.md`.
+  (`docs/DOMAIN_TLS.md`; на проде пока не включён). Секреты и права файлов — `docs/SECRETS.md`.
 
 ## Точки расширения
 
 | Задача | Куда добавлять |
 |---|---|
 | Jira Cloud (Assets) вместо Server/DC | новый класс рядом с `integrations/insight/client.py`, выбор в `factory.py` |
-| SSO (Keycloak / ADFS / OIDC) | новый провайдер в `integrations/auth/`, выбор в `factory.py` |
+| SSO (Keycloak / ADFS / OIDC) | новый провайдер в `integrations/auth/` и маршруты в `api/routes/auth.py` (способ входа включается флагами в `core/config.py`, общей фабрики нет) |
 | Согласование брони руководителем | статус `pending` в `BookingStatus` + эндпоинт approve в `services/bookings.py` |
 | Продление / передача ПК другому отделу | новые методы в `services/bookings.py` + событие в `asset_events` |
 | Напоминания о сроке возврата заказчику | периодическая задача в `worker.py` по образцу `services/overdue.py` + `integrations/notify.py` |
