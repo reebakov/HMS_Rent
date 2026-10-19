@@ -245,6 +245,29 @@ async def test_update_rejects_invalid_templates_before_writing(session, bad):
     assert [t.key for t in runtime.current().vm_templates] == DEFAULT_KEYS
 
 
+async def test_update_rejects_duplicate_template_keys(session):
+    with pytest.raises(ValueError, match="уникальными"):
+        await set_templates(session, tpl("aa", "1"), tpl("bb", "2"), tpl("aa", "3"))
+    assert await stored_settings() == {}
+    assert [t.key for t in runtime.current().vm_templates] == DEFAULT_KEYS
+
+
+async def test_stored_duplicate_keys_do_not_block_other_settings(session):
+    """Дубли, сохранённые до проверки, остаются как есть: остальные настройки по-прежнему меняются."""
+    dup = [tpl("aa", "1"), tpl("aa", "2")]
+    session.add(AppSetting(key="vm_templates", value=dup))
+    await session.commit()
+    cfg = await runtime.update(session, {"vm_max_per_user": 4})
+    assert cfg.vm_max_per_user == 4 and [t.key for t in cfg.vm_templates] == ["aa", "aa"]
+
+
+def test_template_text_fields_are_trimmed_and_blank_label_rejected():
+    t = VmTemplate(**tpl("aa", "  Tpl-1  ", label="  Windows  ", customization_spec=" spec "))
+    assert (t.label, t.template, t.customization_spec) == ("Windows", "Tpl-1", "spec")
+    with pytest.raises(ValueError):
+        VmTemplate(**tpl("aa", label="    "))
+
+
 async def test_empty_templates_list_is_allowed(session):
     assert (await set_templates(session)).vm_templates == []
     assert (await stored_settings())["vm_templates"] == []
@@ -262,6 +285,12 @@ async def test_patch_settings_updates_templates(client, boss, api, session):
     assert (await client.get(api("/admin/settings"))).json()["vm_templates"] == [t]
     assert (await stored_settings())["vm_templates"] == [t]
     assert [x.key for x in runtime.current().vm_templates] == ["ubuntu2204"]
+
+
+async def test_patch_settings_rejects_duplicate_template_keys(client, boss, api):
+    r = await client.patch(api("/admin/settings"), json={"vm_templates": [tpl("aa", "1"), tpl("aa", "2")]})
+    assert r.status_code == 422 and "уникальными" in r.json()["detail"]
+    assert await stored_settings() == {}
 
 
 async def test_patch_settings_templates_do_not_clobber_other_settings(client, boss, api):

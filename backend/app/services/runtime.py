@@ -5,15 +5,16 @@
 """
 import time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import AppSetting
+from app.schemas.common import InputModel
 
 
-class VmTemplate(BaseModel):
+class VmTemplate(InputModel):
     """Шаблон ОС для конструктора. enabled=False — скрыт; без template — показан как «скоро»."""
 
     key: str = Field(pattern=r"^[a-z0-9_-]{2,32}$")
@@ -36,6 +37,8 @@ def _default_templates() -> list[VmTemplate]:
 
 
 class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # опечатка в ключе PATCH — ошибка, а не молча не сохранённая настройка
+
     # Синхронизация с Insight
     insight_sync_interval_min: int = Field(default=10, ge=1, le=1440)
     insight_writeback: bool = False
@@ -88,6 +91,10 @@ async def update(session: AsyncSession, changes: dict) -> RuntimeConfig:
     global _cache
     merged = (await load(session, max_age=0)).model_dump() | changes
     config = RuntimeConfig(**merged)  # проверка диапазонов до записи
+    # Только при правке самого списка: уже сохранённые дубли не должны мешать менять остальные настройки
+    keys = [t.key for t in config.vm_templates]
+    if "vm_templates" in changes and len(keys) != len(set(keys)):
+        raise ValueError("ключи шаблонов ОС должны быть уникальными")
     dumped = config.model_dump()  # JSON-совместимые значения (шаблоны ОС — список словарей)
     for key in changes:
         row = await session.get(AppSetting, key)

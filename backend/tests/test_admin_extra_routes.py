@@ -112,19 +112,18 @@ async def test_patch_settings_keeps_untouched_fields(client, boss, api):
     assert body["vm_max_per_user"] == 5 and body["catalog_refresh_sec"] == 30
 
 
-async def test_patch_settings_ignores_unknown_and_readonly_keys(client, boss, api):
-    r = await client.patch(api("/admin/settings"), json={"vsphere_configured": True, "vcenter_host": "evil",
-                                                         "role": "admin", "vm_max_per_user": 4})
-    body = r.json()
-    assert r.status_code == 200 and body["vm_max_per_user"] == 4
-    assert body["vsphere_configured"] is False and body["vcenter_host"] == ""
-    assert await stored_settings() == {"vm_max_per_user": 4}
+@pytest.mark.parametrize("extra", [{"vsphere_configured": True}, {"vcenter_host": "evil"}, {"role": "admin"},
+                                   {"vm_max_per_usr": 4}, {"что-то": 1}])
+async def test_patch_settings_rejects_unknown_and_readonly_keys(client, boss, api, extra):
+    """Опечатка в ключе не должна «успешно» сохраняться впустую; запрос отклоняется целиком."""
+    r = await client.patch(api("/admin/settings"), json={"vm_max_per_user": 4} | extra)
+    assert r.status_code == 422 and r.json()["detail"].startswith("Некорректное значение")
+    assert await stored_settings() == {} and runtime.current().vm_max_per_user == 2
 
 
 async def test_patch_settings_empty_body_changes_nothing(client, boss, api):
     r = await client.patch(api("/admin/settings"), json={})
     assert r.status_code == 200 and await stored_settings() == {}
-    assert (await client.patch(api("/admin/settings"), json={"что-то": 1})).status_code == 200
 
 
 @pytest.mark.parametrize("key,lo,hi", [

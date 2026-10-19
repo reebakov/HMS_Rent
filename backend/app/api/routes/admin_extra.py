@@ -34,10 +34,8 @@ async def get_settings(_: AdminUser, session: DB) -> SettingsOut:
 
 @router.patch("/settings", response_model=SettingsOut)
 async def patch_settings(data: dict, _: AdminUser, session: DB) -> SettingsOut:
-    allowed = set(RuntimeConfig.model_fields)
-    changes = {k: v for k, v in data.items() if k in allowed}
     try:
-        cfg = await runtime.update(session, changes)
+        cfg = await runtime.update(session, data)
     except ValueError as exc:
         raise HTTPException(422, f"Некорректное значение: {exc}") from exc
     return SettingsOut(**cfg.model_dump(), vsphere_configured=settings.vsphere_configured,
