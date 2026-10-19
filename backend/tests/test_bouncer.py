@@ -45,8 +45,8 @@ def admins_file(tmp_path, monkeypatch):
 
 
 def id_token(nonce: str | None = NONCE, exp: float | None = None, **claims) -> str:
-    """Токен без проверки подписи — как его читает код."""
-    body = {"exp": time.time() + 600 if exp is None else exp, **claims}
+    """Токен без проверки подписи — как его читает код. По умолчанию aud — наш client_id (cid)."""
+    body = {"exp": time.time() + 600 if exp is None else exp, "aud": "cid", **claims}
     if nonce is not None:
         body["nonce"] = nonce
     return jwt.encode(body, "any-key", algorithm="HS256")
@@ -143,6 +143,59 @@ async def test_exchange_code_rejects_stale_or_replayed_token(token_endpoint, kw,
         await bouncer.exchange_code("c", NONCE)
 
 
+# ---------- exchange_code: aud и iss ----------
+
+INVALID_SESSION = "Сессия входа некорректна"
+
+
+@pytest.mark.parametrize("aud", ["other-client", ["other-client", "another"], [], None, 42],
+                         ids=["чужая строка", "чужой список", "пустой список", "нет aud", "не строка и не список"])
+async def test_exchange_code_rejects_foreign_or_missing_audience(token_endpoint, caplog, aud):
+    claims = {"aud": aud} if aud is not None else {}
+    token = jwt.encode({"exp": time.time() + 600, "nonce": NONCE, "email": "a@corp.io", **claims}, "k", algorithm="HS256")
+    token_endpoint(json={"id_token": token})
+    with caplog.at_level("WARNING", logger="hmsrent.bouncer"):
+        with pytest.raises(AuthError, match=INVALID_SESSION) as exc:
+            await bouncer.exchange_code("c", NONCE)
+    assert "aud" not in str(exc.value) and "cid" not in str(exc.value)  # пользователю — без деталей
+    assert "BOUNCER_CLIENT_ID" in caplog.text and "cid" in caplog.text  # причина — в логе
+    assert token not in caplog.text  # сам токен в лог не попадает
+
+
+@pytest.mark.parametrize("aud", ["cid", ["other", "cid"]], ids=["строка", "список с нужным значением"])
+async def test_exchange_code_accepts_audience(token_endpoint, aud):
+    token_endpoint(json={"id_token": id_token(aud=aud, email="a@corp.io")})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "a@corp.io"
+
+
+async def test_exchange_code_rejects_wrong_issuer_when_configured(token_endpoint, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "bouncer_issuer", "https://sso.example")
+    token_endpoint(json={"id_token": id_token(email="a@corp.io", iss="https://evil.example")})
+    with caplog.at_level("WARNING", logger="hmsrent.bouncer"):
+        with pytest.raises(AuthError, match=INVALID_SESSION):
+            await bouncer.exchange_code("c", NONCE)
+    assert "https://evil.example" in caplog.text and "BOUNCER_ISSUER" in caplog.text
+
+
+async def test_exchange_code_accepts_matching_issuer(token_endpoint, monkeypatch):
+    monkeypatch.setattr(settings, "bouncer_issuer", "https://sso.example")
+    token_endpoint(json={"id_token": id_token(email="a@corp.io", iss="https://sso.example")})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "a@corp.io"
+
+
+async def test_exchange_code_missing_issuer_is_rejected_when_configured(token_endpoint, monkeypatch):
+    monkeypatch.setattr(settings, "bouncer_issuer", "https://sso.example")
+    token_endpoint(json={"id_token": id_token(email="a@corp.io")})
+    with pytest.raises(AuthError, match=INVALID_SESSION):
+        await bouncer.exchange_code("c", NONCE)
+
+
+async def test_exchange_code_empty_issuer_setting_does_not_check_iss(token_endpoint):
+    assert settings.bouncer_issuer == ""
+    token_endpoint(json={"id_token": id_token(email="a@corp.io", iss="https://anything.example")})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "a@corp.io"
+
+
 async def test_exchange_code_missing_exp_is_rejected(token_endpoint):
     token = jwt.encode({"nonce": NONCE, "email": "a@corp.io"}, "k", algorithm="HS256")
     token_endpoint(json={"id_token": token})
@@ -228,12 +281,13 @@ async def test_login_flow_admin_from_admins_file(client, api, session, token_end
     (dict(status=200, json={}), "id_token"),
     (dict(status=200, json={"id_token": "EXPIRED"}), "устарела"),
     (dict(status=200, json={"id_token": "NONCE"}), "устарела"),
+    (dict(status=200, json={"id_token": "AUD"}), "некорректна"),
     (dict(status=200, json={"id_token": "EMPTY"}), "email или логин"),
 ])
 async def test_login_flow_auth_errors_redirect_to_login(client, api, session, token_endpoint, respond, message):
     saved = await _start(client, api)
     tokens = {"EXPIRED": id_token(saved["nonce"], exp=time.time() - 5, email="a@corp.io"),
-              "NONCE": id_token("wrong", email="a@corp.io"), "EMPTY": id_token(saved["nonce"])}
+              "NONCE": id_token("wrong", email="a@corp.io"), "AUD": id_token(saved["nonce"], aud="x", email="a@corp.io"), "EMPTY": id_token(saved["nonce"])}
     body = respond["json"]
     if body.get("id_token") in tokens:
         body = {"id_token": tokens[body["id_token"]]}
