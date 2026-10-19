@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { ReturnDialog } from '@/features/booking/BookingDialog'
 import { MyVms } from '@/features/vms/MyVms'
-import { useMyBookings, useReturnBooking } from '@/lib/queries'
+import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
+import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
 import type { Booking } from '@/lib/types'
 import { formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
@@ -16,6 +17,10 @@ export function MyBookingsPage() {
   const { data, isLoading, isError, error, refetch } = useMyBookings()
   const returnMutation = useReturnBooking()
   const [returning, setReturning] = useState<Booking | null>(null)
+  const requests = useMyRequests()
+  const [problem, setProblem] = useState<ProblemTarget>(null)
+  const [openedRequest, setOpenedRequest] = useState<number | null>(null)
+  const requestsFor = (bookingId: number) => requests.data?.filter((r) => r.booking_id === bookingId) ?? []
 
   const active = data?.filter((b) => b.status === 'active') ?? []
   const history = data?.filter((b) => b.status !== 'active') ?? []
@@ -39,7 +44,11 @@ export function MyBookingsPage() {
         action={<Button onClick={() => navigate('/')}>Забронировать ещё</Button>}
       />
 
-      <MyVms />
+      <MyVms
+        requestsFor={(vmId) => requests.data?.filter((r) => r.vm_id === vmId) ?? []}
+        onReport={(vm) => setProblem({ vmId: vm.id, name: vm.name })}
+        onOpenRequest={setOpenedRequest}
+      />
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2">
@@ -118,11 +127,15 @@ export function MyBookingsPage() {
                 </dl>
                 {b.purpose && <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">{b.purpose}</p>}
 
-                <div className="mt-5 flex justify-end border-t pt-4">
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+                  <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
+                  <div className="ml-auto flex gap-1">
+                  <ReportProblemButton onClick={() => setProblem({ bookingId: b.id, name: b.computer.name })} />
                   <Button variant="outline" size="sm" onClick={() => setReturning(b)}>
                     <Undo2 className="h-3.5 w-3.5" />
                     Вернуть компьютер
                   </Button>
+                  </div>
                 </div>
               </Card>
             )
@@ -143,6 +156,7 @@ export function MyBookingsPage() {
                   <th className="px-5 py-3 font-medium">Взят</th>
                   <th className="px-5 py-3 font-medium">Возвращён</th>
                   <th className="px-5 py-3 font-medium">Срок</th>
+                  <th className="px-5 py-3 font-medium">Заявки</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -159,6 +173,9 @@ export function MyBookingsPage() {
                         {formatDuration(b.booked_at, b.returned_at)}
                       </span>
                     </td>
+                    <td className="px-5 py-3">
+                      <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -174,6 +191,8 @@ export function MyBookingsPage() {
         onConfirm={confirmReturn}
         onClose={() => setReturning(null)}
       />
+      <ReportProblemDialog target={problem} onClose={() => setProblem(null)} />
+      <RequestSheet id={openedRequest} onClose={() => setOpenedRequest(null)} />
     </>
   )
 }

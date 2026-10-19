@@ -73,7 +73,7 @@ export function VmsPage() {
                     <tr key={vm.id} className="hover:bg-muted/40">
                       <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
                       <td className="px-4 py-3 font-semibold">{vm.name}</td>
-                      <td className="px-4 py-3 tabular">{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
+                      <td className="px-4 py-3 tabular">{vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{vm.department.name}</p>
                         <p className="text-xs text-muted-foreground">{vm.requester_name} ({vm.requester_nick})</p>

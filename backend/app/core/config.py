@@ -81,6 +81,18 @@ class Settings(BaseSettings):
     tier_medium_gpu: str = "1050,1060,1650,RX 5"
     tier_powerful_gpu: str = "RTX,1660,1070,1080,RX 6,RX 7,A4000,A5000"
 
+    # --- Jira Service Desk: заявки «Сообщить о проблеме» и на возврат ПК (docs/SERVICE_DESK.md) ---
+    sd_jira_url: str = "https://jira.getcom.pw"
+    sd_token: str = ""  # Personal Access Token сервисной учётки (агент Service Desk)
+    sd_username: str = ""  # или логин/пароль
+    sd_password: str = ""
+    sd_verify_ssl: bool = True
+    sd_service_desk_id: int = 54  # из адреса портала …/desk/portal/54/…
+    sd_request_type_problem: int = 1248  # «Проблема с ПК/ВМ»: …/portal/54/create/1248
+    sd_request_type_return: int = 1252  # «Возврат ПК»: …/portal/54/create/1252
+    sd_raise_on_behalf: bool = True  # создавать заявку от имени сотрудника (если он есть в Jira)
+    sd_return_on_return: bool = True  # возврат ПК на сайте создаёт заявку «Возврат»
+
     # --- Уведомления ---
     mattermost_webhook_url: str = ""
 
@@ -90,6 +102,10 @@ class Settings(BaseSettings):
     @property
     def bouncer_enabled(self) -> bool:
         return bool(self.bouncer_client_id and self.bouncer_client_secret and self.bouncer_authorize_url)
+
+    @property
+    def service_desk_configured(self) -> bool:
+        return bool(self.sd_jira_url and (self.sd_token or self.sd_username))
 
     @property
     def vsphere_configured(self) -> bool:

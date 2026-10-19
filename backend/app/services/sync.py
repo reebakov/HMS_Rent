@@ -28,6 +28,34 @@ TRACKED = (
 )
 
 
+DETAILS_LIMIT = 500  # сколько ПК на список сохранять в деталях запуска
+
+FIELD_LABELS = {
+    "name": "Имя", "hostname": "Hostname", "cpu": "Процессор", "cpu_cores": "Ядра", "ram_gb": "ОЗУ, ГБ",
+    "storage": "Диск", "gpu": "Видеокарта", "os": "ОС", "location": "Расположение",
+    "serial_number": "Серийный номер", "ip_address": "IP", "insight_status": "Статус Insight", "is_virtual": "Виртуальная",
+}
+NOISY_ATTRIBUTES = {"Updated", "Created", "Key"}  # меняются при любой правке — в деталях не показываем
+
+
+def _fmt(value) -> str:
+    if value is None or value == "":
+        return "—"
+    if isinstance(value, bool):
+        return "да" if value else "нет"
+    return str(value)[:200]
+
+
+def _attribute_diff(old: dict, new: dict, mapping) -> list[dict]:
+    """Изменившиеся атрибуты Insight, которые не показаны выше как поля портала (пул, команда, срок…)."""
+    covered = set(mapping.attributes.values()) | {mapping.specs_attribute} | NOISY_ATTRIBUTES
+    return [
+        {"field": key, "old": _fmt(old.get(key)), "new": _fmt(new.get(key))}
+        for key in sorted(set(old) | set(new))
+        if key not in covered and old.get(key) != new.get(key)
+    ]
+
+
 async def run_sync(session: AsyncSession) -> SyncRun | None:
     started = datetime.now(timezone.utc)
     try:
@@ -69,6 +97,7 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         )
         new_computers: list[Computer] = []
         seen: set[int] = set()
+        details: dict[str, list] = {"updated": [], "created": [], "archived": []}
 
         for obj in objects:
             data = map_object(obj, mapping)
@@ -84,12 +113,16 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                 old_status = comp.insight_status
 
             changed = False
+            diff: list[dict] = []  # что именно поменялось — для окна «Изменено» на странице синхронизации
             for field in TRACKED:
                 value = getattr(data, field)
                 if getattr(comp, field) != value:
+                    if field in FIELD_LABELS:
+                        diff.append({"field": FIELD_LABELS[field], "old": _fmt(getattr(comp, field)), "new": _fmt(value)})
                     setattr(comp, field, value)
                     changed = True
             if comp.attributes != obj.attributes:
+                diff += _attribute_diff(comp.attributes or {}, obj.attributes, mapping)
                 comp.attributes = obj.attributes
                 changed = True
 
@@ -117,6 +150,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
 
             if not is_new:
                 run.updated += int(changed)
+                if changed and len(details["updated"]) < DETAILS_LIMIT:
+                    details["updated"].append({"id": comp.id, "name": comp.name, "changes": diff})
                 if old_status != data.insight_status:
                     add_event(
                         session,
@@ -131,6 +166,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
             if not partial and comp.insight_object_id not in seen and not comp.is_archived:
                 comp.is_archived = True
                 run.archived += 1
+                if len(details["archived"]) < DETAILS_LIMIT:
+                    details["archived"].append({"id": comp.id, "name": comp.name})
                 add_event(
                     session,
                     computer_id=comp.id,
@@ -148,6 +185,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                 message="ПК появился в Insight",
             )
         run.created = len(new_computers)
+        details["created"] = [{"id": c.id, "name": c.name} for c in new_computers[:DETAILS_LIMIT]]
+        run.details = details
         run.finished_at = datetime.now(timezone.utc)
         if partial:
             run.error = f"Пробная синхронизация: загружены первые {limit} объектов (INSIGHT_MAX_OBJECTS)"

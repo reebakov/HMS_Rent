@@ -16,6 +16,7 @@ import { EventsPage } from '@/pages/admin/EventsPage'
 import { SettingsPage } from '@/pages/admin/SettingsPage'
 import { UsersPage } from '@/pages/admin/UsersPage'
 import { VmsPage } from '@/pages/admin/VmsPage'
+import { OverduePage } from '@/pages/admin/OverduePage'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth()
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="admin/events" element={<RequireAdmin><EventsPage /></RequireAdmin>} />
         <Route path="admin/sync" element={<RequireAdmin><SyncPage /></RequireAdmin>} />
         <Route path="admin/vms" element={<RequireAdmin><VmsPage /></RequireAdmin>} />
+        <Route path="admin/overdue" element={<RequireAdmin><OverduePage /></RequireAdmin>} />
         <Route path="admin/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
         <Route path="admin/settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
       </Route>

@@ -1,6 +1,7 @@
 import { useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
+import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
+import { useOverdue } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
@@ -9,6 +10,7 @@ interface NavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
+  badge?: number // красный счётчик справа (например, сколько просрочек)
 }
 
 const userNav: NavItem[] = [
@@ -21,6 +23,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/inventory', label: 'Инвентаризация', icon: Boxes },
   { to: '/admin/pools', label: 'Пулы выдачи', icon: Layers },
   { to: '/admin/journal', label: 'Журнал выдачи', icon: ArrowLeftRight },
+  { to: '/admin/overdue', label: 'Просрочки', icon: AlarmClock },
   { to: '/admin/vms', label: 'Виртуалки', icon: Cloud },
   { to: '/admin/departments', label: 'Отделы', icon: Building2 },
   { to: '/admin/users', label: 'Сотрудники', icon: Users },
@@ -33,7 +36,7 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
   return (
     <div className="space-y-0.5">
       {title && <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">{title}</p>}
-      {items.map(({ to, label, icon: Icon }) => (
+      {items.map(({ to, label, icon: Icon, badge }) => (
         <NavLink
           key={to}
           to={to}
@@ -50,6 +53,9 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
         >
           <Icon className="h-[18px] w-[18px]" />
           {label}
+          {!!badge && (
+            <span className="ml-auto rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">{badge}</span>
+          )}
         </NavLink>
       ))}
     </div>
@@ -58,6 +64,7 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
 
 export function AppShell() {
   const session = useSession()
+  const overdueCount = useOverdue(session.user.role === 'admin').data?.length ?? 0
   const { logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
@@ -77,7 +84,13 @@ export function AppShell() {
 
       <nav className="flex-1">
         <NavGroup items={userNav} onNavigate={() => setMobileOpen(false)} />
-        {isAdmin && <NavGroup title="Администрирование" items={adminNav} onNavigate={() => setMobileOpen(false)} />}
+        {isAdmin && (
+          <NavGroup
+            title="Администрирование"
+            items={adminNav.map((i) => (i.to === '/admin/overdue' ? { ...i, badge: overdueCount } : i))}
+            onNavigate={() => setMobileOpen(false)}
+          />
+        )}
       </nav>
 
       <div className="mt-4 border-t border-white/10 pt-4">

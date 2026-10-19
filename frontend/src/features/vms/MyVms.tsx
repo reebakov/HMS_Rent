@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
-import type { Vm, VmStatus } from '@/lib/types'
+import type { ServiceRequest, Vm, VmStatus } from '@/lib/types'
+import { ReportProblemButton, RequestBadges } from '@/features/support/ServiceDesk'
 import { formatDate, formatDateTime } from '@/lib/utils'
 
 export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boolean }> = {
@@ -19,7 +20,16 @@ export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boo
 }
 
 /** Виртуалки сотрудника в «Моей аренде» */
-export function MyVms() {
+/** Виртуалки в «Моей аренде». Заявки Service Desk по ВМ — через пропсы от страницы */
+export function MyVms({
+  requestsFor = () => [],
+  onReport,
+  onOpenRequest = () => undefined,
+}: {
+  requestsFor?: (vmId: number) => ServiceRequest[]
+  onReport?: (vm: Vm) => void
+  onOpenRequest?: (id: number) => void
+} = {}) {
   const { data, isError, error, refetch } = useMyVms()
   const release = useReleaseVm()
   const [confirm, setConfirm] = useState<Vm | null>(null)
@@ -70,7 +80,7 @@ export function MyVms() {
                   {vm.name} <span className="ml-1 text-xs font-medium text-muted-foreground">Заказ №{vm.order_number}</span>
                 </p>
                 <p className="text-[13px] text-muted-foreground">
-                  {vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
+                  {vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
                 </p>
               </div>
               <div className="text-[13px]">
@@ -94,6 +104,8 @@ export function MyVms() {
                 {st.busy && <Loader2 className="h-3 w-3 animate-spin" />}
                 {st.label}
               </Badge>
+              <RequestBadges requests={requestsFor(vm.id)} onOpen={onOpenRequest} />
+              {onReport && vm.status !== 'deleting' && <ReportProblemButton onClick={() => onReport(vm)} />}
               {(vm.status === 'ready' || vm.status === 'failed' || vm.status === 'queued') && (
                 <Button variant="outline" size="sm" onClick={() => setConfirm(vm)}>
                   <Trash2 className="h-3.5 w-3.5" />

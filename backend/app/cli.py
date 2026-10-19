@@ -153,6 +153,24 @@ async def insight_check(sample: int, query: str | None, breakdown: str | None) -
         await client.close()
 
 
+async def sd_check() -> None:
+    """Проверка Service Desk: доступ и поля типов заявок (какие обязательны)."""
+    from app.integrations import servicedesk as sd
+
+    print(f"Service Desk: {settings.sd_jira_url}, id={settings.sd_service_desk_id}")
+    for title, type_id in (("Проблема", settings.sd_request_type_problem), ("Возврат", settings.sd_request_type_return)):
+        try:
+            fields = await sd.request_type_fields(type_id)
+        except sd.ServiceDeskError as exc:
+            print(f"\n{title} ({type_id}): ОШИБКА — {exc}")
+            continue
+        print(f"\n{title} ({type_id}):")
+        for f in fields:
+            mark = "ОБЯЗАТЕЛЬНО" if f.get("required") else ""
+            print(f"  {f.get('fieldId'):24} {f.get('name')} {mark}")
+    print("\nПортал заполняет summary и description. Если обязательны другие поля — сделайте их необязательными в Jira.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Служебные команды HMS Rent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -164,6 +182,7 @@ def main() -> None:
     sub.add_parser("enable").add_argument("username")
     sub.add_parser("users")
     sub.add_parser("push-pools")
+    sub.add_parser("sd-check")
     p = sub.add_parser("insight-check")
     p.add_argument("--sample", type=int, default=5, help="сколько объектов показать")
     p.add_argument("--query", help="свой IQL-запрос вместо query из маппинга")
@@ -171,6 +190,7 @@ def main() -> None:
     args = parser.parse_args()
 
     commands = {
+        "sd-check": sd_check,
         "create-admin": lambda: create_admin(args.username, args.name),
         "set-password": lambda: set_password(args.username),
         "disable": lambda: set_active(args.username, False),

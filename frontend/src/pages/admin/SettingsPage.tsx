@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { useAppSettings, useSaveSettings, useVsphereCheck } from '@/lib/queries'
 import type { AppSettings } from '@/lib/types'
+import { VmTemplatesEditor } from '@/features/admin/VmTemplatesEditor'
 
 type NumKey = { [K in keyof AppSettings]: AppSettings[K] extends number ? K : never }[keyof AppSettings]
 
@@ -123,6 +124,11 @@ export function SettingsPage() {
           </div>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader title="Шаблоны ОС для виртуалок" description="Какие ОС можно выбрать в конструкторе и из каких шаблонов vCenter их клонировать" />
+        <VmTemplatesEditor value={form.vm_templates ?? []} onChange={(v) => setForm({ ...form, vm_templates: v })} />
+      </Card>
     </>
   )
 }

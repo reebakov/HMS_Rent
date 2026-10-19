@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import VirtualMachine
+from app.services import runtime
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +52,11 @@ async def create_next(session: AsyncSession) -> bool:
     await session.commit()
     for attempt in range(1, CREATE_ATTEMPTS + 1):
         try:
-            info = await asyncio.to_thread(vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm))
+            tmpl = next((t for t in runtime.current().vm_templates if t.key == vm.template_key), None)
+            info = await asyncio.to_thread(
+                vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm),
+                tmpl.template if tmpl else None, tmpl.customization_spec if tmpl else None,
+            )
         except Exception as exc:  # noqa: BLE001
             log.exception("Не удалось создать ВМ %s (попытка %d из %d)", vm.name, attempt, CREATE_ATTEMPTS)
             vm.error = str(exc)[:1000]

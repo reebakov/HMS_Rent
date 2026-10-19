@@ -15,6 +15,7 @@ class VmCreate(BaseModel):
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
     expected_return_at: date | None = None
+    template_key: str | None = None  # шаблон ОС; пусто — первый доступный
 
     @field_validator("name", mode="before")
     @classmethod
@@ -36,6 +37,8 @@ class VmOut(ORMModel):
     cpu: int
     ram_gb: int
     disk_gb: int
+    template_key: str | None = None
+    os_label: str | None = None
     status: str
     error: str | None
     department: DepartmentShort
@@ -52,6 +55,14 @@ class VmOut(ORMModel):
     deleted_at: datetime | None
 
 
+class VmTemplateOption(BaseModel):
+    key: str
+    label: str
+    os: str  # windows / linux
+    min_disk_gb: int
+    available: bool  # False — шаблон ещё не настроен (в конструкторе «скоро»)
+
+
 class VmOptions(BaseModel):
     enabled: bool
     reason: str | None  # почему конструктор недоступен
@@ -65,3 +76,4 @@ class VmOptions(BaseModel):
     max_disk_gb: int
     max_per_user: int
     used_by_me: int
+    templates: list[VmTemplateOption] = []

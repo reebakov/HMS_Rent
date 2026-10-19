@@ -9,7 +9,7 @@ import time
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.services import runtime, vm_jobs
+from app.services import overdue, runtime, service_requests, vm_jobs
 from app.services.sync import run_sync
 from app.services.writeback import push_pending
 
@@ -41,6 +41,8 @@ async def main() -> None:
             next_sync = time.monotonic() + cfg.insight_sync_interval_min * 60
         await _step("Запись в Insight", push_pending)
         await _step("Виртуалки", vm_jobs.run_once)
+        await _step("Заявки Service Desk", service_requests.refresh_open)
+        await _step("Сводка просрочек", overdue.daily_digest)
         await asyncio.sleep(TICK_SEC)
 
 

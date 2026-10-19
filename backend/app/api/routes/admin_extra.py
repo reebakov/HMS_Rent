@@ -47,7 +47,8 @@ async def patch_settings(data: dict, _: AdminUser, session: DB) -> SettingsOut:
 @router.post("/vsphere/check")
 async def vsphere_check(_: AdminUser) -> dict:
     try:
-        return {"ok": True, **(await asyncio.to_thread(vsphere.check))}
+        names = [t.template for t in runtime.current().vm_templates if t.enabled and t.template]
+        return {"ok": True, **(await asyncio.to_thread(vsphere.check, names))}
     except vsphere.VSphereError as exc:
         return {"ok": False, "error": str(exc)}
 

@@ -5,7 +5,7 @@ import { api } from './api'
 import type {
   Booking, BookingCreate, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AssetEvent, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
-  Tier, TierSummary, Vm, VmCreate, VmOptions,
+  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, ServiceComment, OverdueItem, SyncRunDetails,
 } from './types'
 
 export interface ComputerFilters {
@@ -257,3 +257,47 @@ export function useSaveUser() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   })
 }
+
+// ---------- Service Desk: заявки по ПК и виртуалкам ----------
+
+export const useSdConfig = () =>
+  useQuery({ queryKey: ['sd-config'], queryFn: () => api.get<{ enabled: boolean }>('/requests/config'), staleTime: 300_000 })
+
+export const useMyRequests = () =>
+  useQuery({ queryKey: ['my-requests'], queryFn: () => api.get<ServiceRequest[]>('/requests/my'), refetchInterval: 30_000 })
+
+export const useRequestDetail = (id: number | null) =>
+  useQuery({
+    queryKey: ['request', id],
+    queryFn: () => api.get<{ request: ServiceRequest; comments: ServiceComment[] }>(`/requests/${id}`),
+    enabled: id !== null,
+    refetchInterval: 15_000, // новые ответы админов подтягиваются сами
+  })
+
+export function useCreateRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { booking_id?: number; vm_id?: number; message: string }) => api.post<ServiceRequest>('/requests', data),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['my-requests'] }),
+  })
+}
+
+export function useAddComment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, message }: { id: number; message: string }) => api.post<void>(`/requests/${id}/comments`, { message }),
+    onSettled: (_d, _e, v) => qc.invalidateQueries({ queryKey: ['request', v.id] }),
+  })
+}
+
+// ---------- Просрочки и детали синхронизации ----------
+
+export const useOverdue = (enabled = true) =>
+  useQuery({ queryKey: ['admin', 'overdue'], queryFn: () => api.get<OverdueItem[]>('/admin/overdue'), enabled, refetchInterval: 60_000 })
+
+export const useSyncRunDetails = (id: number | null) =>
+  useQuery({
+    queryKey: ['admin', 'sync-run', id],
+    queryFn: () => api.get<SyncRunDetails>(`/admin/sync/runs/${id}`),
+    enabled: id !== null,
+  })

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { toast } from 'sonner'
+import { SyncRunDialog, type DetailsTab } from '@/features/admin/SyncRunDialog'
 import { RefreshCw } from 'lucide-react'
 import { Card, CardHeader, PageHeader, Skeleton } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +11,16 @@ import { formatDateTime } from '@/lib/utils'
 export function SyncPage() {
   const { data } = useSyncInfo()
   const sync = useRunSync()
+  const [opened, setOpened] = useState<{ id: number; tab: DetailsTab } | null>(null)
+  // число > 0 — кнопка: по клику видно, что именно поменялось
+  const count = (id: number, tab: DetailsTab, value: number) =>
+    value > 0 ? (
+      <button className="font-medium text-primary underline-offset-2 hover:underline" onClick={() => setOpened({ id, tab })}>
+        {value}
+      </button>
+    ) : (
+      value
+    )
 
   const runNow = async () => {
     try {
@@ -70,9 +82,9 @@ export function SyncPage() {
                     {r.status === 'success' ? <Badge tone="success" dot>Успешно</Badge> : <Badge tone="danger" dot>Ошибка</Badge>}
                   </td>
                   <td className="px-4 py-3 text-right tabular">{r.total}</td>
-                  <td className="px-4 py-3 text-right tabular">{r.created}</td>
-                  <td className="px-4 py-3 text-right tabular">{r.updated}</td>
-                  <td className="px-4 py-3 text-right tabular">{r.archived}</td>
+                  <td className="px-4 py-3 text-right tabular">{count(r.id, 'created', r.created)}</td>
+                  <td className="px-4 py-3 text-right tabular">{count(r.id, 'updated', r.updated)}</td>
+                  <td className="px-4 py-3 text-right tabular">{count(r.id, 'archived', r.archived)}</td>
                   <td className="max-w-[320px] truncate px-4 py-3 text-danger" title={r.error ?? undefined}>
                     {r.error ?? ''}
                   </td>
@@ -82,6 +94,7 @@ export function SyncPage() {
           </table>
         </div>
       </Card>
+      <SyncRunDialog runId={opened?.id ?? null} tab={opened?.tab ?? 'updated'} onClose={() => setOpened(null)} />
     </>
   )
 }

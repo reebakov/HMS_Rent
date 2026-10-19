@@ -45,3 +45,5 @@ class SyncRun(Base):
     updated: Mapped[int] = mapped_column(default=0)
     archived: Mapped[int] = mapped_column(default=0)
     error: Mapped[str | None] = mapped_column(Text)
+    # что поменялось: {"updated": [{id, name, changes: [{field, old, new}]}], "created": [...], "archived": [...]}
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))

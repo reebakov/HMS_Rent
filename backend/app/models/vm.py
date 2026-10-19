@@ -40,6 +40,8 @@ class VirtualMachine(Base, TimestampMixin):
     cpu: Mapped[int]
     ram_gb: Mapped[int]
     disk_gb: Mapped[int]
+    template_key: Mapped[str | None] = mapped_column(String(32))  # ключ шаблона ОС из настроек (win10, ubuntu2204…)
+    os_label: Mapped[str | None] = mapped_column(String(64))  # «Windows 10» — для отображения
     status: Mapped[str] = mapped_column(String(16), index=True, default="queued")
     error: Mapped[str | None] = mapped_column(Text)
 

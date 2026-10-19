@@ -67,7 +67,7 @@ def _wait(task, what: str, timeout: int = 1800):
     return task.info.result
 
 
-def _placement(si):
+def _placement(si, template_name: str | None = None):
     dc = _find(si, vim.Datacenter, settings.vcenter_datacenter)
     if dc is None:
         raise VSphereError(f"Не найден датацентр «{settings.vcenter_datacenter}»")
@@ -83,13 +83,14 @@ def _placement(si):
         folder = next((f for f in folder.childEntity if isinstance(f, vim.Folder) and f.name == part), None)
         if folder is None:
             raise VSphereError(f"Не найдена папка «{settings.vcenter_folder}»")
-    template = _find(si, vim.VirtualMachine, settings.vcenter_template_windows, dc.vmFolder)
+    template_name = template_name or settings.vcenter_template_windows
+    template = _find(si, vim.VirtualMachine, template_name, dc.vmFolder)
     if template is None:
-        raise VSphereError(f"Не найден шаблон «{settings.vcenter_template_windows}»")
+        raise VSphereError(f"Не найден шаблон «{template_name}»")
     return dc, pool, folder, template
 
 
-def check() -> dict:
+def check(template_names: list[str] | None = None) -> dict:
     """Проверка настроек без изменений в vSphere (для кнопки в админке и CLI)."""
     with connect() as si:
         dc, pool, folder, template = _placement(si)
@@ -103,6 +104,8 @@ def check() -> dict:
             "template_cpu": template.config.hardware.numCPU,
             "template_ram_gb": template.config.hardware.memoryMB // 1024,
             "template_disk_gb": disk.capacityInKB // (1024 * 1024),
+            # все шаблоны ОС из настроек: найдены ли они в vCenter
+            "templates": {n: _find(si, vim.VirtualMachine, n, dc.vmFolder) is not None for n in (template_names or [])},
         }
 
 
@@ -117,12 +120,13 @@ def _info(vm) -> VmInfo:
                   ip_address=vm.guest.ipAddress if vm.guest else None)
 
 
-def create_vm(name: str, cpu: int, ram_gb: int, disk_gb: int, annotation: str) -> VmInfo:
+def create_vm(name: str, cpu: int, ram_gb: int, disk_gb: int, annotation: str,
+              template_name: str | None = None, customization_spec: str | None = None) -> VmInfo:
     """Клонирует шаблон в vApp/пул, задаёт CPU/RAM/описание, расширяет диск, включает ВМ."""
     with connect() as si:
         if _find(si, vim.VirtualMachine, name):
             raise VSphereError(f"ВМ с именем «{name}» уже есть в vCenter")
-        dc, pool, folder, template = _placement(si)
+        dc, pool, folder, template = _placement(si, template_name)
 
         relocate = vim.vm.RelocateSpec(pool=pool)
         if settings.vcenter_datastore:
@@ -133,12 +137,15 @@ def create_vm(name: str, cpu: int, ram_gb: int, disk_gb: int, annotation: str) -
         config = vim.vm.ConfigSpec(numCPUs=cpu, numCoresPerSocket=cpu, memoryMB=ram_gb * 1024,
                                    annotation=annotation)
         spec = vim.vm.CloneSpec(location=relocate, config=config, powerOn=False, template=False)
-        if settings.vcenter_customization_spec:
-            item = si.content.customizationSpecManager.GetCustomizationSpec(settings.vcenter_customization_spec)
+        spec_name = settings.vcenter_customization_spec if customization_spec is None else customization_spec
+        if spec_name:
+            item = si.content.customizationSpecManager.GetCustomizationSpec(spec_name)
             custom = item.spec
             if isinstance(custom.identity, vim.vm.customization.Sysprep):
                 # имя компьютера в Windows = имя ВМ (не длиннее 15 символов)
                 custom.identity.userData.computerName = vim.vm.customization.FixedName(name=name[:15])
+            elif isinstance(custom.identity, vim.vm.customization.LinuxPrep):
+                custom.identity.hostName = vim.vm.customization.FixedName(name=name[:63])  # hostname в Linux
             spec.customization = custom
 
         log.info("vSphere: клонирую %s → %s (%s CPU, %s ГБ RAM, %s ГБ диск)",

@@ -250,6 +250,8 @@ export interface Vm {
   cpu: number
   ram_gb: number
   disk_gb: number
+  template_key: string | null
+  os_label: string | null
   status: VmStatus
   error: string | null
   department: Ref
@@ -279,6 +281,25 @@ export interface VmOptions {
   max_disk_gb: number
   max_per_user: number
   used_by_me: number
+  templates: VmTemplateOption[]
+}
+
+export interface VmTemplateOption {
+  key: string
+  label: string
+  os: 'windows' | 'linux'
+  min_disk_gb: number
+  available: boolean // false — шаблон ещё не настроен, в конструкторе «скоро»
+}
+
+export interface VmTemplate {
+  key: string
+  label: string
+  os: 'windows' | 'linux'
+  template: string
+  customization_spec: string
+  min_disk_gb: number
+  enabled: boolean
 }
 
 export interface VmCreate {
@@ -307,6 +328,7 @@ export interface AppSettings {
   vm_min_disk_gb: number
   vm_max_disk_gb: number
   catalog_refresh_sec: number
+  vm_templates: VmTemplate[]
   vsphere_configured: boolean
   vcenter_host: string
 }
@@ -321,4 +343,51 @@ export interface AdminUserRow {
   is_active: boolean
   department: Ref | null
   last_login_at: string | null
+}
+
+    // ---------- Service Desk ----------
+
+export interface ServiceRequest {
+  id: number
+  kind: 'problem' | 'return'
+  booking_id: number | null
+  vm_id: number | null
+  issue_key: string | null
+  summary: string
+  status: string | null
+  status_category: string | null // new / indeterminate / done
+  error: string | null
+  created_at: string
+  url: string | null
+}
+
+export interface ServiceComment {
+  author: string
+  body: string
+  created: string | null
+  from_portal: boolean
+}
+
+// ---------- Просрочки и детали синхронизации ----------
+
+export interface OverdueItem {
+  kind: 'pc' | 'vm'
+  id: number
+  order_number: number | null
+  name: string
+  department: string
+  requester_name: string
+  requester_nick: string
+  email: string | null
+  taken_at: string | null
+  due: string
+  days: number
+}
+
+export interface SyncRunDetails {
+  id: number
+  started_at: string
+  updated: { id: number; name: string; changes: { field: string; old: string; new: string }[] }[]
+  created: { id: number; name: string }[]
+  archived: { id: number; name: string }[]
 }

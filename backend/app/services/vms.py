@@ -11,7 +11,7 @@ from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import Department, User, VirtualMachine
-from app.schemas.vm import VmCreate, VmOptions
+from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import runtime
 from app.services.orders import next_order_number
 
@@ -24,6 +24,11 @@ async def _alive_count(session: AsyncSession, user_id: int) -> int:
     ) or 0
 
 
+def _available_templates(cfg) -> list:
+    """Шаблоны, из которых можно создавать: включены и указано имя шаблона в vCenter."""
+    return [t for t in cfg.vm_templates if t.enabled and t.template]
+
+
 async def options(session: AsyncSession, user: User) -> VmOptions:
     cfg = await runtime.load(session)
     used = await _alive_count(session, user.id)
@@ -32,14 +37,21 @@ async def options(session: AsyncSession, user: User) -> VmOptions:
         reason = "Конструктор не подключён к vCenter"
     elif not cfg.vm_enabled:
         reason = "Конструктор временно выключен администратором"
+    elif not _available_templates(cfg):
+        reason = "Нет настроенных шаблонов ОС — админ добавляет их в «Настройках»"
     elif used >= cfg.vm_max_per_user:
         reason = f"У вас уже {used} из {cfg.vm_max_per_user} доступных виртуалок"
     return VmOptions(
         enabled=reason is None, reason=reason, name_prefix=settings.vm_name_prefix,
-        template=settings.vcenter_template_windows,
+        template=next((t.label for t in _available_templates(cfg)), "—"),
         min_cpu=cfg.vm_min_cpu, max_cpu=cfg.vm_max_cpu, min_ram_gb=cfg.vm_min_ram_gb, max_ram_gb=cfg.vm_max_ram_gb,
         min_disk_gb=cfg.vm_min_disk_gb, max_disk_gb=cfg.vm_max_disk_gb,
         max_per_user=cfg.vm_max_per_user, used_by_me=used,
+        templates=[
+            VmTemplateOption(key=t.key, label=t.label, os=t.os, min_disk_gb=max(t.min_disk_gb, cfg.vm_min_disk_gb),
+                             available=bool(t.enabled and t.template))
+            for t in cfg.vm_templates if t.enabled  # включён, но без шаблона — в конструкторе «скоро»
+        ],
     )
 
 
@@ -54,13 +66,19 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
     ):
         if not lo <= value <= hi:
             raise DomainError(f"Допустимо от {lo} до {hi} {what}")
+    templates = {t.key: t for t in _available_templates(runtime.current())}
+    tmpl = templates.get(data.template_key) if data.template_key else next(iter(templates.values()), None)
+    if tmpl is None:
+        raise DomainError("Эта ОС пока недоступна — выберите другую")
+    if data.disk_gb < tmpl.min_disk_gb:
+        raise DomainError(f"Для {tmpl.label} диск — не меньше {tmpl.min_disk_gb} ГБ")
     dept = await session.get(Department, data.department_id)
     if dept is None or not dept.is_active:
         raise NotFound("Отдел не найден")
     vm = VirtualMachine(
         order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
-        status="queued", user_id=user.id, department_id=dept.id,
+        status="queued", user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label,
         requester_name=data.requester_name.strip(), requester_nick=data.requester_nick.strip(),
         purpose=(data.purpose or "").strip() or None, expected_return_at=data.expected_return_at, attrs={},
     )

@@ -5,6 +5,7 @@ from app.models.department import Department
 from app.models.enums import BookingStatus, ComputerStatus, EventType, Tier, UserRole
 from app.models.event import AssetEvent, SyncRun
 from app.models.pool import Pool, pool_departments
+from app.models.service_request import ServiceRequest
 from app.models.user import User
 from app.models.vm import AppSetting, VirtualMachine
 
@@ -18,6 +19,7 @@ __all__ = [
     "Department",
     "EventType",
     "Pool",
+    "ServiceRequest",
     "SyncRun",
     "Tier",
     "User",

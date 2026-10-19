@@ -11,7 +11,14 @@ export function SpecGrid({ computer, className }: { computer: Computer; classNam
     { icon: Monitor, label: 'Видеокарта', value: computer.gpu ?? (computer.is_virtual ? 'Виртуальный адаптер' : null) },
   ]
   return (
-    <div className={cn('grid gap-x-6 gap-y-2 sm:grid-cols-2 xl:grid-cols-4', className)}>
+    // Память и диск короткие — им узкие колонки, освободившееся место уходит видеокарте
+    <div
+      className={cn(
+        'grid gap-x-4 gap-y-2 sm:grid-cols-2',
+        'xl:grid-cols-[minmax(0,1.2fr)_minmax(72px,auto)_minmax(0,0.8fr)_minmax(0,1.6fr)]',
+        className,
+      )}
+    >
       {items.map(({ icon: Icon, label, value }) => (
         <div key={label} className="flex min-w-0 items-center gap-2.5">
           <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />

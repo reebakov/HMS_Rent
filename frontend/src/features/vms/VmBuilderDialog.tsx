@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Cpu, HardDrive, MemoryStick } from 'lucide-react'
+import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
 import { safeStorage } from '@/lib/storage'
+import { cn } from '@/lib/utils'
 
 type Range = { min: number; max: number; step: number }
 
@@ -59,6 +60,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const [cpu, setCpu] = useState(2)
   const [ram, setRam] = useState(4)
   const [disk, setDisk] = useState(50)
+  const [templateKey, setTemplateKey] = useState('')
   const [departmentId, setDepartmentId] = useState('')
   const [person, setPerson] = useState('')
   const [nick, setNick] = useState('')
@@ -70,6 +72,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     setCpu(o.min_cpu)
     setRam(o.min_ram_gb)
     setDisk(o.min_disk_gb)
+    setTemplateKey(o.templates.find((t) => t.available)?.key ?? '')
     setDepartmentId(String(session.user.department_id ?? safeStorage.get('hmsrent:last-department') ?? ''))
     setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
@@ -79,12 +82,14 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   }, [open, o?.min_cpu])
 
   const nameOk = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(name)
-  const valid = o?.enabled && nameOk && departmentId && person.trim().length >= 2 && nick.trim()
+  const tmpl = o?.templates.find((t) => t.key === templateKey)
+  const minDisk = Math.max(o?.min_disk_gb ?? 0, tmpl?.min_disk_gb ?? 0)
+  const valid = o?.enabled && tmpl?.available && nameOk && departmentId && person.trim().length >= 2 && nick.trim()
 
   const submit = async () => {
     try {
       const vm = await create.mutateAsync({
-        name, cpu, ram_gb: ram, disk_gb: disk, department_id: Number(departmentId),
+        name, cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
         requester_name: person, requester_nick: nick, expected_return_at: until || null,
       })
       toast.success(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`)
@@ -100,7 +105,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title="Конструктор виртуалки"
-      description={o ? 'Виртуальная машина будет создана на Windows 10. Примерное время создания — около 10 минут.' : ' '}
+      description={tmpl ? `Виртуальная машина будет создана на ${tmpl.label}. Примерное время создания — около 10 минут.` : 'Выберите операционную систему и ресурсы'}
       className="max-w-2xl"
       footer={
         <>
@@ -128,10 +133,38 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
             <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="design-01" />
           </Field>
 
+          <div>
+            <p className="mb-2 text-[13px] font-medium">Операционная система</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {o.templates.map((t) => {
+                const Icon = t.os === 'linux' ? Terminal : Monitor
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    disabled={!t.available}
+                    onClick={() => setTemplateKey(t.key)}
+                    className={cn(
+                      'flex items-center gap-3 rounded-xl border p-3 text-left text-[13px] transition-colors',
+                      t.key === templateKey ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted/50',
+                      !t.available && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+                    )}
+                  >
+                    <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium">{t.label}</span>
+                      <span className="block text-xs text-muted-foreground">{t.available ? `диск от ${t.min_disk_gb} ГБ` : 'скоро'}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-3">
             <Amount icon={Cpu} label="Ядра" unit="шт" value={cpu} range={{ min: o.min_cpu, max: o.max_cpu, step: 1 }} onChange={setCpu} />
             <Amount icon={MemoryStick} label="Память" unit="ГБ" value={ram} range={{ min: o.min_ram_gb, max: o.max_ram_gb, step: 2 }} onChange={setRam} />
-            <Amount icon={HardDrive} label="Диск" unit="ГБ" value={disk} range={{ min: o.min_disk_gb, max: o.max_disk_gb, step: 10 }} onChange={setDisk} />
+            <Amount icon={HardDrive} label="Диск" unit="ГБ" value={Math.max(disk, minDisk)} range={{ min: minDisk, max: o.max_disk_gb, step: 10 }} onChange={setDisk} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
