@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.search import ilike_any
 from app.integrations.insight.factory import get_mapping
 from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, Department, SyncRun, Tier
 from app.schemas.admin import (
@@ -94,11 +95,9 @@ async def list_inventory(
     elif pool_id:
         stmt = stmt.where(Computer.pool_id == int(pool_id))
     if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            Computer.name.ilike(like), Computer.hostname.ilike(like), Computer.insight_key.ilike(like),
-            Computer.serial_number.ilike(like), Computer.cpu.ilike(like), Computer.gpu.ilike(like),
-            Computer.ip_address.ilike(like),
+        stmt = stmt.where(ilike_any(
+            q, Computer.name, Computer.hostname, Computer.insight_key, Computer.serial_number, Computer.cpu,
+            Computer.gpu, Computer.ip_address,
         ))
     # A9 < A10 < A150: сначала по длине имени, потом по алфавиту
     ordered = stmt.order_by(func.length(Computer.name), Computer.name)
@@ -210,10 +209,7 @@ async def list_journal(
     if date_to:
         stmt = stmt.where(Booking.booked_at <= datetime.combine(date_to, time.max, timezone.utc))
     if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            Computer.name.ilike(like), Booking.requester_name.ilike(like), Booking.requester_nick.ilike(like),
-        ))
+        stmt = stmt.where(ilike_any(q, Computer.name, Booking.requester_name, Booking.requester_nick))
     return list((await session.scalars(stmt.limit(limit))).unique().all())
 
 
@@ -239,11 +235,7 @@ async def list_events(
     if date_to:
         stmt = stmt.where(AssetEvent.created_at <= datetime.combine(date_to, time.max, timezone.utc))
     if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            Computer.name.ilike(like), 
-            AssetEvent.message.ilike(like)
-        ))
+        stmt = stmt.where(ilike_any(q, Computer.name, AssetEvent.message))
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
     

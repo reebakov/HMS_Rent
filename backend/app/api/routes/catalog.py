@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
+from app.db.search import ilike_any
 from app.models import Computer, ComputerStatus, Department, Tier
 from app.schemas.computer import ComputerDetail, ComputerOut, TierSummary
 from app.schemas.department import DepartmentOut
@@ -73,11 +74,7 @@ async def list_computers(
     if gpu_only:
         stmt = stmt.where(Computer.gpu.is_not(None), Computer.gpu != "")
     if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            Computer.name.ilike(like), Computer.hostname.ilike(like), Computer.cpu.ilike(like),
-            Computer.gpu.ilike(like), Computer.location.ilike(like),
-        ))
+        stmt = stmt.where(ilike_any(q, Computer.name, Computer.hostname, Computer.cpu, Computer.gpu, Computer.location))
     computers = list((await session.scalars(stmt)).unique().all())
     if sort == "name":
         computers.sort(key=lambda c: natural_key(c.name))
