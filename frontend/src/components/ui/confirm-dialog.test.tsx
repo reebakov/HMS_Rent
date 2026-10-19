@@ -49,6 +49,14 @@ describe('ConfirmDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
+  it('фокус сразу на «Отмена», Enter подтверждения не вызывает', async () => {
+    const { onClose, onConfirm } = setup()
+    expect(screen.getByRole('button', { name: 'Отмена' })).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('пока идёт запрос, подтверждение недоступно', () => {
     setup({ pending: true })
     expect(screen.getByRole('button', { name: 'Удалить' })).toBeDisabled()
