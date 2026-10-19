@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
@@ -87,7 +87,9 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const minDisk = Math.max(o?.min_disk_gb ?? 0, tmpl?.min_disk_gb ?? 0)
   const valid = o?.enabled && tmpl?.available && nameOk && departmentId && person.trim().length >= 2 && nick.trim()
 
-  const submit = async () => {
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!valid) return
     try {
       const vm = await create.mutateAsync({
         name, cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
@@ -108,12 +110,13 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
       title="Конструктор виртуалки"
       description={tmpl ? `Виртуальная машина будет создана на ${tmpl.label}. Примерное время создания — около 10 минут.` : 'Выберите операционную систему и ресурсы'}
       className="max-w-2xl"
+      onSubmit={submit}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={submit} loading={create.isPending} disabled={!valid}>
+          <Button type="submit" loading={create.isPending} disabled={!valid}>
             Создать
           </Button>
         </>

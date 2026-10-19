@@ -273,6 +273,20 @@ describe('VmBuilderDialog', () => {
       expect(screen.getByTestId('path')).toHaveTextContent('/my')
     })
 
+    it('Enter в поле имени отправляет валидную форму', async () => {
+      const { onClose, user } = await setup()
+      await fillValid(user)
+      await user.type(nameInput(), '{Enter}')
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+      expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ name: 'design-01' }))
+    })
+
+    it('Enter в невалидной форме ничего не отправляет', async () => {
+      const { user } = await setup()
+      await user.type(nameInput(), 'ab{Enter}')
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
     it('без даты возврата уходит null', async () => {
       const { user } = await setup()
       await fillValid(user)

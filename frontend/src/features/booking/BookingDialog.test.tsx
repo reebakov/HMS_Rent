@@ -144,6 +144,18 @@ describe('BookingDialog', () => {
     expect(localStorage.getItem('hmsrent:last-department')).toBe('2')
   })
 
+  it('Enter в поле формы отправляет бронь, пока форма невалидна — нет', async () => {
+    const { onClose, user } = setup()
+    await waitForDepartments()
+    const purpose = screen.getByLabelText(/Для чего нужен/)
+    await user.type(purpose, 'Тесты{Enter}')
+    expect(api.post).not.toHaveBeenCalled() // отдел не выбран
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await user.type(purpose, '{Enter}')
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ department_id: 2, purpose: 'Тесты' }))
+  })
+
   it('пустое «для чего» уходит как undefined, дата возврата — как заполнено', async () => {
     const { user } = setup()
     await waitForDepartments()

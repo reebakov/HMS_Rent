@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState, type ReactNode } from 'react'
+import { Button } from './button'
 import { Dialog, Sheet } from './dialog'
 
 describe.each([
@@ -87,5 +88,32 @@ describe('Dialog: начальный фокус', () => {
   it('без полей и подвала фокус остаётся у Radix — на «Закрыть»', () => {
     renderDialog(<p>Текст</p>)
     expect(screen.getByRole('button', { name: 'Закрыть' })).toHaveFocus()
+  })
+})
+
+describe('Dialog: onSubmit', () => {
+  it('Enter в поле отправляет форму, «Отмена» без type форму не отправляет', async () => {
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+    render(
+      <Dialog
+        open
+        onOpenChange={() => undefined}
+        title="Заголовок"
+        onSubmit={onSubmit}
+        footer={
+          <>
+            <Button>Отмена</Button>
+            <Button type="submit">Сохранить</Button>
+          </>
+        }
+      >
+        <input aria-label="Имя" />
+        <input aria-label="Ник" />
+      </Dialog>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    await userEvent.type(screen.getByRole('textbox', { name: 'Ник' }), 'x{Enter}')
+    expect(onSubmit).toHaveBeenCalledOnce()
   })
 })

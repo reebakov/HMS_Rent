@@ -36,9 +36,12 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     create.reset()
   }, [computer?.id])
 
+  const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
+  const canBook = !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!computer) return
+    if (!computer || !canBook) return
     try {
       const booking = await create.mutateAsync({
         computer_id: computer.id,
@@ -58,8 +61,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     }
   }
 
-  const valid = departmentId && name.trim().length >= 2 && nick.trim()
-  const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
 
   return (
     <Dialog
@@ -68,19 +69,20 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
       title={computer ? `Бронирование ${computer.name}` : ''}
       description="Компьютер будет закреплён за вашим отделом. Вернуть его можно в разделе «Моя аренда»."
       className="max-w-xl"
+      onSubmit={submit}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Отмена
           </Button>
-          <Button type="submit" form="booking-form" loading={create.isPending} disabled={!valid || !knownDepartment}>
+          <Button type="submit" loading={create.isPending} disabled={!canBook}>
             Забронировать
           </Button>
         </>
       }
     >
       {computer && (
-        <form id="booking-form" onSubmit={submit} className="space-y-5">
+        <div className="space-y-5">
           <div className="rounded-xl border bg-muted/40 p-4">
             <div className="mb-3 flex items-center gap-2">
               <span className="font-semibold">{computer.name}</span>
@@ -119,7 +121,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
           </div>
 
           {create.error && <FormError>{create.error.message}</FormError>}
-        </form>
+        </div>
       )}
     </Dialog>
   )

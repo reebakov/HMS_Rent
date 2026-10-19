@@ -1,6 +1,6 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { useRef, type ReactNode } from 'react'
+import { useRef, type FormEvent, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 const BODY_FIELDS = ['input:not([disabled]):not([type=hidden])', 'select:not([disabled])', 'textarea:not([disabled])']
@@ -37,7 +37,17 @@ function useReturnFocus(open: boolean) {
   }
 }
 
-/** Модальное окно по центру экрана */
+function MaybeForm({ onSubmit, children }: { onSubmit?: (e: FormEvent) => void; children: ReactNode }) {
+  return onSubmit ? (
+    <form onSubmit={onSubmit} className="flex min-h-0 flex-col">
+      {children}
+    </form>
+  ) : (
+    <>{children}</>
+  )
+}
+
+/** Модальное окно по центру экрана. С onSubmit всё содержимое — форма: Enter в поле отправляет её кнопкой type="submit" из подвала */
 export function Dialog({
   open,
   onOpenChange,
@@ -46,6 +56,7 @@ export function Dialog({
   children,
   footer,
   className,
+  onSubmit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -54,6 +65,7 @@ export function Dialog({
   children: ReactNode
   footer?: ReactNode
   className?: string
+  onSubmit?: (e: FormEvent) => void
 }) {
   const returnFocus = useReturnFocus(open)
   return (
@@ -83,8 +95,10 @@ export function Dialog({
               <X className="h-4 w-4" />
             </DialogPrimitive.Close>
           </div>
-          <div data-dialog-body className="scroll-thin overflow-y-auto px-6 py-4">{children}</div>
-          {footer && <div data-dialog-footer className="flex justify-end gap-2 border-t bg-muted/30 px-6 py-4 rounded-b-2xl">{footer}</div>}
+          <MaybeForm onSubmit={onSubmit}>
+            <div data-dialog-body className="scroll-thin overflow-y-auto px-6 py-4">{children}</div>
+            {footer && <div data-dialog-footer className="flex justify-end gap-2 border-t bg-muted/30 px-6 py-4 rounded-b-2xl">{footer}</div>}
+          </MaybeForm>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

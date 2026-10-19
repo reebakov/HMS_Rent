@@ -23,9 +23,11 @@ export function DepartmentsPage() {
   const open = (d?: DepartmentUsage) =>
     setEditing(d ? { id: d.department_id, name: d.name, code: d.code ?? '', head_name: d.head_name ?? '' } : { name: '', code: '', head_name: '' })
 
+  const nameOk = !!editing && editing.name.trim().length >= 2
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!editing) return
+    if (!editing || !nameOk) return
     try {
       await save.mutateAsync({ id: editing.id, name: editing.name, code: editing.code || null, head_name: editing.head_name || null })
       toast.success(editing.id ? 'Отдел обновлён' : 'Отдел добавлен')
@@ -122,19 +124,20 @@ export function DepartmentsPage() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         title={editing?.id ? 'Редактирование отдела' : 'Новый отдел'}
+        onSubmit={submit}
         footer={
           <>
             <Button variant="outline" onClick={() => setEditing(null)}>
               Отмена
             </Button>
-            <Button type="submit" form="department-form" loading={save.isPending} disabled={!editing || editing.name.trim().length < 2}>
+            <Button type="submit" loading={save.isPending} disabled={!nameOk}>
               Сохранить
             </Button>
           </>
         }
       >
         {editing && (
-          <form id="department-form" onSubmit={submit} className="space-y-4">
+          <div className="space-y-4">
             <Field label="Название" required>
               <Input autoFocus value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
             </Field>
@@ -146,7 +149,7 @@ export function DepartmentsPage() {
                 <Input value={editing.head_name} onChange={(e) => setEditing({ ...editing, head_name: e.target.value })} />
               </Field>
             </div>
-          </form>
+          </div>
         )}
       </Dialog>
     </>

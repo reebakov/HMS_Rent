@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { UserPlus } from 'lucide-react'
 import { Card, PageHeader } from '@/components/ui/card'
@@ -38,15 +38,19 @@ export function UsersPage() {
     }
   }
 
-  const addUser = async () => {
+  const emailOk = email.includes('@')
+
+  const addUser = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!emailOk) return
     try {
       await save.mutateAsync({ email, department_id: deptForNew ? Number(deptForNew) : null })
       toast.success('Сотрудник добавлен — при первом входе через Bouncer отдел уже будет назначен')
       setAdding(false)
       setEmail('')
       setDeptForNew('')
-    } catch (e) {
-      toast.error(errorMessage(e))
+    } catch (err) {
+      toast.error(errorMessage(err))
     }
   }
 
@@ -113,13 +117,14 @@ export function UsersPage() {
         open={adding}
         onOpenChange={(o) => !o && setAdding(false)}
         title="Добавить сотрудника заранее"
+        onSubmit={addUser}
         description="Почта и отдел. Когда человек впервые войдёт через Bouncer, он сразу увидит пулы своего отдела."
         footer={
           <>
             <Button variant="outline" onClick={() => setAdding(false)}>
               Отмена
             </Button>
-            <Button onClick={addUser} loading={save.isPending} disabled={!email.includes('@')}>
+            <Button type="submit" loading={save.isPending} disabled={!emailOk}>
               Добавить
             </Button>
           </>

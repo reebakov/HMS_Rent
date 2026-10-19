@@ -119,6 +119,17 @@ describe('PoolsPage', () => {
       expect(save).toBeEnabled()
     })
 
+    it('Enter в поле названия сохраняет пул, пока название короче двух символов — нет', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(<PoolsPage />)
+      await screen.findByText('Аренда')
+      await user.click(screen.getByRole('button', { name: 'Новый пул' }))
+      await user.type(screen.getByLabelText(/Название/), 'a{Enter}')
+      expect(api.post).not.toHaveBeenCalled()
+      await user.type(screen.getByLabelText(/Название/), 'b{Enter}')
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/admin/pools', expect.objectContaining({ name: 'ab' })))
+    })
+
     it('создаёт пул: POST с отделами и описанием, тост, диалог закрывается', async () => {
       const user = userEvent.setup()
       renderWithProviders(<PoolsPage />)

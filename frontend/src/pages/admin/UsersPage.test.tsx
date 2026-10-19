@@ -127,4 +127,18 @@ describe('UsersPage', () => {
       expect(api.post).toHaveBeenCalledWith('/admin/users', { email: 'petya@example.com', department_id: 6 }),
     )
   })
+
+  it('Enter в поле почты добавляет сотрудника, пока почта без «@» — нет', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<UsersPage />)
+    await screen.findByText('Иван Иванов')
+    await user.click(screen.getByRole('button', { name: 'Добавить заранее' }))
+    const email = await screen.findByLabelText(/Рабочая почта/)
+    await user.type(email, 'petya{Enter}')
+    expect(api.post).not.toHaveBeenCalled()
+    await user.type(email, '@example.com{Enter}')
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/admin/users', { email: 'petya@example.com', department_id: null }),
+    )
+  })
 })

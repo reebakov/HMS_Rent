@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Eye, EyeOff, Layers, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -29,16 +29,19 @@ export function PoolsPage() {
   const [deleting, setDeleting] = useState<Pool | null>(null)
   const [names, setNames] = useState('')
 
-  const submit = async () => {
-    if (!editing) return
+  const nameOk = !!editing && editing.name.trim().length >= 2
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!editing || !nameOk) return
     try {
       await save.mutateAsync({
         id: editing.id, name: editing.name, description: editing.description || null, department_ids: editing.departmentIds,
       })
       toast.success(editing.id ? 'Пул обновлён' : 'Пул создан')
       setEditing(null)
-    } catch (e) {
-      toast.error(errorMessage(e))
+    } catch (err) {
+      toast.error(errorMessage(err))
     }
   }
 
@@ -166,12 +169,13 @@ export function PoolsPage() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         title={editing?.id ? 'Редактирование пула' : 'Новый пул'}
+        onSubmit={submit}
         footer={
           <>
             <Button variant="outline" onClick={() => setEditing(null)}>
               Отмена
             </Button>
-            <Button onClick={submit} loading={save.isPending} disabled={!editing || editing.name.trim().length < 2}>
+            <Button type="submit" loading={save.isPending} disabled={!nameOk}>
               Сохранить
             </Button>
           </>
