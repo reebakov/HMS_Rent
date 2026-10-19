@@ -18,6 +18,7 @@ from app.services import service_requests as svc
 
 from .sync_fakes import add_booking
 
+
 def _now() -> datetime:
     """Текущее время в момент вызова: константа при импорте старела за время прогона и ломала проверки «свежая заявка»."""
     return datetime.now(timezone.utc)

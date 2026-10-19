@@ -14,9 +14,9 @@ from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate
+from app.services import departments, runtime, service_requests
 from app.services.events import add_event
 from app.services.orders import next_order_number
-from app.services import departments, runtime, service_requests
 from app.services.pools import pool_visible
 from app.services.writeback import push_pending
 

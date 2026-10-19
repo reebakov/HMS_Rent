@@ -15,7 +15,15 @@ from app.core.config import settings
 from app.integrations.insight.factory import create_insight_source
 from app.integrations.insight.mapping import ComputerData, InsightMapping, map_object
 from app.models import (
-    Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, Pool, SyncRun, SyncRunStatus,
+    Booking,
+    BookingStatus,
+    Computer,
+    ComputerStatus,
+    Department,
+    EventType,
+    Pool,
+    SyncRun,
+    SyncRunStatus,
 )
 from app.services.events import add_event
 from app.services.tiering import classify

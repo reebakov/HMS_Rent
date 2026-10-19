@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType
-from app.services.events import add_event
 from app.services import runtime
+from app.services.events import add_event
 
 log = logging.getLogger(__name__)
 

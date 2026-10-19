@@ -11,12 +11,12 @@ import pytest
 from sqlalchemy import select
 
 from app.api.routes import auth as auth_routes
-from app.services import auth_throttle
 from app.core import admins
 from app.core.config import settings
 from app.integrations.auth import bouncer
 from app.integrations.auth.base import AuthError
 from app.models import User
+from app.services import auth_throttle
 
 TOKEN_URL = "https://sso.example/token"
 NONCE = "nonce-123"

@@ -14,12 +14,10 @@ from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightObject
 from app.integrations.insight.factory import get_mapping
-from app.models import (AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, Department, EventType,
-                        UserRole)
+from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, EventType, UserRole
 from app.schemas.booking import BookingCreate
 from app.services import bookings, runtime
 from app.services.runtime import RuntimeConfig
-
 
 # ---------- Фикстуры и хелперы ----------
 
@@ -313,7 +311,7 @@ async def test_race_different_computers_unique_order_numbers(env, make_user, mak
     users = [await make_user(f"racer{i}", department=env.dept) for i in range(n)]
     comps = [await make_computer(pool=env.pool) for _ in range(n)]
     results = await asyncio.gather(
-        *(_book_in_own_session(u, payload(c, env.dept)) for u, c in zip(users, comps)), return_exceptions=True)
+        *(_book_in_own_session(u, payload(c, env.dept)) for u, c in zip(users, comps, strict=True)), return_exceptions=True)
 
     assert all(isinstance(r, Booking) for r in results), results
     numbers = [r.order_number for r in results]

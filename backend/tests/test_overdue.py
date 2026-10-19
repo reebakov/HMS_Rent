@@ -227,4 +227,4 @@ async def test_digest_truncates_lists_to_30_but_counts_all(session, make_compute
     (text,), _ = mm.await_args
     lines = text.splitlines()
     assert "ПК — 31, виртуалок — 31" in lines[0]
-    assert sum(l.startswith("- ПК") for l in lines) == 30 and sum(l.startswith("- ВМ") for l in lines) == 30
+    assert sum(ln.startswith("- ПК") for ln in lines) == 30 and sum(ln.startswith("- ВМ") for ln in lines) == 30

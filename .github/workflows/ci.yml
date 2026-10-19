@@ -118,7 +118,9 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - name: Установка зависимостей
         run: pip install -r requirements-dev.txt
-      - name: Тесты
+      - name: Ruff (статический анализ)
+        run: ruff check .
+      - name: Тесты (покрытие не ниже fail_under из .coveragerc)
         run: python -m pytest --cov=app --cov-report=term-missing
 
   frontend:

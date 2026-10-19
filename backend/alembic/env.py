@@ -4,9 +4,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.models  # noqa: F401 — регистрирует все таблицы в Base.metadata
 from app.core.config import settings
 from app.db.base import Base
-import app.models  # noqa: F401 — регистрирует все таблицы в Base.metadata
 
 config = context.config
 if config.config_file_name:

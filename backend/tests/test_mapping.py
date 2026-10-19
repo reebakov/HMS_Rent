@@ -6,7 +6,13 @@ from types import SimpleNamespace
 import pytest
 
 from app.integrations.insight.mapping import (
-    InsightMapping, load_mapping, map_object, parse_date, parse_int, parse_size_gb, parse_specs,
+    InsightMapping,
+    load_mapping,
+    map_object,
+    parse_date,
+    parse_int,
+    parse_size_gb,
+    parse_specs,
 )
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"

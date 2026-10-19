@@ -11,7 +11,6 @@ import pytest
 from sqlalchemy import func, select
 
 from app.api.routes import auth as auth_routes
-from app.services import auth as auth_service, auth_throttle
 from app.core import admins
 from app.core.config import settings
 from app.core.security import create_session_token
@@ -19,6 +18,8 @@ from app.integrations.auth import bouncer
 from app.integrations.auth.base import AuthResult
 from app.main import app
 from app.models import User, UserRole
+from app.services import auth as auth_service
+from app.services import auth_throttle
 
 ADMIN = UserRole.admin.value
 

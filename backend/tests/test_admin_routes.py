@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.core import clock
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models import AssetEvent, Booking, Computer, Department, EventType, Pool, SyncRun, UserRole
+from app.models import AssetEvent, Computer, Department, EventType, Pool, SyncRun, UserRole
 from app.models.pool import pool_departments
 from tests.sync_fakes import FakeInsight, add_booking, insight_obj, patch_source
 

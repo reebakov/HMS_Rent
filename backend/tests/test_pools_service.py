@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.errors import Conflict, NotFound
-from app.models import AssetEvent, Computer, Department, EventType, Pool, UserRole
+from app.models import AssetEvent, Department, EventType, Pool, UserRole
 from app.models.pool import pool_departments
 from app.services import pools, runtime
 from app.services.runtime import RuntimeConfig
@@ -29,7 +29,7 @@ async def count(session, model) -> int:
 
 async def test_assign_by_computer_ids(session, admin, make_pool, make_computer):
     pool = await make_pool("Main")
-    a, b, c = await make_computer("A1"), await make_computer("A2"), await make_computer("A3")
+    a, b, _ = await make_computer("A1"), await make_computer("A2"), await make_computer("A3")
     res = await pools.assign(session, admin, pool.id, computer_ids=[a.id, b.id])
     assert res == {"updated": 2, "not_found": []}
     comps = await reload_computers(session)
@@ -75,7 +75,7 @@ async def test_assign_names_dupes_collapse_and_not_found_listed(session, admin, 
 
 async def test_assign_computer_ids_take_precedence_over_names(session, admin, make_pool, make_computer):
     pool = await make_pool("Main")
-    a, b = await make_computer("A1"), await make_computer("A2")
+    a, _ = await make_computer("A1"), await make_computer("A2")
     res = await pools.assign(session, admin, pool.id, computer_ids=[a.id], names="A2")
     assert res["updated"] == 1
     comps = await reload_computers(session)

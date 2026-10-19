@@ -2,3 +2,7 @@
 # SQLAlchemy async работает на greenlet: без этого coverage теряет трассировку после await и занижает цифры
 concurrency = greenlet,thread
 source = app
+
+[report]
+# Порог в CI (pytest --cov): покрытие ниже 95% роняет прогон; фактическое — около 96%
+fail_under = 95
