@@ -1,5 +1,6 @@
 import { Cloud, Cpu, Monitor, Zap, type LucideIcon } from 'lucide-react'
-import type { ComputerStatus, Tier } from './types'
+import type { Tone } from '@/components/ui/badge'
+import type { ComputerStatus, Tier, VmStatus } from './types'
 
 // Всё, что связано с подписью категорий и статусов, — в одном месте
 
@@ -44,6 +45,18 @@ export const STATUSES: Record<ComputerStatus, { label: string; tone: 'success' |
   retired: { label: 'Списан', tone: 'muted' },
   unknown: { label: 'Неизвестно', tone: 'muted' },
 }
+
+export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boolean }> = {
+  queued: { label: 'В очереди', tone: 'muted', busy: true },
+  creating: { label: 'Создаётся', tone: 'primary', busy: true },
+  ready: { label: 'Готова', tone: 'success' },
+  failed: { label: 'Ошибка', tone: 'danger' },
+  deleting: { label: 'Удаляется', tone: 'warning', busy: true },
+  deleted: { label: 'Удалена', tone: 'muted' },
+}
+
+/** Отказаться от ВМ (или отменить заявку) можно, пока она не создаётся и не удаляется */
+export const canReleaseVm = (status: VmStatus) => status === 'ready' || status === 'failed' || status === 'queued'
 
 export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',

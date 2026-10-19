@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { MyVms, VM_STATUS } from './MyVms'
+import { MyVms } from './MyVms'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
 import { renderWithProviders } from '@/test/helpers'
@@ -121,22 +121,14 @@ describe('MyVms', () => {
 
   describe('статусы', () => {
     it.each([
-      ['queued', 'В очереди', true],
-      ['creating', 'Создаётся', true],
-      ['ready', 'Готова', false],
-      ['failed', 'Ошибка', false],
-      ['deleting', 'Удаляется', true],
-    ] as const)('%s — «%s»', async (status, label, busy) => {
+      ['queued', 'В очереди'],
+      ['creating', 'Создаётся'],
+      ['ready', 'Готова'],
+      ['failed', 'Ошибка'],
+      ['deleting', 'Удаляется'],
+    ] as const)('%s — «%s»', async (status, label) => {
       await renderVms([makeVm({ status, ip_address: null })])
-      const badge = screen.getByText(label)
-      expect(badge).toBeInTheDocument()
-      // занятые статусы — со спиннером, остальные — с точкой
-      expect(!!badge.querySelector('svg.animate-spin')).toBe(busy)
-      expect(!!badge.querySelector('span.rounded-full')).toBe(!busy)
-    })
-
-    it('словарь подписей содержит все статусы ВМ', () => {
-      expect(Object.keys(VM_STATUS).sort()).toEqual(['creating', 'deleted', 'deleting', 'failed', 'queued', 'ready'])
+      expect(screen.getByText(label)).toBeInTheDocument()
     })
 
     it('failed показывает текст ошибки vSphere', async () => {

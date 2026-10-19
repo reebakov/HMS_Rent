@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
-import { STATUSES, TIERS } from '@/lib/dictionaries'
-import type { ComputerStatus, Tier } from '@/lib/types'
+import { Loader2 } from 'lucide-react'
+import { STATUSES, TIERS, VM_STATUS } from '@/lib/dictionaries'
+import type { ComputerStatus, Tier, VmStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const tones = {
@@ -32,6 +33,17 @@ export function StatusBadge({ status }: { status: ComputerStatus }) {
   const s = STATUSES[status] ?? STATUSES.unknown
   return (
     <Badge tone={s.tone} dot>
+      {s.label}
+    </Badge>
+  )
+}
+
+/** Статус ВМ: у «занятых» статусов (очередь, создание, удаление) вместо точки крутится спиннер */
+export function VmStatusBadge({ status }: { status: VmStatus }) {
+  const s = VM_STATUS[status]
+  return (
+    <Badge tone={s.tone} dot={!s.busy}>
+      {s.busy && <Loader2 className="h-3 w-3 animate-spin" />}
       {s.label}
     </Badge>
   )

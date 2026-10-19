@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Cloud, Loader2 } from 'lucide-react'
+import { Cloud } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Badge } from '@/components/ui/badge'
-import { VM_STATUS } from '@/features/vms/MyVms'
+import { VmStatusBadge } from '@/components/ui/badge'
+import { canReleaseVm } from '@/lib/dictionaries'
 import { useAdminVms, useReleaseVm } from '@/lib/queries'
 import type { Vm } from '@/lib/types'
 import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
@@ -70,37 +70,31 @@ export function VmsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {data.map((vm) => {
-                    const st = VM_STATUS[vm.status]
-                    return (
-                      <tr key={vm.id} className="hover:bg-muted/40">
-                        <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
-                        <td className="px-4 py-3 font-semibold">{vm.name}</td>
-                        <td className="px-4 py-3 tabular">{vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{vm.department.name}</p>
-                          <p className="text-xs text-muted-foreground">{vm.requester_name} ({vm.requester_nick})</p>
-                        </td>
-                        <td className="px-4 py-3 font-mono">{vm.ip_address ?? '—'}</td>
-                        <td className="px-4 py-3 tabular">{formatDateTime(vm.created_at)}</td>
-                        <td className="px-4 py-3 tabular">{vm.expected_return_at ? formatDate(vm.expected_return_at) : '—'}</td>
-                        <td className="px-4 py-3">
-                          <Badge tone={st.tone} dot={!st.busy}>
-                            {st.busy && <Loader2 className="h-3 w-3 animate-spin" />}
-                            {st.label}
-                          </Badge>
-                          {vm.error && <p className="mt-1 max-w-[260px] truncate text-xs text-danger" title={vm.error}>{vm.error}</p>}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {['ready', 'failed', 'queued'].includes(vm.status) && (
-                            <Button size="sm" variant="ghost" onClick={() => setRemoving(vm)}>
-                              Удалить
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {data.map((vm) => (
+                    <tr key={vm.id} className="hover:bg-muted/40">
+                      <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
+                      <td className="px-4 py-3 font-semibold">{vm.name}</td>
+                      <td className="px-4 py-3 tabular">{vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{vm.department.name}</p>
+                        <p className="text-xs text-muted-foreground">{vm.requester_name} ({vm.requester_nick})</p>
+                      </td>
+                      <td className="px-4 py-3 font-mono">{vm.ip_address ?? '—'}</td>
+                      <td className="px-4 py-3 tabular">{formatDateTime(vm.created_at)}</td>
+                      <td className="px-4 py-3 tabular">{vm.expected_return_at ? formatDate(vm.expected_return_at) : '—'}</td>
+                      <td className="px-4 py-3">
+                        <VmStatusBadge status={vm.status} />
+                        {vm.error && <p className="mt-1 max-w-[260px] truncate text-xs text-danger" title={vm.error}>{vm.error}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {canReleaseVm(vm.status) && (
+                          <Button size="sm" variant="ghost" onClick={() => setRemoving(vm)}>
+                            Удалить
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
