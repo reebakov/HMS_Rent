@@ -38,6 +38,8 @@ function setup(onClose = vi.fn()) {
 
 const submitButton = () => screen.getByRole('button', { name: 'Забронировать' })
 const waitForDepartments = () => screen.findByRole('option', { name: 'Аналитика' })
+const returnDate = () => screen.getByLabelText(/Планирую вернуть/)
+const fillReturnDate = (user: ReturnType<typeof userEvent.setup>) => user.type(returnDate(), '2099-12-31')
 
 describe('BookingDialog', () => {
   beforeEach(() => {
@@ -102,10 +104,12 @@ describe('BookingDialog', () => {
     expect(submitButton()).toBeDisabled()
   })
 
-  it('кнопка отключена при слишком коротком имени или пустом нике', async () => {
+  it('кнопка отключена без срока возврата, при слишком коротком имени или пустом нике', async () => {
     const { user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    expect(submitButton()).toBeDisabled()
+    await fillReturnDate(user)
     expect(submitButton()).toBeEnabled()
 
     const name = screen.getByLabelText(/Имя и фамилия/)
@@ -125,6 +129,7 @@ describe('BookingDialog', () => {
     const { onClose, user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await fillReturnDate(user)
     await user.type(screen.getByLabelText(/Для чего нужен/), 'Тесты')
     await user.click(submitButton())
 
@@ -135,7 +140,7 @@ describe('BookingDialog', () => {
       requester_name: 'Иван Иванов',
       requester_nick: 'i.ivanov',
       purpose: 'Тесты',
-      expected_return_at: null,
+      expected_return_at: '2099-12-31',
     })
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringContaining('заказ №123'),
@@ -152,35 +157,46 @@ describe('BookingDialog', () => {
     expect(api.post).not.toHaveBeenCalled() // отдел не выбран
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
     await user.type(purpose, '{Enter}')
+    expect(api.post).not.toHaveBeenCalled() // срок возврата не указан
+    await fillReturnDate(user)
+    await user.type(purpose, '{Enter}')
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ department_id: 2, purpose: 'Тесты' }))
   })
 
-  it('пустое «для чего» уходит как undefined, дата возврата — как заполнено', async () => {
+  it('пустое «для чего» уходит как undefined', async () => {
     const { user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
-    const date = screen.getByLabelText(/Планирую вернуть/)
-    await user.type(date, '2099-12-31')
+    await fillReturnDate(user)
     await user.click(submitButton())
     await waitFor(() => expect(api.post).toHaveBeenCalled())
     const payload = vi.mocked(api.post).mock.calls[0][1] as Record<string, unknown>
     expect(payload.purpose).toBeUndefined()
-    expect(payload.expected_return_at).toBe('2099-12-31')
+  })
+
+  it('прошедшую дату возврата, впечатанную вручную, отправить нельзя', async () => {
+    const { user } = setup()
+    await waitForDepartments()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await user.type(returnDate(), '2000-01-01')
+    expect(submitButton()).toBeDisabled()
   })
 
   it('подставляет последний выбранный отдел из localStorage', async () => {
     localStorage.setItem('hmsrent:last-department', '2')
-    setup()
+    const { user } = setup()
     await waitForDepartments()
     expect(screen.getByLabelText(/Отдел/)).toHaveValue('2')
+    await fillReturnDate(user)
     expect(submitButton()).toBeEnabled()
   })
 
   it('неизвестный отдел из localStorage не даёт отправить форму', async () => {
     localStorage.setItem('hmsrent:last-department', '999')
-    setup()
+    const { user } = setup()
     await waitForDepartments()
+    await fillReturnDate(user)
     expect(submitButton()).toBeDisabled()
   })
 
@@ -189,6 +205,7 @@ describe('BookingDialog', () => {
     const { onClose, user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await fillReturnDate(user)
     await user.click(submitButton())
 
     expect(await screen.findByText('Компьютер уже забронирован')).toBeInTheDocument()

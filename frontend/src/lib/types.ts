@@ -119,7 +119,7 @@ export interface BookingCreate {
   requester_name: string
   requester_nick: string
   purpose?: string
-  expected_return_at?: string | null
+  expected_return_at: string
 }
 
 // ---------- Админка ----------

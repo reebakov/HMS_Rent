@@ -170,7 +170,7 @@ async def test_departments_only_active_sorted(client, login, make_user, make_dep
 
 def _payload(comp, dept, **kw):
     return {"computer_id": comp.id, "department_id": dept.id, "requester_name": "Иван Иванов",
-            "requester_nick": "ivanov", **kw}
+            "requester_nick": "ivanov", "expected_return_at": clock.today().isoformat(), **kw}
 
 
 @pytest.fixture
@@ -249,6 +249,7 @@ async def test_booking_unknown_or_inactive_department_is_404(client, shop, make_
     {"requester_name": "И"}, {"requester_nick": ""}, {"purpose": "x" * 2001},
     {"requester_name": "     "}, {"requester_nick": "   "},  # одни пробелы — это пустое значение
     {"expected_return_at": (clock.today() - timedelta(days=1)).isoformat()}, {"expected_return_at": "not-a-date"},
+    {"expected_return_at": None}, {"expected_return_at": ""},  # срок возврата обязателен
 ])
 async def test_booking_validation_422(client, shop, api, patch):
     assert (await client.post(api("/bookings"), json={**_payload(shop["comp"], shop["dept"]), **patch})
@@ -257,6 +258,13 @@ async def test_booking_validation_422(client, shop, api, patch):
 
 async def test_booking_requires_all_fields(client, shop, api):
     assert (await client.post(api("/bookings"), json={"computer_id": shop["comp"].id})).status_code == 422
+
+
+async def test_booking_without_return_date_is_422(client, shop, api):
+    body = _payload(shop["comp"], shop["dept"])
+    del body["expected_return_at"]
+    r = await client.post(api("/bookings"), json=body)
+    assert r.status_code == 422 and "expected_return_at" in r.text
 
 
 async def test_admin_can_book_any_pool(client, login, make_user, shop, make_pool, make_computer, make_department, api):

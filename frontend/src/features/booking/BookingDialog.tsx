@@ -37,7 +37,9 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   }, [computer?.id])
 
   const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
-  const canBook = !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment
+  // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
+  const canBook =
+    !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment && until >= todayLocal()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -49,7 +51,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         requester_name: name,
         requester_nick: nick,
         purpose: purpose || undefined,
-        expected_return_at: until || null,
+        expected_return_at: until,
       })
       safeStorage.set(LAST_DEPARTMENT_KEY, departmentId)
       toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, {
@@ -112,7 +114,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Планирую вернуть" hint="Необязательно">
+            <Field label="Планирую вернуть" required>
               <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
             </Field>
             <Field label="Для чего нужен" hint="Необязательно">

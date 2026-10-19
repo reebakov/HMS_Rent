@@ -45,6 +45,7 @@ async def env(session, make_department, make_user, make_pool, make_computer):
 def payload(comp, dept, **kw) -> BookingCreate:
     kw.setdefault("requester_name", "Иван Иванов")
     kw.setdefault("requester_nick", "ivan")
+    kw.setdefault("expected_return_at", clock.today())
     return BookingCreate(computer_id=comp.id, department_id=dept.id, **kw)
 
 
@@ -149,7 +150,8 @@ async def test_already_booked_conflict(session, env, make_user):
 async def test_missing_computer_not_found(session, env, notify_mock):
     with pytest.raises(NotFound):
         await bookings.create_booking(session, env.user, BookingCreate(
-            computer_id=9999, department_id=env.dept.id, requester_name="Иван", requester_nick="i"))
+            computer_id=9999, department_id=env.dept.id, requester_name="Иван", requester_nick="i",
+            expected_return_at=clock.today()))
     notify_mock.assert_not_awaited()
 
 
@@ -194,7 +196,8 @@ async def test_inactive_department_not_found(session, env, make_department):
 async def test_missing_department_not_found(session, env):
     with pytest.raises(NotFound):
         await bookings.create_booking(session, env.user, BookingCreate(
-            computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i"))
+            computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i",
+            expected_return_at=clock.today()))
 
 
 # ---------- Проверка Insight «прямо сейчас» ----------
