@@ -1,63 +1,32 @@
+# Разработка и демо: образы собираются из исходников, код backend монтируется в контейнер.
+# Общая часть сервисов — docker-compose.base.yml.
 services:
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: hmsrent
-      POSTGRES_USER: hmsrent
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hmsrent}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hmsrent -d hmsrent"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+    extends:
+      file: docker-compose.base.yml
+      service: db
 
   backend:
+    extends:
+      file: docker-compose.base.yml
+      service: backend
     build: ./backend
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
-    extra_hosts:
-      - "vc26.ff.local:10.1.1.50"   
     volumes:
-      # маппинг Insight можно править без пересборки образа
-      - ./backend/config:/app/config:ro
       - ./backend/app:/app/app:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
 
   worker:
+    extends:
+      file: docker-compose.base.yml
+      service: worker
     build: ./backend
-    restart: unless-stopped
-    command: ["python", "-m", "app.worker"]
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
-    extra_hosts:
-      - "vc26.ff.local:10.1.1.50"  
     volumes:
-      - ./backend/config:/app/config:ro
       - ./backend/app:/app/app:ro
-    depends_on:
-      backend:
-        condition: service_healthy  # ждём, пока backend применит миграции
 
   frontend:
+    extends:
+      file: docker-compose.base.yml
+      service: frontend
     build: ./frontend
-    restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-8080}:80"
-    depends_on:
-      - backend
 
 volumes:
   pgdata:

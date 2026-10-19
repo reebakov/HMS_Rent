@@ -1,0 +1,58 @@
+# Общая часть docker-compose.yml (разработка) и docker-compose.prod.yml (прод): сервисы подключаются через
+# `extends`, а сами файлы добавляют только то, чем различаются (build или image, монтирование кода).
+# Самостоятельно не запускается: нет ни build, ни image у backend, worker и frontend.
+x-backend-common: &backend-common
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
+  # имя vCenter задано в контейнерах напрямую, без DNS (см. docs/VSPHERE.md)
+  extra_hosts:
+    - "vc26.ff.local:10.1.1.50"
+  volumes:
+    # маппинг Insight и admins.txt правятся на сервере без пересборки образа
+    - ./backend/config:/app/config:ro
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hmsrent
+      POSTGRES_USER: hmsrent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hmsrent}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmsrent -d hmsrent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *backend-common
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    <<: *backend-common
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      backend:
+        condition: service_healthy  # ждём, пока backend применит миграции
+
+  frontend:
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

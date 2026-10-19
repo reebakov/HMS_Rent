@@ -3,64 +3,30 @@
 #   IMAGE_REPO — префикс образов (по умолчанию ghcr.io/reebakov/hms-rent, итоговые имена ...-backend и ...-frontend)
 #   IMAGE_TAG  — какой коммит выкатываем; latest — последний собранный из main
 # Для разработки и демо по-прежнему docker-compose.yml (собирает образы из исходников).
+# Общая часть сервисов — docker-compose.base.yml; код внутри образа, с сервера читаются только настройки (backend/config).
 services:
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: hmsrent
-      POSTGRES_USER: hmsrent
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hmsrent}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hmsrent -d hmsrent"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+    extends:
+      file: docker-compose.base.yml
+      service: db
 
   backend:
+    extends:
+      file: docker-compose.base.yml
+      service: backend
     image: ${IMAGE_REPO:-ghcr.io/reebakov/hms-rent}-backend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
-    extra_hosts:
-      - "vc26.ff.local:10.1.1.50"
-    volumes:
-      # код внутри образа; с сервера читаются только настройки (admins.txt, маппинг Insight) — правятся без пересборки
-      - ./backend/config:/app/config:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
 
   worker:
+    extends:
+      file: docker-compose.base.yml
+      service: worker
     image: ${IMAGE_REPO:-ghcr.io/reebakov/hms-rent}-backend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    command: ["python", "-m", "app.worker"]
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://hmsrent:${POSTGRES_PASSWORD:-hmsrent}@db:5432/hmsrent
-    extra_hosts:
-      - "vc26.ff.local:10.1.1.50"
-    volumes:
-      - ./backend/config:/app/config:ro
-    depends_on:
-      backend:
-        condition: service_healthy  # ждём, пока backend применит миграции
 
   frontend:
+    extends:
+      file: docker-compose.base.yml
+      service: frontend
     image: ${IMAGE_REPO:-ghcr.io/reebakov/hms-rent}-frontend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-8080}:80"
-    depends_on:
-      - backend
 
 volumes:
   pgdata:
