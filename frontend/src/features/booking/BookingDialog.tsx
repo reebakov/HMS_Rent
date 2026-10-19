@@ -30,7 +30,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     if (!computer) return
     setDepartmentId(safeStorage.get(LAST_DEPARTMENT_KEY) ?? '')
     setName(session.user.display_name)
-    setNick(session.user.username)
+    setNick(session.user.username.split('@')[0])
     setUntil('')
     setPurpose('')
     create.reset()

@@ -11,7 +11,8 @@ vi.mock('@/lib/api', async (orig) => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('@/auth/AuthProvider', () => ({ useSession: () => makeSession() }))
+let session = makeSession()
+vi.mock('@/auth/AuthProvider', () => ({ useSession: () => session }))
 
 const departments = [
   { id: 1, name: 'Разработка', code: 'DEV', head_name: null, is_active: true },
@@ -40,6 +41,7 @@ const waitForDepartments = () => screen.findByRole('option', { name: 'Анали
 
 describe('BookingDialog', () => {
   beforeEach(() => {
+    session = makeSession()
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(bookingResponse)
   })
@@ -57,6 +59,13 @@ describe('BookingDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(await waitForDepartments()).toBeInTheDocument()
     expect(screen.queryByText('Не удалось загрузить отделы')).not.toBeInTheDocument()
+  })
+
+  it('ник по умолчанию — часть логина до «@», как в конструкторе ВМ', async () => {
+    session = makeSession({ username: 'i.ivanov@corp.example' })
+    setup()
+    await waitForDepartments()
+    expect(screen.getByLabelText(/Ник \/ логин/)).toHaveValue('i.ivanov')
   })
 
   it('ничего не рисует без выбранного компьютера', () => {
