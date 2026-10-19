@@ -11,7 +11,7 @@ import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
 import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
 import type { Booking } from '@/lib/types'
-import { formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
+import { errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
 export function MyBookingsPage() {
   const navigate = useNavigate()
@@ -34,7 +34,7 @@ export function MyBookingsPage() {
       toast.success(`${returning.computer.name} возвращён`)
       setReturning(null)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось вернуть')
+      toast.error(errorMessage(e, 'Не удалось вернуть'))
     }
   }
 

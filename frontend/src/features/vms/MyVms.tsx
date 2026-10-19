@@ -9,7 +9,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
 import type { ServiceRequest, Vm, VmStatus } from '@/lib/types'
 import { ReportProblemButton, RequestBadges } from '@/features/support/ServiceDesk'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
 
 export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boolean }> = {
   queued: { label: 'В очереди', tone: 'muted', busy: true },
@@ -42,7 +42,7 @@ export function MyVms({
       toast.success(`${confirm.name} будет удалена`)
       setConfirm(null)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

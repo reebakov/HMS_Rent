@@ -8,9 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useAdminUsers, useDepartments, useSaveUser } from '@/lib/queries'
-import { formatRelative } from '@/lib/utils'
+import { errorMessage, formatRelative } from '@/lib/utils'
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Ошибка')
 
 /** Сотрудники и их отделы: от отдела зависит, какие пулы человек видит в каталоге */
 export function UsersPage() {
@@ -26,7 +25,7 @@ export function UsersPage() {
       await save.mutateAsync({ id, department_id: value ? Number(value) : null })
       toast.success('Отдел сохранён')
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
@@ -34,7 +33,7 @@ export function UsersPage() {
     try {
       await save.mutateAsync({ id, is_active: !active })
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
@@ -46,7 +45,7 @@ export function UsersPage() {
       setEmail('')
       setDeptForNew('')
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 

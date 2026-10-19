@@ -8,7 +8,7 @@ import { Badge, type Tone } from '@/components/ui/badge'
 import { Field, Textarea } from '@/components/ui/input'
 import { useAddComment, useCreateRequest, useRequestDetail, useSdConfig } from '@/lib/queries'
 import type { ServiceRequest } from '@/lib/types'
-import { formatDateTime } from '@/lib/utils'
+import { errorMessage, formatDateTime } from '@/lib/utils'
 
 const tone = (r: ServiceRequest): Tone =>
   r.error ? 'danger' : r.status_category === 'done' ? 'success' : r.status_category === 'indeterminate' ? 'primary' : 'warning'
@@ -58,7 +58,7 @@ export function ReportProblemDialog({ target, onClose }: { target: ProblemTarget
       toast.success(`Заявка ${req.issue_key} создана — ответ придёт сюда, в «Мою аренду»`)
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось отправить')
+      toast.error(errorMessage(e, 'Не удалось отправить'))
     }
   }
 
@@ -105,7 +105,7 @@ export function RequestSheet({ id, onClose }: { id: number | null; onClose: () =
       await add.mutateAsync({ id, message: reply })
       setReply('')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не удалось отправить')
+      toast.error(errorMessage(e, 'Не удалось отправить'))
     }
   }
 

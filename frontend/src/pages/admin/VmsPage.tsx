@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { VM_STATUS } from '@/features/vms/MyVms'
 import { useAdminVms, useReleaseVm } from '@/lib/queries'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
 
 /** Все виртуалки из конструктора: кто, когда, какие ресурсы; админ может удалить любую */
 export function VmsPage() {
@@ -21,7 +21,7 @@ export function VmsPage() {
       await release.mutateAsync(id)
       toast.success(`${name} будет удалена`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

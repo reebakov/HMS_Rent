@@ -10,7 +10,7 @@ import { Field, Input } from '@/components/ui/input'
 import { useDepartmentUsage, useSaveDepartment } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { DepartmentUsage } from '@/lib/types'
-import { formatDate } from '@/lib/utils'
+import { errorMessage, formatDate } from '@/lib/utils'
 
 type Editing = { id?: number; name: string; code: string; head_name: string }
 
@@ -30,7 +30,7 @@ export function DepartmentsPage() {
       toast.success(editing.id ? 'Отдел обновлён' : 'Отдел добавлен')
       setEditing(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Ошибка')
+      toast.error(errorMessage(err))
     }
   }
 
@@ -39,7 +39,7 @@ export function DepartmentsPage() {
       await save.mutateAsync({ id: d.department_id, is_active: !d.is_active })
       toast.success(d.is_active ? `«${d.name}» скрыт из формы бронирования` : `«${d.name}» снова доступен`)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Ошибка')
+      toast.error(errorMessage(err))
     }
   }
 

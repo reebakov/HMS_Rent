@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cn, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
+import { cn, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -98,5 +98,17 @@ describe('todayLocal', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 0, 5, 12))
     expect(todayLocal()).toBe('2026-01-05')
+  })
+})
+
+describe('errorMessage', () => {
+  it('берёт сообщение Error', () => {
+    expect(errorMessage(new Error('Нет прав'))).toBe('Нет прав')
+  })
+  it.each([undefined, 'строка', { message: 'не Error' }])('%j без Error даёт «Ошибка»', (e) => {
+    expect(errorMessage(e)).toBe('Ошибка')
+  })
+  it('запасной текст можно задать', () => {
+    expect(errorMessage(null, 'Не удалось войти')).toBe('Не удалось войти')
   })
 })

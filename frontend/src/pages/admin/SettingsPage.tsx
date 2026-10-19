@@ -7,6 +7,7 @@ import { DataState } from '@/components/ui/data-state'
 import { Field, Input } from '@/components/ui/input'
 import { useAppSettings, useSaveSettings, useVsphereCheck } from '@/lib/queries'
 import type { AppSettings } from '@/lib/types'
+import { errorMessage } from '@/lib/utils'
 import { VmTemplatesEditor } from '@/features/admin/VmTemplatesEditor'
 
 type NumKey = { [K in keyof AppSettings]: AppSettings[K] extends number ? K : never }[keyof AppSettings]
@@ -58,7 +59,7 @@ function SettingsForm({ data }: { data: AppSettings }) {
       await save.mutateAsync(changes)
       toast.success('Настройки сохранены и уже действуют')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

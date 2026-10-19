@@ -8,7 +8,7 @@ import { DataState } from '@/components/ui/data-state'
 import { Badge } from '@/components/ui/badge'
 import { useRunSync, useSyncInfo } from '@/lib/queries'
 import type { SyncInfo } from '@/lib/types'
-import { formatDateTime } from '@/lib/utils'
+import { errorMessage, formatDateTime } from '@/lib/utils'
 
 export function SyncPage() {
   const info = useSyncInfo()
@@ -30,7 +30,7 @@ export function SyncPage() {
       if (run.status === 'success') toast.success(`Готово: ${run.total} объектов, новых ${run.created}, изменено ${run.updated}`)
       else toast.error(run.error ?? 'Синхронизация завершилась с ошибкой')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

@@ -54,3 +54,6 @@ export function initials(name: string) {
     .map((part) => part[0]?.toUpperCase())
     .join('')
 }
+
+/** Текст ошибки для тоста: сообщение Error (его формирует api.ts) или запасной текст */
+export const errorMessage = (e: unknown, fallback = 'Ошибка') => (e instanceof Error ? e.message : fallback)

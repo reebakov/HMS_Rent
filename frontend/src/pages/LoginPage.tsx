@@ -7,7 +7,7 @@ import { Field, Input } from '@/components/ui/input'
 import { QueryError } from '@/components/ui/data-state'
 import { api } from '@/lib/api'
 import { useAuthConfig } from '@/lib/queries'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
 const FEATURES = [
   { icon: Monitor, title: 'Компьютеры', text: 'От офисных до мощных — под любые задачи' },
@@ -89,7 +89,7 @@ export function LoginPage() {
     try {
       await login(username, password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось войти')
+      setError(errorMessage(err, 'Не удалось войти'))
     } finally {
       setPending(false)
     }

@@ -6,7 +6,7 @@ import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { Badge } from '@/components/ui/badge'
 import { useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
 import type { OverdueItem } from '@/lib/types'
-import { formatDate, plural } from '@/lib/utils'
+import { errorMessage, formatDate, plural } from '@/lib/utils'
 
 /** ПК и виртуалки, срок возврата которых прошёл: кто держит, сколько дней просрочки, связаться или забрать */
 export function OverduePage() {
@@ -22,7 +22,7 @@ export function OverduePage() {
       else await releaseVm.mutateAsync(item.id)
       toast.success(item.kind === 'pc' ? `${item.name} возвращён` : `${item.name} будет удалена`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

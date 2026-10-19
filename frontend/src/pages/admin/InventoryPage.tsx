@@ -14,7 +14,7 @@ import { useAssignPool, useDepartments, useInventory, usePools, inventoryExportU
 import { STATUSES, TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import { useDebouncedSearch } from '@/lib/hooks'
 import type { ComputerStatus } from '@/lib/types'
-import { cn, formatDate, isOverdue } from '@/lib/utils'
+import { cn, errorMessage, formatDate, isOverdue } from '@/lib/utils'
 
 const PAGE = 100
 
@@ -73,7 +73,7 @@ export function InventoryPage() {
       setSelected(new Set())
       setTargetPool('')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

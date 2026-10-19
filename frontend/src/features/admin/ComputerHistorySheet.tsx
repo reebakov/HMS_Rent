@@ -13,7 +13,7 @@ import { EventTimeline } from './widgets'
 import { useComputerHistory, useReturnBooking, useUpdateComputer } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { Tier } from '@/lib/types'
-import { cn, formatDate, formatDateTime, formatDuration } from '@/lib/utils'
+import { cn, errorMessage, formatDate, formatDateTime, formatDuration } from '@/lib/utils'
 
 const TABS = ['Обзор', 'История выдачи', 'События', 'Insight'] as const
 
@@ -44,7 +44,7 @@ export function ComputerHistorySheet({ computerId, onClose }: { computerId: numb
       await update.mutateAsync({ id: c.id, tier_override: (tierOverride || null) as Tier | null, note: note || null })
       toast.success('Сохранено')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 
@@ -55,7 +55,7 @@ export function ComputerHistorySheet({ computerId, onClose }: { computerId: numb
       toast.success(`${c.name} возвращён`)
       setReturnOpen(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка')
+      toast.error(errorMessage(e))
     }
   }
 

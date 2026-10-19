@@ -10,10 +10,10 @@ import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/input'
 import { useAssignPool, useDeletePool, useDepartments, usePools, useSavePool } from '@/lib/queries'
 import type { Pool } from '@/lib/types'
+import { errorMessage } from '@/lib/utils'
 
 type Editing = { id?: number; name: string; description: string; departmentIds: number[] }
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Ошибка')
 
 /** Пулы выдачи: сотрудники видят в каталоге только ПК из опубликованных пулов */
 export function PoolsPage() {
@@ -36,7 +36,7 @@ export function PoolsPage() {
       toast.success(editing.id ? 'Пул обновлён' : 'Пул создан')
       setEditing(null)
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
@@ -45,7 +45,7 @@ export function PoolsPage() {
       await save.mutateAsync({ id: pool.id, is_published: !pool.is_published })
       toast.success(pool.is_published ? `«${pool.name}» скрыт из каталога` : `«${pool.name}» опубликован`)
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
@@ -55,7 +55,7 @@ export function PoolsPage() {
       await remove.mutateAsync(pool.id)
       toast.success('Пул удалён')
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
@@ -71,7 +71,7 @@ export function PoolsPage() {
       setFilling(null)
       setNames('')
     } catch (e) {
-      toast.error(errorText(e))
+      toast.error(errorMessage(e))
     }
   }
 
