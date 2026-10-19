@@ -11,11 +11,12 @@ export function SpecGrid({ computer, className }: { computer: Computer; classNam
     { icon: Monitor, label: 'Видеокарта', value: computer.gpu ?? (computer.is_virtual ? 'Виртуальный адаптер' : null) },
   ]
   return (
-    // Память и диск короткие — им узкие колонки, освободившееся место уходит видеокарте
+    // В строку колонки по ширине содержимого, а свободное место делится поровну между ними: при долях (fr)
+    // пустота оставалась внутри колонок с короткими значениями, и промежутки выглядели разными
     <div
       className={cn(
         'grid gap-x-4 gap-y-2 sm:grid-cols-2',
-        'xl:grid-cols-[minmax(0,1.2fr)_minmax(72px,auto)_minmax(0,0.8fr)_minmax(0,1.6fr)]',
+        'xl:grid-cols-[repeat(4,auto)] xl:justify-between',
         className,
       )}
     >

@@ -8,10 +8,10 @@ import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { useSession } from '@/auth/AuthProvider'
-import { useCreateBooking, useDepartments } from '@/lib/queries'
+import { useCreateBooking, useDepartments, useExtendBooking } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
-import { todayLocal } from '@/lib/utils'
+import { addDays, formatDate, todayLocal } from '@/lib/utils'
 
 export function BookingDialog({ computer, onClose }: { computer: Computer | null; onClose: () => void }) {
   const session = useSession()
@@ -37,7 +37,9 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   }, [computer?.id])
 
   const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
-  const canBook = !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment
+  // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
+  const canBook =
+    !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment && until >= todayLocal()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -49,7 +51,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         requester_name: name,
         requester_nick: nick,
         purpose: purpose || undefined,
-        expected_return_at: until || null,
+        expected_return_at: until,
       })
       safeStorage.set(LAST_DEPARTMENT_KEY, departmentId)
       toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, {
@@ -112,7 +114,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Планирую вернуть" hint="Необязательно">
+            <Field label="Планирую вернуть" required>
               <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
             </Field>
             <Field label="Для чего нужен" hint="Необязательно">
@@ -162,6 +164,75 @@ export function ReturnDialog({
       <Field label="Комментарий" hint="Например: «Всё работает» или «Шумит кулер»">
         <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
       </Field>
+    </Dialog>
+  )
+}
+
+/** Что продлеваем: бронь из «Моей аренды» или строка просрочки у админа */
+export interface ExtendTarget {
+  id: number
+  name: string
+  due: string | null
+}
+
+/** Продление аренды: новый срок позже текущего (и не в прошлом) и необязательная причина */
+export function ExtendDialog({ target, onClose }: { target: ExtendTarget | null; onClose: () => void }) {
+  const extend = useExtendBooking()
+  const [until, setUntil] = useState('')
+  const [comment, setComment] = useState('')
+
+  useEffect(() => {
+    if (!target) return
+    setUntil('')
+    setComment('')
+    extend.reset()
+  }, [target?.id])
+
+  const today = todayLocal()
+  const min = target?.due && target.due >= today ? addDays(target.due, 1) : today
+  const canExtend = until >= min // ISO-даты сравниваются строками; пустая строка меньше любой даты
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!target || !canExtend) return
+    try {
+      await extend.mutateAsync({ id: target.id, expected_return_at: until, comment: comment || undefined })
+      toast.success(`Аренда ${target.name} продлена до ${formatDate(until)}`)
+      onClose()
+    } catch {
+      /* ошибка показывается в форме */
+    }
+  }
+
+  return (
+    <Dialog
+      open={!!target}
+      onOpenChange={(open) => !open && onClose()}
+      title={target ? `Продлить аренду ${target.name}` : ''}
+      description={
+        target?.due ? `Текущий срок — ${formatDate(target.due)}. Администраторы увидят продление.` : 'Администраторы увидят продление.'
+      }
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button type="submit" loading={extend.isPending} disabled={!canExtend}>
+            Продлить
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Новый срок" required>
+          <Input type="date" min={min} value={until} onChange={(e) => setUntil(e.target.value)} />
+        </Field>
+        <Field label="Причина" hint="Необязательно">
+          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Тесты ещё идут…" />
+        </Field>
+        {extend.error && <FormError>{extend.error.message}</FormError>}
+      </div>
     </Dialog>
   )
 }

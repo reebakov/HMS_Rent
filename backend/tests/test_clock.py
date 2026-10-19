@@ -6,7 +6,7 @@ import pytest
 from app.core import clock
 from app.core.config import settings
 from app.models import Booking
-from app.schemas.booking import BookingCreate
+from app.schemas.booking import BookingCreate, BookingExtend
 from app.schemas.vm import VmCreate
 from app.services import inventory
 from tests.sync_fakes import add_booking
@@ -42,7 +42,8 @@ VM = {"name": "box-1", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": 1,
       "requester_nick": "iv"}
 
 
-@pytest.mark.parametrize("schema, base", [(BookingCreate, BOOKING), (VmCreate, VM)], ids=["booking", "vm"])
+@pytest.mark.parametrize("schema, base", [(BookingCreate, BOOKING), (BookingExtend, {}), (VmCreate, VM)],
+                         ids=["booking", "extend", "vm"])
 @pytest.mark.parametrize("tz, day, ok", [
     ("Europe/Moscow", JUNE_15, False),  # в Москве 15-е уже вчера
     ("Europe/Moscow", JUNE_16, True),

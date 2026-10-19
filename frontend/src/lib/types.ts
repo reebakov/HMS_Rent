@@ -119,7 +119,12 @@ export interface BookingCreate {
   requester_name: string
   requester_nick: string
   purpose?: string
-  expected_return_at?: string | null
+  expected_return_at: string
+}
+
+export interface BookingExtend {
+  expected_return_at: string
+  comment?: string
 }
 
 // ---------- Админка ----------
@@ -379,7 +384,19 @@ export interface RequestDetail {
   comments: ServiceComment[]
 }
 
-// ---------- Просрочки и детали синхронизации ----------
+// ---------- Сроки аренды и детали синхронизации ----------
+
+export interface BookingExtension {
+  id: number
+  booking: Booking
+  user: UserShort
+  old_return_at: string | null
+  new_return_at: string
+  comment: string | null
+  created_at: string
+  acknowledged_at: string | null
+  acknowledged_by: UserShort | null
+}
 
 export interface OverdueItem {
   kind: 'pc' | 'vm'

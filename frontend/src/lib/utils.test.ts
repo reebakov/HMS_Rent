@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
+import { addDays, cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -98,6 +98,25 @@ describe('todayLocal', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 0, 5, 12))
     expect(todayLocal()).toBe('2026-01-05')
+  })
+})
+
+describe('addDays', () => {
+  it.each([
+    ['2026-10-19', 1, '2026-10-20'],
+    ['2026-10-31', 1, '2026-11-01'],
+    ['2026-12-31', 1, '2027-01-01'],
+    ['2028-02-28', 1, '2028-02-29'], // високосный год
+    ['2026-03-01', -1, '2026-02-28'],
+  ])('%s + %i -> %s', (date, days, expected) => {
+    expect(addDays(date, days)).toBe(expected)
+  })
+
+  it('не сдвигается на переходе на летнее время', () => {
+    vi.stubEnv('TZ', 'Europe/Berlin')
+    expect(addDays('2026-03-28', 1)).toBe('2026-03-29')
+    expect(addDays('2026-03-29', 1)).toBe('2026-03-30')
+    vi.unstubAllEnvs()
   })
 })
 

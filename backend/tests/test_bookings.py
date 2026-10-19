@@ -14,8 +14,17 @@ from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightObject
 from app.integrations.insight.factory import get_mapping
-from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, EventType, UserRole
-from app.schemas.booking import BookingCreate
+from app.models import (
+    AssetEvent,
+    Booking,
+    BookingExtension,
+    BookingStatus,
+    Computer,
+    ComputerStatus,
+    EventType,
+    UserRole,
+)
+from app.schemas.booking import BookingCreate, BookingExtend
 from app.services import bookings, runtime
 from app.services.runtime import RuntimeConfig
 
@@ -43,6 +52,7 @@ async def env(session, make_department, make_user, make_pool, make_computer):
 def payload(comp, dept, **kw) -> BookingCreate:
     kw.setdefault("requester_name", "Иван Иванов")
     kw.setdefault("requester_nick", "ivan")
+    kw.setdefault("expected_return_at", clock.today())
     return BookingCreate(computer_id=comp.id, department_id=dept.id, **kw)
 
 
@@ -147,7 +157,8 @@ async def test_already_booked_conflict(session, env, make_user):
 async def test_missing_computer_not_found(session, env, notify_mock):
     with pytest.raises(NotFound):
         await bookings.create_booking(session, env.user, BookingCreate(
-            computer_id=9999, department_id=env.dept.id, requester_name="Иван", requester_nick="i"))
+            computer_id=9999, department_id=env.dept.id, requester_name="Иван", requester_nick="i",
+            expected_return_at=clock.today()))
     notify_mock.assert_not_awaited()
 
 
@@ -192,7 +203,8 @@ async def test_inactive_department_not_found(session, env, make_department):
 async def test_missing_department_not_found(session, env):
     with pytest.raises(NotFound):
         await bookings.create_booking(session, env.user, BookingCreate(
-            computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i"))
+            computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i",
+            expected_return_at=clock.today()))
 
 
 # ---------- Проверка Insight «прямо сейчас» ----------
@@ -428,6 +440,93 @@ async def test_status_after_return(session, env, make_computer, monkeypatch, wri
     assert db.writeback_pending is writeback
     [ev] = await events_of(comp.id, EventType.returned)
     assert ev.to_status == expected
+
+
+# ---------- extend_booking ----------
+
+async def extensions_of(booking_id) -> list[BookingExtension]:
+    async with SessionLocal() as s:
+        q = select(BookingExtension).where(BookingExtension.booking_id == booking_id).order_by(BookingExtension.id)
+        return list((await s.scalars(q)).unique().all())
+
+
+def extend(days: int, comment: str | None = None) -> BookingExtend:
+    return BookingExtend(expected_return_at=clock.today() + timedelta(days=days), comment=comment)
+
+
+async def test_extend_by_owner(session, booked):
+    new = clock.today() + timedelta(days=7)
+    b = await bookings.extend_booking(session, booked.user, booked.booking.id, extend(7, "  ещё тесты  "))
+
+    assert b.expected_return_at == new and b.status == BookingStatus.active
+    assert (await db_get(Computer, booked.comp.id)).usage_until == new
+    [ext] = await extensions_of(b.id)
+    assert (ext.user_id, ext.old_return_at, ext.new_return_at, ext.comment) == (booked.user.id, clock.today(), new,
+                                                                               "ещё тесты")
+    assert ext.acknowledged_at is None and ext.acknowledged_by_id is None  # ждёт «Принято» админа
+    [ev] = await events_of(booked.comp.id, EventType.extended)
+    assert (ev.booking_id, ev.actor_id) == (b.id, booked.user.id)
+    assert ev.message == (f"Заказ №{b.order_number}: срок продлён с {clock.today():%d.%m.%Y} "
+                          f"до {new:%d.%m.%Y}: ещё тесты")
+
+
+async def test_extend_by_admin_is_already_acknowledged(session, booked, make_user):
+    admin = await make_user("root", role=UserRole.admin.value)
+    await bookings.extend_booking(session, admin, booked.booking.id, extend(3))
+    [ext] = await extensions_of(booked.booking.id)
+    assert ext.user_id == admin.id and ext.acknowledged_by_id == admin.id and ext.acknowledged_at is not None
+
+
+@pytest.mark.parametrize("comment", [None, "", "   "])
+async def test_extend_empty_comment_becomes_none(session, booked, comment):
+    await bookings.extend_booking(session, booked.user, booked.booking.id, extend(1, comment))
+    [ext] = await extensions_of(booked.booking.id)
+    assert ext.comment is None
+
+
+@pytest.mark.parametrize("writeback", [True, False])
+async def test_extend_writeback_sets_pending(session, booked, monkeypatch, writeback):
+    set_writeback(monkeypatch, writeback)
+    await bookings.extend_booking(session, booked.user, booked.booking.id, extend(1))
+    assert (await db_get(Computer, booked.comp.id)).writeback_pending is writeback
+
+
+async def test_extend_to_same_date_conflict(session, booked):
+    with pytest.raises(Conflict, match="позже текущего"):
+        await bookings.extend_booking(session, booked.user, booked.booking.id, extend(0))
+    assert (await db_get(Booking, booked.booking.id)).expected_return_at == clock.today()
+    assert await extensions_of(booked.booking.id) == []
+    assert await events_of(booked.comp.id, EventType.extended) == []
+
+
+async def test_extend_booking_without_date(session, booked):
+    """У старых броней срока нет: продлить можно на любую дату с сегодняшней."""
+    booked.booking.expected_return_at = None
+    await session.commit()
+    b = await bookings.extend_booking(session, booked.user, booked.booking.id, extend(0))
+    assert b.expected_return_at == clock.today()
+    [ext] = await extensions_of(b.id)
+    assert ext.old_return_at is None
+    [ev] = await events_of(booked.comp.id, EventType.extended)
+    assert ev.message == f"Заказ №{b.order_number}: срок продлён до {clock.today():%d.%m.%Y}"
+
+
+async def test_extend_by_stranger_forbidden(session, booked, make_user):
+    stranger = await make_user("stranger", department=booked.dept)
+    with pytest.raises(Forbidden, match="Продлить аренду"):
+        await bookings.extend_booking(session, stranger, booked.booking.id, extend(1))
+    assert await extensions_of(booked.booking.id) == []
+
+
+async def test_extend_returned_booking_conflict(session, booked):
+    await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    with pytest.raises(Conflict, match="закрыто"):
+        await bookings.extend_booking(session, booked.user, booked.booking.id, extend(1))
+
+
+async def test_extend_missing_not_found(session, env):
+    with pytest.raises(NotFound):
+        await bookings.extend_booking(session, env.user, 9999, extend(1))
 
 
 # ---------- list_user_bookings ----------

@@ -36,7 +36,7 @@ function mount(route: string, session: ReturnType<typeof makeSession> | null) {
       if (!session) throw new ApiError(401, 'нет сессии')
       return session
     }
-    if (path === '/admin/overdue') return [] // счётчик просрочек в меню админа
+    if (path === '/admin/overdue' || path === '/admin/extensions') return [] // счётчик «Сроки аренды» в меню админа
     throw new Error(`неожиданный GET ${path}`)
   })
   return renderWithProviders(
@@ -164,7 +164,7 @@ describe('маршрут /admin/overdue', () => {
   it('админ попадает на страницу просрочек внутри AppShell', async () => {
     mount('/admin/overdue', admin())
     expect(await screen.findByText('stub:admin-overdue')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^Просрочки/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /^Сроки аренды/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('сотрудника гард отправляет в каталог', async () => {

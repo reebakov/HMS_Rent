@@ -1,8 +1,9 @@
-"""Админка: детали синхронизации и просрочки."""
+"""Админка: детали синхронизации, просрочки и продления."""
 from fastapi import APIRouter
 
 from app.api.deps import DB, AdminUser
-from app.schemas.admin import OverdueItem
+from app.models import BookingExtension
+from app.schemas.admin import ExtensionOut, OverdueItem
 from app.services import overdue, sync_runs
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -17,3 +18,13 @@ async def sync_run_details(run_id: int, _: AdminUser, session: DB) -> dict:
 @router.get("/overdue", response_model=list[OverdueItem])
 async def overdue_list(_: AdminUser, session: DB) -> list[OverdueItem]:
     return await overdue.list_items(session)
+
+
+@router.get("/extensions", response_model=list[ExtensionOut])
+async def extensions_list(_: AdminUser, session: DB) -> list[BookingExtension]:
+    return await overdue.list_extensions(session)
+
+
+@router.post("/extensions/{extension_id}/ack", response_model=ExtensionOut)
+async def extension_ack(extension_id: int, admin: AdminUser, session: DB) -> BookingExtension:
+    return await overdue.acknowledge_extension(session, admin, extension_id)

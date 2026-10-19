@@ -1,22 +1,24 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { AlarmClock, Cloud, Mail, Monitor } from 'lucide-react'
-import { Card, EmptyState, PageHeader } from '@/components/ui/card'
+import { AlarmClock, CalendarCheck, CalendarPlus, Check, Cloud, Mail, Monitor } from 'lucide-react'
+import { Card, CardHeader, EmptyState, PageHeader } from '@/components/ui/card'
 import { Button, buttonClass } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
-import type { OverdueItem } from '@/lib/types'
-import { errorMessage, formatDate, plural } from '@/lib/utils'
+import { ExtendDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
+import { useAckExtension, useExtensions, useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
+import type { BookingExtension, OverdueItem } from '@/lib/types'
+import { cn, errorMessage, formatDate, formatDateTime, plural } from '@/lib/utils'
 
-/** ПК и виртуалки, срок возврата которых прошёл: кто держит, сколько дней просрочки, связаться или забрать */
+/** Сроки аренды: просрочки (связаться, продлить или забрать) и продления, которые админ отмечает «Принято» */
 export function OverduePage() {
   const overdue = useOverdue()
   const returnPc = useReturnBooking()
   const releaseVm = useReleaseVm()
   const [taking, setTaking] = useState<OverdueItem | null>(null)
+  const [extending, setExtending] = useState<ExtendTarget | null>(null)
 
   const takeBack = async () => {
     if (!taking) return
@@ -38,10 +40,11 @@ export function OverduePage() {
   return (
     <>
       <PageHeader
-        title="Просрочки"
-        description="Компьютеры и виртуалки, которые должны были вернуть, но не вернули. Раз в день сводка уходит в Mattermost"
+        title="Сроки аренды"
+        description="Просроченная техника и продления аренды. Раз в день сводка просрочек уходит в Mattermost"
       />
       <Card>
+        <CardHeader title="Просрочки" description="Компьютеры и виртуалки, которые должны были вернуть, но не вернули" />
         <DataState
           query={overdue}
           errorTitle="Не удалось загрузить просрочки"
@@ -91,6 +94,16 @@ export function OverduePage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        {item.kind === 'pc' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setExtending({ id: item.id, name: item.name, due: item.due })}
+                          >
+                            <CalendarPlus className="h-3.5 w-3.5" />
+                            Продлить
+                          </Button>
+                        )}
                         {item.email && (
                           <a href={mailto(item)} className={buttonClass({ variant: 'ghost', size: 'sm' })}>
                             <Mail className="h-3.5 w-3.5" />
@@ -110,6 +123,9 @@ export function OverduePage() {
         </DataState>
       </Card>
 
+      <Extensions />
+
+      <ExtendDialog target={extending} onClose={() => setExtending(null)} />
       <ConfirmDialog
         open={!!taking}
         onClose={() => setTaking(null)}
@@ -119,5 +135,95 @@ export function OverduePage() {
         onConfirm={takeBack}
       />
     </>
+  )
+}
+
+/** Продления: новые подсвечены, пока админ не нажмёт «Принято»; принятые видны ещё две недели */
+function Extensions() {
+  const extensions = useExtensions()
+  const ack = useAckExtension()
+
+  const accept = async (ext: BookingExtension) => {
+    try {
+      await ack.mutateAsync(ext.id)
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardHeader title="Продления" description="Новые продления ждут отметки «Принято». Принятые видны ещё 14 дней" />
+      <DataState
+        query={extensions}
+        errorTitle="Не удалось загрузить продления"
+        loading={<RowsSkeleton rows={3} />}
+        empty={<EmptyState icon={CalendarCheck} title="Продлений нет" description="Никто не продлевал аренду за последние две недели" />}
+      >
+        {(data) => (
+          <DataTable
+            className="min-w-[900px]"
+            head={
+              <>
+                <Th>Компьютер</Th>
+                <Th>Команда / арендатор</Th>
+                <Th>Срок</Th>
+                <Th>Причина</Th>
+                <Th>Кто продлил</Th>
+                <Th />
+              </>
+            }
+          >
+            {data.map((ext) => {
+              const b = ext.booking
+              const isNew = !ext.acknowledged_at
+              return (
+                <tr key={ext.id} className={cn('hover:bg-muted/40', isNew && 'bg-primary/5')}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{b.computer.name}</span>
+                      {isNew && <Badge tone="primary">Новое</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">заказ №{b.order_number}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{b.department.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {b.requester_name} ({b.requester_nick})
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 tabular">
+                    {ext.old_return_at ? `${formatDate(ext.old_return_at)} → ` : 'до '}
+                    <span className="font-medium">{formatDate(ext.new_return_at)}</span>
+                  </td>
+                  <td className="max-w-[240px] px-4 py-3">{ext.comment ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-4 py-3">
+                    <p>{ext.user.display_name}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(ext.created_at)}</p>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {isNew ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={ack.isPending && ack.variables === ext.id}
+                        onClick={() => accept(ext)}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Принято
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Принято{ext.acknowledged_by ? ` · ${ext.acknowledged_by.display_name}` : ''}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </DataTable>
+        )}
+      </DataState>
+    </Card>
   )
 }

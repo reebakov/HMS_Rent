@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { BookingDialog } from './BookingDialog'
+import { BookingDialog, ExtendDialog, type ExtendTarget } from './BookingDialog'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
+import { addDays, formatDate, todayLocal } from '@/lib/utils'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -38,6 +39,8 @@ function setup(onClose = vi.fn()) {
 
 const submitButton = () => screen.getByRole('button', { name: 'Забронировать' })
 const waitForDepartments = () => screen.findByRole('option', { name: 'Аналитика' })
+const returnDate = () => screen.getByLabelText(/Планирую вернуть/)
+const fillReturnDate = (user: ReturnType<typeof userEvent.setup>) => user.type(returnDate(), '2099-12-31')
 
 describe('BookingDialog', () => {
   beforeEach(() => {
@@ -102,10 +105,12 @@ describe('BookingDialog', () => {
     expect(submitButton()).toBeDisabled()
   })
 
-  it('кнопка отключена при слишком коротком имени или пустом нике', async () => {
+  it('кнопка отключена без срока возврата, при слишком коротком имени или пустом нике', async () => {
     const { user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    expect(submitButton()).toBeDisabled()
+    await fillReturnDate(user)
     expect(submitButton()).toBeEnabled()
 
     const name = screen.getByLabelText(/Имя и фамилия/)
@@ -125,6 +130,7 @@ describe('BookingDialog', () => {
     const { onClose, user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await fillReturnDate(user)
     await user.type(screen.getByLabelText(/Для чего нужен/), 'Тесты')
     await user.click(submitButton())
 
@@ -135,7 +141,7 @@ describe('BookingDialog', () => {
       requester_name: 'Иван Иванов',
       requester_nick: 'i.ivanov',
       purpose: 'Тесты',
-      expected_return_at: null,
+      expected_return_at: '2099-12-31',
     })
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringContaining('заказ №123'),
@@ -152,35 +158,46 @@ describe('BookingDialog', () => {
     expect(api.post).not.toHaveBeenCalled() // отдел не выбран
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
     await user.type(purpose, '{Enter}')
+    expect(api.post).not.toHaveBeenCalled() // срок возврата не указан
+    await fillReturnDate(user)
+    await user.type(purpose, '{Enter}')
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ department_id: 2, purpose: 'Тесты' }))
   })
 
-  it('пустое «для чего» уходит как undefined, дата возврата — как заполнено', async () => {
+  it('пустое «для чего» уходит как undefined', async () => {
     const { user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
-    const date = screen.getByLabelText(/Планирую вернуть/)
-    await user.type(date, '2099-12-31')
+    await fillReturnDate(user)
     await user.click(submitButton())
     await waitFor(() => expect(api.post).toHaveBeenCalled())
     const payload = vi.mocked(api.post).mock.calls[0][1] as Record<string, unknown>
     expect(payload.purpose).toBeUndefined()
-    expect(payload.expected_return_at).toBe('2099-12-31')
+  })
+
+  it('прошедшую дату возврата, впечатанную вручную, отправить нельзя', async () => {
+    const { user } = setup()
+    await waitForDepartments()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await user.type(returnDate(), '2000-01-01')
+    expect(submitButton()).toBeDisabled()
   })
 
   it('подставляет последний выбранный отдел из localStorage', async () => {
     localStorage.setItem('hmsrent:last-department', '2')
-    setup()
+    const { user } = setup()
     await waitForDepartments()
     expect(screen.getByLabelText(/Отдел/)).toHaveValue('2')
+    await fillReturnDate(user)
     expect(submitButton()).toBeEnabled()
   })
 
   it('неизвестный отдел из localStorage не даёт отправить форму', async () => {
     localStorage.setItem('hmsrent:last-department', '999')
-    setup()
+    const { user } = setup()
     await waitForDepartments()
+    await fillReturnDate(user)
     expect(submitButton()).toBeDisabled()
   })
 
@@ -189,6 +206,7 @@ describe('BookingDialog', () => {
     const { onClose, user } = setup()
     await waitForDepartments()
     await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await fillReturnDate(user)
     await user.click(submitButton())
 
     expect(await screen.findByText('Компьютер уже забронирован')).toBeInTheDocument()
@@ -200,6 +218,80 @@ describe('BookingDialog', () => {
   it('«Отмена» закрывает окно без запроса', async () => {
     const { onClose, user } = setup()
     await waitForDepartments()
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('ExtendDialog', () => {
+  const today = todayLocal()
+  const setupExtend = (target: ExtendTarget = { id: 7, name: 'PC-042', due: addDays(today, 3) }, onClose = vi.fn()) => {
+    renderWithProviders(<ExtendDialog target={target} onClose={onClose} />)
+    return { onClose, user: userEvent.setup() }
+  }
+  const dateInput = () => screen.getByLabelText(/Новый срок/)
+  const extendButton = () => screen.getByRole('button', { name: 'Продлить' })
+
+  beforeEach(() => {
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.post).mockResolvedValue({})
+    vi.mocked(toast.success).mockReset()
+  })
+
+  it('показывает текущий срок; новый должен быть позже него', async () => {
+    const due = addDays(today, 3)
+    const { user } = setupExtend()
+    expect(screen.getByText(`Текущий срок — ${formatDate(due)}. Администраторы увидят продление.`)).toBeInTheDocument()
+    expect(dateInput()).toHaveAttribute('min', addDays(due, 1))
+    expect(extendButton()).toBeDisabled()
+    await user.type(dateInput(), due)
+    expect(extendButton()).toBeDisabled()
+    await user.clear(dateInput())
+    await user.type(dateInput(), addDays(due, 1))
+    expect(extendButton()).toBeEnabled()
+  })
+
+  it.each([
+    ['просрочена', addDays(today, -5)],
+    ['без срока', null],
+  ])('бронь %s — продлить можно с сегодняшнего дня', async (_, due) => {
+    const { user } = setupExtend({ id: 7, name: 'PC-042', due })
+    expect(dateInput()).toHaveAttribute('min', today)
+    await user.type(dateInput(), today)
+    expect(extendButton()).toBeEnabled()
+  })
+
+  it('отправляет новый срок и причину, показывает тост и закрывается', async () => {
+    const { onClose, user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.type(screen.getByLabelText(/Причина/), 'Тесты ещё идут')
+    await user.click(extendButton())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledWith('/bookings/7/extend', { expected_return_at: '2099-12-31', comment: 'Тесты ещё идут' })
+    expect(toast.success).toHaveBeenCalledWith(`Аренда PC-042 продлена до ${formatDate('2099-12-31')}`)
+  })
+
+  it('пустая причина не отправляется', async () => {
+    const { user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.click(extendButton())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(vi.mocked(api.post).mock.calls[0][1]).toEqual({ expected_return_at: '2099-12-31' })
+  })
+
+  it('ошибка API показывается в форме, окно остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Бронирование уже закрыто'))
+    const { onClose, user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31')
+    await user.click(extendButton())
+    expect(await screen.findByText('Бронирование уже закрыто')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('«Отмена» закрывает окно без запроса', async () => {
+    const { onClose, user } = setupExtend()
     await user.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(api.post).not.toHaveBeenCalled()

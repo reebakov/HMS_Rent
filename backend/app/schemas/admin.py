@@ -67,6 +67,18 @@ class OverdueItem(BaseModel):
     days: int
 
 
+class ExtensionOut(ORMModel):
+    id: int
+    booking: BookingOut
+    user: UserShort  # кто продлил
+    old_return_at: date | None
+    new_return_at: date
+    comment: str | None
+    created_at: datetime
+    acknowledged_at: datetime | None
+    acknowledged_by: UserShort | None
+
+
 class InventoryBooking(ORMModel):
     id: int
     requester_name: str

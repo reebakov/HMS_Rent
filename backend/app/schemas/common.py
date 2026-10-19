@@ -1,4 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+from datetime import date
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, ConfigDict
+
+from app.core import clock
 
 
 class ORMModel(BaseModel):
@@ -16,6 +21,16 @@ def reject_explicit_null(model: BaseModel, *fields: str) -> None:
     for name in fields:
         if name in model.model_fields_set and getattr(model, name) is None:
             raise ValueError(f"Поле «{name}» не может быть null")
+
+
+def _not_in_past(value: date) -> date:
+    if value < clock.today():
+        raise ValueError("Дата возврата не может быть в прошлом")
+    return value
+
+
+# Срок возврата ПК или ВМ: «сегодня» — по часовому поясу портала
+ReturnDate = Annotated[date, AfterValidator(_not_in_past)]
 
 
 class UserShort(ORMModel):

@@ -1,4 +1,4 @@
-import { ArrowLeftRight, CircleAlert, Pencil, Plus, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowLeftRight, CalendarPlus, CircleAlert, Pencil, Plus, RefreshCw, Undo2 } from 'lucide-react'
 import { EVENT_LABELS } from '@/lib/dictionaries'
 import type { AssetEvent } from '@/lib/types'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -6,6 +6,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 const EVENT_STYLE: Record<string, { icon: typeof Plus; className: string }> = {
   booked: { icon: ArrowLeftRight, className: 'bg-primary/10 text-primary' },
   returned: { icon: Undo2, className: 'bg-success/10 text-success' },
+  extended: { icon: CalendarPlus, className: 'bg-primary/10 text-primary' },
   insight_status_changed: { icon: RefreshCw, className: 'bg-warning/10 text-warning' },
   insight_created: { icon: Plus, className: 'bg-muted text-muted-foreground' },
   insight_removed: { icon: CircleAlert, className: 'bg-danger/10 text-danger' },

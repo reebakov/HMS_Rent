@@ -236,6 +236,14 @@ describe('мутации броней: вызов API и инвалидация 
     await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
   })
 
+  it('useExtendBooking: POST /bookings/{id}/extend с новым сроком и причиной', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useExtendBooking())
+    await act(() => result.current.mutateAsync({ id: 9, expected_return_at: '2099-12-31', comment: 'тесты' }))
+    expect(api.post).toHaveBeenCalledWith('/bookings/9/extend', { expected_return_at: '2099-12-31', comment: 'тесты' })
+    await waitFor(() => expect(invalidated(spy)).toEqual(ALL_BOOKING_KEYS))
+  })
+
   it('useRunSync: POST /admin/sync и инвалидация', async () => {
     const spy = vi.spyOn(client, 'invalidateQueries')
     const { result } = hook(() => q.useRunSync())
@@ -343,6 +351,28 @@ describe('просрочки и детали синхронизации', () => 
     expect(result.current.fetchStatus).toBe('idle')
     expect(api.get).not.toHaveBeenCalled()
     expect(result.current.data).toBeUndefined()
+  })
+
+  it('useExtensions: GET /admin/extensions, ключ [admin, extensions], опрос раз в минуту', async () => {
+    vi.mocked(api.get).mockResolvedValue([{ id: 1 }])
+    const { result } = hook(() => q.useExtensions())
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 1 }]))
+    expect(api.get).toHaveBeenCalledWith('/admin/extensions')
+    expect(refetchInterval(['admin', 'extensions'])).toBe(60_000)
+  })
+
+  it('useExtensions(false): запрос не уходит', () => {
+    const { result } = hook(() => q.useExtensions(false))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('useAckExtension: POST /admin/extensions/{id}/ack и обновление списка продлений', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useAckExtension())
+    await act(() => result.current.mutateAsync(4))
+    expect(api.post).toHaveBeenCalledWith('/admin/extensions/4/ack')
+    await waitFor(() => expect(keys(spy)).toEqual([['admin', 'extensions']]))
   })
 
   it('useOverdue: ключ под префиксом admin — инвалидация admin обновляет и просрочки', async () => {

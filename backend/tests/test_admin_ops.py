@@ -1,10 +1,11 @@
-"""Админка: детали запуска синхронизации (GET /admin/sync/runs/{id}) и просрочки (GET /admin/overdue)."""
+"""Админка: детали запуска синхронизации (GET /admin/sync/runs/{id}), просрочки (GET /admin/overdue)
+и продления (GET /admin/extensions, POST /admin/extensions/{id}/ack)."""
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from app.core import clock as app_clock
-from app.models import SyncRun, UserRole
+from app.models import BookingExtension, SyncRun, UserRole
 from tests.sync_fakes import add_booking
 from tests.test_overdue import add_vm
 
@@ -30,7 +31,7 @@ async def add_run(session, **kw) -> SyncRun:
 
 # ---------- доступ ----------
 
-@pytest.mark.parametrize("path", ["/admin/sync/runs/1", "/admin/overdue"])
+@pytest.mark.parametrize("path", ["/admin/sync/runs/1", "/admin/overdue", "/admin/extensions"])
 async def test_admin_ops_requires_login_and_admin_role(client, login, make_user, api, session, path):
     await add_run(session)
     assert (await client.get(api(path))).status_code == 401
@@ -129,3 +130,61 @@ async def test_overdue_skips_not_overdue(admin, api, session, make_user, make_de
     await add_booking(session, await make_computer(), user, dept, expected_return_at=TODAY)
     await add_vm(session, user, dept, status="deleted")
     assert (await admin.get(api("/admin/overdue"))).json() == []
+
+
+# ---------- продления ----------
+
+async def add_extension(session, booking, user, *, created_at: datetime | None = None, acknowledged_by=None,
+                        **kw) -> BookingExtension:
+    ext = BookingExtension(booking_id=booking.id, user_id=user.id, old_return_at=TODAY, new_return_at=TODAY + timedelta(days=7),
+                           acknowledged_by_id=acknowledged_by.id if acknowledged_by else None,
+                           acknowledged_at=datetime.now(timezone.utc) if acknowledged_by else None,
+                           **({"created_at": created_at} if created_at else {}), **kw)
+    session.add(ext)
+    await session.commit()
+    return ext
+
+
+@pytest.fixture
+async def rented(session, make_user, make_department, make_computer):
+    dept = await make_department("QA")
+    user = await make_user("ivanov", department=dept, display_name="Иван Иванов")
+    return user, await add_booking(session, await make_computer("PC-1"), user, dept)
+
+
+async def test_extensions_fields(admin, api, session, rented):
+    user, booking = rented
+    ext = await add_extension(session, booking, user, comment="ещё неделя")
+    (item,) = (await admin.get(api("/admin/extensions"))).json()
+    assert (item["id"], item["user"]["display_name"], item["comment"]) == (ext.id, "Иван Иванов", "ещё неделя")
+    assert (item["old_return_at"], item["new_return_at"]) == ("2026-06-15", "2026-06-22")
+    assert item["booking"]["computer"]["name"] == "PC-1" and item["booking"]["department"]["name"] == "QA"
+    assert item["acknowledged_at"] is None and item["acknowledged_by"] is None and item["created_at"]
+
+
+async def test_extensions_new_first_then_recent_acknowledged(admin, api, session, rented, make_user):
+    user, booking = rented
+    boss = await make_user("other-admin", role=UserRole.admin.value)
+    now = datetime.now(timezone.utc)
+    seen = await add_extension(session, booking, user, acknowledged_by=boss, created_at=now - timedelta(hours=1))
+    old_new = await add_extension(session, booking, user, created_at=now - timedelta(days=30))  # непринятое — всегда видно
+    fresh_new = await add_extension(session, booking, user, created_at=now - timedelta(hours=2))
+    await add_extension(session, booking, user, acknowledged_by=boss, created_at=now - timedelta(days=15))  # уже старое
+    ids = [i["id"] for i in (await admin.get(api("/admin/extensions"))).json()]
+    assert ids == [fresh_new.id, old_new.id, seen.id]
+
+
+async def test_extension_ack(admin, api, session, rented):
+    user, booking = rented
+    ext = await add_extension(session, booking, user)
+    r = await admin.post(api(f"/admin/extensions/{ext.id}/ack"))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["acknowledged_at"] and body["acknowledged_by"]["username"] == "boss"
+    again = (await admin.post(api(f"/admin/extensions/{ext.id}/ack"))).json()  # повтор ничего не меняет
+    assert datetime.fromisoformat(again["acknowledged_at"]) == datetime.fromisoformat(body["acknowledged_at"])
+
+
+async def test_extension_ack_not_found(admin, api):
+    resp = await admin.post(api("/admin/extensions/999/ack"))
+    assert resp.status_code == 404 and resp.json()["detail"] == "Продление не найдено"

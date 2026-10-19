@@ -7,6 +7,7 @@ import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
 import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
+import { formatDate } from '@/lib/utils'
 import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -215,6 +216,34 @@ describe('MyBookingsPage', () => {
     renderPage()
     expect(await screen.findByText('Активных бронирований нет')).toBeInTheDocument()
     expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+
+  describe('продление', () => {
+    it('«Продлить» открывает окно с текущим сроком; новый срок уходит в API и список обновляется', async () => {
+      bookings = [makeBooking()]
+      vi.mocked(api.post).mockImplementation(async () => {
+        bookings = [makeBooking({ expected_return_at: '3000-01-31' })]
+        return bookings[0]
+      })
+      const user = userEvent.setup()
+      renderPage()
+      await user.click(await screen.findByRole('button', { name: 'Продлить' }))
+      const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду PC-010' }))
+      expect(dialog.getByLabelText(/Новый срок/)).toHaveAttribute('min', '3000-01-01')
+      await user.type(dialog.getByLabelText(/Новый срок/), '3000-01-31')
+      await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(api.post).toHaveBeenCalledWith('/bookings/1/extend', { expected_return_at: '3000-01-31' })
+      expect(await screen.findByText(formatDate('3000-01-31'))).toBeInTheDocument()
+    })
+
+    it('в истории кнопки «Продлить» нет', async () => {
+      bookings = [makeBooking({ status: 'returned', returned_at: '2024-01-11T09:00:00Z' })]
+      renderPage()
+      await screen.findByText('История')
+      expect(screen.queryByRole('button', { name: 'Продлить' })).not.toBeInTheDocument()
+    })
   })
 
   describe('возврат', () => {
