@@ -1,6 +1,7 @@
 """Вход и сессии: локальные админы, dev-вход, блокировка перебора, cookie, logout, /me, SSO-права из admins.txt,
 защита старта в prod, Bouncer."""
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from itertools import count
@@ -83,6 +84,21 @@ async def test_login_cookie_flags(client, make_user, monkeypatch):
     assert "secure" not in cookie
     monkeypatch.setattr(settings, "cookie_secure", True)
     assert "secure" in (await _login(client, "admin")).headers["set-cookie"].lower()
+
+
+async def test_password_is_verified_off_the_event_loop(client, make_user, monkeypatch):
+    """scrypt считается в рабочем потоке: иначе каждый вход замораживает весь event loop."""
+    await make_user("admin")
+    real, seen = auth_routes.verify_password, []
+
+    def spy(password, stored):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return real(password, stored)
+
+    monkeypatch.setattr(auth_routes, "verify_password", spy)
+    assert (await _login(client, "admin")).status_code == 200
+    assert (await _login(client, "admin", "wrong")).status_code == 401
+    assert seen == [False, False]
 
 
 async def test_login_normalizes_username(client, make_user):

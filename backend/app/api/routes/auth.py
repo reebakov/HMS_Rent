@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -125,7 +126,8 @@ async def login(data: LoginIn, request: Request, response: Response, session: DB
     user = await session.scalar(select(User).where(User.username == username))
 
     if user is not None and user.auth_source == "local" and settings.auth_local_enabled:
-        if not user.is_active or not verify_password(data.password, user.password_hash):
+        # scrypt занимает десятки миллисекунд процессора: в потоке, чтобы не стопорить event loop
+        if not user.is_active or not await asyncio.to_thread(verify_password, data.password, user.password_hash):
             _register_failure(username, ip)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
         _failed.pop((username, ip), None)
