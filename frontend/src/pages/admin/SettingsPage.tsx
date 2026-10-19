@@ -111,7 +111,7 @@ function SettingsForm({ data }: { data: AppSettings }) {
                 ) : (
                   <span className="flex gap-2">
                     <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                    {String(check.data.error)}
+                    {check.data.error}
                   </span>
                 )}
               </div>

@@ -200,6 +200,11 @@ export interface AssetEvent {
   created_at: string
 }
 
+export interface EventPage {
+  items: AssetEvent[]
+  total: number
+}
+
 export interface ComputerHistory {
   computer: InventoryRow
   attributes: Record<string, string>
@@ -312,7 +317,7 @@ export interface VmCreate {
   requester_nick: string
   purpose?: string
   expected_return_at?: string | null
-  template_key?: string | null // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+  template_key?: string | null
 }
 
 // ---------- Настройки и сотрудники ----------
@@ -369,6 +374,11 @@ export interface ServiceComment {
   from_portal: boolean
 }
 
+export interface RequestDetail {
+  request: ServiceRequest
+  comments: ServiceComment[]
+}
+
 // ---------- Просрочки и детали синхронизации ----------
 
 export interface OverdueItem {
@@ -392,3 +402,19 @@ export interface SyncRunDetails {
   created: { id: number; name: string }[]
   archived: { id: number; name: string }[]
 }
+
+/** Ответ POST /admin/vsphere/check: «ok» — всё найдено, иначе текст ошибки */
+export type VsphereCheck =
+  | {
+      ok: true
+      vcenter: string
+      datacenter: string
+      pool: string
+      folder: string
+      template: string
+      template_cpu: number
+      template_ram_gb: number
+      template_disk_gb: number
+      templates: Record<string, boolean>
+    }
+  | { ok: false; error: string }

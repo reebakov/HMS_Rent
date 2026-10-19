@@ -1,11 +1,12 @@
-import React, { useEffect, useState, type FormEvent, useMemo } from 'react'
+import React, { useState, type FormEvent, useMemo } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, Cloud, LockKeyhole, Monitor, MonitorSmartphone, ShieldCheck, Zap, KeyRound } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
+import { QueryError } from '@/components/ui/data-state'
 import { api } from '@/lib/api'
-import type { AuthConfig } from '@/lib/types'
+import { useAuthConfig } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 const FEATURES = [
@@ -58,8 +59,11 @@ function generateSpotlightGrid(count: number) {
 export function LoginPage() {
   const { session, login } = useAuth()
   const [params] = useSearchParams()
-  const [config, setConfig] = useState<AuthConfig | null>(null)
-  const [adminOpen, setAdminOpen] = useState(false)
+  const authConfig = useAuthConfig()
+  const config = authConfig.data
+  // пока вход для администраторов не переключали вручную, он открыт, если корпоративного входа нет
+  const [adminToggled, setAdminToggled] = useState<boolean | null>(null)
+  const adminOpen = adminToggled ?? (config ? !config.bouncer_enabled : false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(params.get('error'))
@@ -75,13 +79,6 @@ export function LoginPage() {
     e.currentTarget.style.setProperty('--spotlight-x', `${x}px`)
     e.currentTarget.style.setProperty('--spotlight-y', `${y}px`)
   }
-
-  useEffect(() => {
-    api.get<AuthConfig>('/auth/config').then((c) => {
-      setConfig(c)
-      if (!c.bouncer_enabled) setAdminOpen(true)
-    }).catch(() => undefined)
-  }, [])
 
   if (session) return <Navigate to="/" replace />
 
@@ -194,6 +191,8 @@ export function LoginPage() {
             <div className="mb-4 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">{error}</div>
           )}
 
+          <QueryError query={authConfig} title="Не удалось загрузить настройки входа" />
+
           {config?.bouncer_enabled && (
             <a
               href={api.url('/auth/bouncer/login', { next: '/' })}
@@ -216,7 +215,7 @@ export function LoginPage() {
               {config?.bouncer_enabled && (
                 <button
                   type="button"
-                  onClick={() => setAdminOpen((v) => !v)}
+                  onClick={() => setAdminToggled(!adminOpen)}
                   className="flex w-full items-center justify-between py-1 text-[13px] font-medium text-muted-foreground hover:text-foreground"
                 >
                   <span className="flex items-center gap-2">

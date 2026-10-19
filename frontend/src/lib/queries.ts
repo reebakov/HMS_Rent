@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
   Booking, BookingCreate, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
-  AdminUserRow, AppSettings, AssetEvent, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
-  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, ServiceComment, OverdueItem, SyncRunDetails,
+  AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
+  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, RequestDetail, VsphereCheck,
 } from './types'
 
 export interface ComputerFilters {
@@ -15,6 +15,8 @@ export interface ComputerFilters {
   gpu_only?: boolean
   sort?: 'name' | 'ram_desc' | 'ram_asc'
 }
+
+export const useAuthConfig = () => useQuery({ queryKey: ['auth-config'], queryFn: () => api.get<AuthConfig>('/auth/config') })
 
 export const useCatalogSummary = (refreshSec = 15) =>
   useQuery({
@@ -113,6 +115,10 @@ export const useInventory = (filters: InventoryFilters) =>
     placeholderData: (prev) => prev,
   })
 
+/** Ссылка на CSV-выгрузку инвентаризации с текущими фильтрами пула и отдела */
+export const inventoryExportUrl = ({ department_id, pool_id }: InventoryFilters) =>
+  api.url('/admin/inventory/export', { department_id, pool_id })
+
 export const useComputerHistory = (id: number | null) =>
   useQuery({
     queryKey: ['admin', 'computer', id],
@@ -130,7 +136,7 @@ export const useJournal = (filters: JournalFilters) =>
 export const useEvents = (filters: EventFilters = { limit: 12, offset: 0 }) =>
   useQuery({ 
     queryKey: ['admin', 'events', filters], 
-    queryFn: () => api.get<{ items: AssetEvent[], total: number }>('/admin/events', { ...filters }),
+    queryFn: () => api.get<EventPage>('/admin/events', { ...filters }),
     placeholderData: (prev) => prev,
   })
 
@@ -244,7 +250,7 @@ export function useSaveSettings() {
 }
 
 export const useVsphereCheck = () =>
-  useMutation({ mutationFn: () => api.post<Record<string, string | number | boolean>>('/admin/vsphere/check') })
+  useMutation({ mutationFn: () => api.post<VsphereCheck>('/admin/vsphere/check') })
 
 export const useAdminUsers = () =>
   useQuery({ queryKey: ['admin', 'users'], queryFn: () => api.get<AdminUserRow[]>('/admin/users') })
@@ -269,7 +275,7 @@ export const useMyRequests = () =>
 export const useRequestDetail = (id: number | null) =>
   useQuery({
     queryKey: ['request', id],
-    queryFn: () => api.get<{ request: ServiceRequest; comments: ServiceComment[] }>(`/requests/${id}`),
+    queryFn: () => api.get<RequestDetail>(`/requests/${id}`),
     enabled: id !== null,
     refetchInterval: 15_000, // новые ответы админов подтягиваются сами
   })

@@ -31,6 +31,19 @@ beforeEach(() => {
 })
 
 describe('запросы на чтение', () => {
+  it('useAuthConfig: GET /auth/config', async () => {
+    vi.mocked(api.get).mockResolvedValue({ app_name: 'HMS Rent', bouncer_enabled: true })
+    const { result } = hook(() => q.useAuthConfig())
+    await waitFor(() => expect(result.current.data).toEqual({ app_name: 'HMS Rent', bouncer_enabled: true }))
+    expect(api.get).toHaveBeenCalledWith('/auth/config')
+  })
+
+  it('inventoryExportUrl: берёт из фильтров только отдел и пул', () => {
+    vi.mocked(api.url).mockReturnValue('/export')
+    expect(q.inventoryExportUrl({ q: 'pc', department_id: 3, pool_id: 'none', status: 'available' })).toBe('/export')
+    expect(api.url).toHaveBeenCalledWith('/admin/inventory/export', { department_id: 3, pool_id: 'none' })
+  })
+
   it('useCatalogSummary: берёт /catalog/summary, ключ и интервал из refreshSec', async () => {
     vi.mocked(api.get).mockResolvedValue([{ tier: 'weak' }])
     const { result } = hook(() => q.useCatalogSummary(7))

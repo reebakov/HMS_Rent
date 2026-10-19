@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge, TierBadge } from '@/components/ui/badge'
 import { ComputerHistorySheet } from '@/features/admin/ComputerHistorySheet'
 import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
-import { useAssignPool, useDepartments, useInventory, usePools, type InventoryFilters } from '@/lib/queries'
+import { useAssignPool, useDepartments, useInventory, usePools, inventoryExportUrl, type InventoryFilters } from '@/lib/queries'
 import { STATUSES, TIERS, TIER_ORDER } from '@/lib/dictionaries'
-import { api } from '@/lib/api'
 import type { ComputerStatus } from '@/lib/types'
 import { cn, formatDate, isOverdue } from '@/lib/utils'
 
@@ -86,7 +85,7 @@ export function InventoryPage() {
     }
   }
 
-  const exportUrl = api.url('/admin/inventory/export', { department_id: filters.department_id, pool_id: filters.pool_id })
+  const exportUrl = inventoryExportUrl(filters)
   const from = total ? page * PAGE + 1 : 0
   const to = Math.min(total, (page + 1) * PAGE)
 
