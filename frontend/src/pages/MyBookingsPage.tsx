@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CalendarClock, CircleAlert, Inbox, Undo2 } from 'lucide-react'
+import { CalendarClock, Inbox, Undo2 } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
+import { DataState, ErrorNotice } from '@/components/ui/data-state'
 import { ReturnDialog } from '@/features/booking/BookingDialog'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
@@ -14,7 +15,8 @@ import { formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/uti
 
 export function MyBookingsPage() {
   const navigate = useNavigate()
-  const { data, isLoading, isError, error, refetch } = useMyBookings()
+  const bookings = useMyBookings()
+  const data = bookings.data
   const returnMutation = useReturnBooking()
   const [returning, setReturning] = useState<Booking | null>(null)
   const requests = useMyRequests()
@@ -44,104 +46,106 @@ export function MyBookingsPage() {
         action={<Button onClick={() => navigate('/')}>Забронировать ещё</Button>}
       />
 
+      {requests.isError && !requests.data && (
+        <Card className="mb-8">
+          <ErrorNotice title="Не удалось загрузить заявки" error={requests.error} onRetry={requests.refetch} />
+        </Card>
+      )}
+
       <MyVms
         requestsFor={(vmId) => requests.data?.filter((r) => r.vm_id === vmId) ?? []}
         onReport={(vm) => setProblem({ vmId: vm.id, name: vm.name })}
         onOpenRequest={setOpenedRequest}
       />
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-44 rounded-xl" />
-          <Skeleton className="h-44 rounded-xl" />
-        </div>
-      ) : isError && !data ? (
-        <Card>
-          <EmptyState
-            icon={CircleAlert}
-            title="Не удалось загрузить бронирования"
-            description={error instanceof Error ? error.message : 'Попробуйте ещё раз'}
-            action={
-              <Button variant="outline" onClick={() => refetch()}>
-                Повторить
-              </Button>
-            }
-          />
-        </Card>
-      ) : active.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={Inbox}
-            title="Активных бронирований нет"
-            description="Выберите свободный компьютер в каталоге — он появится здесь."
-            action={
-              <Button variant="outline" onClick={() => navigate('/')}>
-                Открыть каталог
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {active.map((b) => {
-            const overdue = isOverdue(b.expected_return_at)
-            return (
-              <Card key={b.id} className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-lg font-semibold tracking-tight">{b.computer.name}</p>
-                      <TierBadge tier={b.computer.tier} />
+      <DataState
+        query={bookings}
+        errorTitle="Не удалось загрузить бронирования"
+        errorCardClass=""
+        loading={
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-44 rounded-xl" />
+            <Skeleton className="h-44 rounded-xl" />
+          </div>
+        }
+        isEmpty={() => active.length === 0}
+        empty={
+          <Card>
+            <EmptyState
+              icon={Inbox}
+              title="Активных бронирований нет"
+              description="Выберите свободный компьютер в каталоге — он появится здесь."
+              action={
+                <Button variant="outline" onClick={() => navigate('/')}>
+                  Открыть каталог
+                </Button>
+              }
+            />
+          </Card>
+        }
+      >
+        {() => (
+          <div className="grid gap-4 md:grid-cols-2">
+            {active.map((b) => {
+              const overdue = isOverdue(b.expected_return_at)
+              return (
+                <Card key={b.id} className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-semibold tracking-tight">{b.computer.name}</p>
+                        <TierBadge tier={b.computer.tier} />
+                      </div>
+                      <p className="mt-0.5 text-xs font-medium text-muted-foreground">Заказ №{b.order_number}</p>
+                      <p className="mt-0.5 text-[13px] text-muted-foreground">
+                        {[b.computer.cpu, b.computer.ram_gb && `${b.computer.ram_gb} ГБ`, b.computer.gpu].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
-                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">Заказ №{b.order_number}</p>
-                    <p className="mt-0.5 text-[13px] text-muted-foreground">
-                      {[b.computer.cpu, b.computer.ram_gb && `${b.computer.ram_gb} ГБ`, b.computer.gpu].filter(Boolean).join(' · ')}
-                    </p>
+                    {overdue ? <Badge tone="danger">Срок вышел</Badge> : <Badge tone="primary" dot>Активна</Badge>}
                   </div>
-                  {overdue ? <Badge tone="danger">Срок вышел</Badge> : <Badge tone="primary" dot>Активна</Badge>}
-                </div>
 
-                <dl className="mt-5 grid grid-cols-2 gap-4 text-[13px]">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Отдел</dt>
-                    <dd className="mt-0.5 font-medium">{b.department.name}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Ответственный</dt>
-                    <dd className="mt-0.5 font-medium">
-                      {b.requester_name} <span className="text-muted-foreground">({b.requester_nick})</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Взят</dt>
-                    <dd className="mt-0.5 font-medium">
-                      {formatDate(b.booked_at)} <span className="text-muted-foreground">· {formatDuration(b.booked_at)}</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Вернуть до</dt>
-                    <dd className={overdue ? 'mt-0.5 font-medium text-danger' : 'mt-0.5 font-medium'}>
-                      {b.expected_return_at ? formatDate(b.expected_return_at) : 'Без срока'}
-                    </dd>
-                  </div>
-                </dl>
-                {b.purpose && <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">{b.purpose}</p>}
+                  <dl className="mt-5 grid grid-cols-2 gap-4 text-[13px]">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Отдел</dt>
+                      <dd className="mt-0.5 font-medium">{b.department.name}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Ответственный</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {b.requester_name} <span className="text-muted-foreground">({b.requester_nick})</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Взят</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {formatDate(b.booked_at)} <span className="text-muted-foreground">· {formatDuration(b.booked_at)}</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Вернуть до</dt>
+                      <dd className={overdue ? 'mt-0.5 font-medium text-danger' : 'mt-0.5 font-medium'}>
+                        {b.expected_return_at ? formatDate(b.expected_return_at) : 'Без срока'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {b.purpose && <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">{b.purpose}</p>}
 
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
-                  <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
-                  <div className="ml-auto flex gap-1">
-                  <ReportProblemButton onClick={() => setProblem({ bookingId: b.id, name: b.computer.name })} />
-                  <Button variant="outline" size="sm" onClick={() => setReturning(b)}>
-                    <Undo2 className="h-3.5 w-3.5" />
-                    Вернуть компьютер
-                  </Button>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+                    <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
+                    <div className="ml-auto flex gap-1">
+                    <ReportProblemButton onClick={() => setProblem({ bookingId: b.id, name: b.computer.name })} />
+                    <Button variant="outline" size="sm" onClick={() => setReturning(b)}>
+                      <Undo2 className="h-3.5 w-3.5" />
+                      Вернуть компьютер
+                    </Button>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            )
-          })}
-        </div>
-      )}
+                </Card>
+              )
+            })}
+          </div>
+        )}
+      </DataState>
 
       {history.length > 0 && (
         <Card className="mt-8">

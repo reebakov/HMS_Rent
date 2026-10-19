@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { CircleAlert, Cloud, Copy, Loader2, Trash2 } from 'lucide-react'
+import { Cloud, Copy, Loader2, Trash2 } from 'lucide-react'
 import { Badge, type Tone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
+import { DataState } from '@/components/ui/data-state'
 import { Dialog } from '@/components/ui/dialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
 import type { ServiceRequest, Vm, VmStatus } from '@/lib/types'
@@ -19,7 +20,6 @@ export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boo
   deleted: { label: 'Удалена', tone: 'muted' },
 }
 
-/** Виртуалки сотрудника в «Моей аренде» */
 /** Виртуалки в «Моей аренде». Заявки Service Desk по ВМ — через пропсы от страницы */
 export function MyVms({
   requestsFor = () => [],
@@ -30,28 +30,10 @@ export function MyVms({
   onReport?: (vm: Vm) => void
   onOpenRequest?: (id: number) => void
 } = {}) {
-  const { data, isError, error, refetch } = useMyVms()
+  const vms = useMyVms()
   const release = useReleaseVm()
   const [confirm, setConfirm] = useState<Vm | null>(null)
-  const alive = data?.filter((v) => v.status !== 'deleted') ?? []
-
-  if (isError && !data) {
-    return (
-      <Card className="mb-8">
-        <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-[13px] text-danger">
-          <CircleAlert className="h-4 w-4 shrink-0" />
-          <span className="mr-auto">
-            Не удалось загрузить виртуальные машины{error instanceof Error ? `: ${error.message}` : ''}
-          </span>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            Повторить
-          </Button>
-        </div>
-      </Card>
-    )
-  }
-
-  if (!alive.length) return null
+  const alive = vms.data?.filter((v) => v.status !== 'deleted') ?? []
 
   const doRelease = async () => {
     if (!confirm) return
@@ -65,79 +47,90 @@ export function MyVms({
   }
 
   return (
-    <Card className="mb-8">
-      <CardHeader title="Виртуальные машины" description="Созданы в конструкторе. Подключение — по VNC" />
-      <div className="divide-y">
-        {alive.map((vm) => {
-          const st = VM_STATUS[vm.status]
-          return (
-            <div key={vm.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-300">
-                <Cloud className="h-5 w-5" />
-              </div>
-              <div className="min-w-[180px] flex-1">
-                <p className="font-semibold">
-                  {vm.name} <span className="ml-1 text-xs font-medium text-muted-foreground">Заказ №{vm.order_number}</span>
-                </p>
-                <p className="text-[13px] text-muted-foreground">
-                  {vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
-                </p>
-              </div>
-              <div className="text-[13px]">
-                {vm.ip_address ? (
-                  <button
-                    className="flex items-center gap-1.5 font-mono font-medium hover:text-primary"
-                    title="Скопировать"
-                    onClick={() => navigator.clipboard.writeText(vm.ip_address!).then(() => toast.success('IP скопирован'))}
-                  >
-                    {vm.ip_address} <Copy className="h-3.5 w-3.5" />
-                  </button>
-                ) : vm.status === 'ready' ? (
-                  <span className="text-muted-foreground">Windows загружается…</span>
-                ) : null}
-                <p className="text-xs text-muted-foreground">
-                  с {formatDateTime(vm.created_at)}
-                  {vm.expected_return_at && ` · до ${formatDate(vm.expected_return_at)}`}
-                </p>
-              </div>
-              <Badge tone={st.tone} dot={!st.busy}>
-                {st.busy && <Loader2 className="h-3 w-3 animate-spin" />}
-                {st.label}
-              </Badge>
-              <RequestBadges requests={requestsFor(vm.id)} onOpen={onOpenRequest} />
-              {onReport && vm.status !== 'deleting' && <ReportProblemButton onClick={() => onReport(vm)} />}
-              {(vm.status === 'ready' || vm.status === 'failed' || vm.status === 'queued') && (
-                <Button variant="outline" size="sm" onClick={() => setConfirm(vm)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {vm.status === 'queued' ? 'Отменить' : 'Отказаться'}
-                </Button>
-              )}
-              {vm.status === 'failed' && vm.error && (
-                <p className="w-full rounded-lg bg-danger/5 px-3 py-2 text-xs text-danger">{vm.error}</p>
-              )}
-            </div>
-          )
-        })}
-      </div>
+    <DataState
+      query={vms}
+      errorTitle="Не удалось загрузить виртуальные машины"
+      errorCardClass="mb-8"
+      loading={null}
+      isEmpty={() => alive.length === 0}
+      empty={null}
+    >
+      {() => (
+        <Card className="mb-8">
+          <CardHeader title="Виртуальные машины" description="Созданы в конструкторе. Подключение — по VNC" />
+          <div className="divide-y">
+            {alive.map((vm) => {
+              const st = VM_STATUS[vm.status]
+              return (
+                <div key={vm.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-300">
+                    <Cloud className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-[180px] flex-1">
+                    <p className="font-semibold">
+                      {vm.name} <span className="ml-1 text-xs font-medium text-muted-foreground">Заказ №{vm.order_number}</span>
+                    </p>
+                    <p className="text-[13px] text-muted-foreground">
+                      {vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
+                    </p>
+                  </div>
+                  <div className="text-[13px]">
+                    {vm.ip_address ? (
+                      <button
+                        className="flex items-center gap-1.5 font-mono font-medium hover:text-primary"
+                        title="Скопировать"
+                        onClick={() => navigator.clipboard.writeText(vm.ip_address!).then(() => toast.success('IP скопирован'))}
+                      >
+                        {vm.ip_address} <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    ) : vm.status === 'ready' ? (
+                      <span className="text-muted-foreground">Windows загружается…</span>
+                    ) : null}
+                    <p className="text-xs text-muted-foreground">
+                      с {formatDateTime(vm.created_at)}
+                      {vm.expected_return_at && ` · до ${formatDate(vm.expected_return_at)}`}
+                    </p>
+                  </div>
+                  <Badge tone={st.tone} dot={!st.busy}>
+                    {st.busy && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {st.label}
+                  </Badge>
+                  <RequestBadges requests={requestsFor(vm.id)} onOpen={onOpenRequest} />
+                  {onReport && vm.status !== 'deleting' && <ReportProblemButton onClick={() => onReport(vm)} />}
+                  {(vm.status === 'ready' || vm.status === 'failed' || vm.status === 'queued') && (
+                    <Button variant="outline" size="sm" onClick={() => setConfirm(vm)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {vm.status === 'queued' ? 'Отменить' : 'Отказаться'}
+                    </Button>
+                  )}
+                  {vm.status === 'failed' && vm.error && (
+                    <p className="w-full rounded-lg bg-danger/5 px-3 py-2 text-xs text-danger">{vm.error}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
 
-      <Dialog
-        open={!!confirm}
-        onOpenChange={(o) => !o && setConfirm(null)}
-        title={confirm ? `Отказаться от ${confirm.name}?` : ''}
-        description="Виртуалка будет выключена и удалена вместе с диском. Сохраните нужные файлы заранее."
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setConfirm(null)}>
-              Отмена
-            </Button>
-            <Button variant="danger" loading={release.isPending} onClick={doRelease}>
-              Удалить
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[13px] text-muted-foreground">Отменить удаление после подтверждения будет нельзя.</p>
-      </Dialog>
-    </Card>
+          <Dialog
+            open={!!confirm}
+            onOpenChange={(o) => !o && setConfirm(null)}
+            title={confirm ? `Отказаться от ${confirm.name}?` : ''}
+            description="Виртуалка будет выключена и удалена вместе с диском. Сохраните нужные файлы заранее."
+            footer={
+              <>
+                <Button variant="outline" onClick={() => setConfirm(null)}>
+                  Отмена
+                </Button>
+                <Button variant="danger" loading={release.isPending} onClick={doRelease}>
+                  Удалить
+                </Button>
+              </>
+            }
+          >
+            <p className="text-[13px] text-muted-foreground">Отменить удаление после подтверждения будет нельзя.</p>
+          </Dialog>
+        </Card>
+      )}
+    </DataState>
   )
 }

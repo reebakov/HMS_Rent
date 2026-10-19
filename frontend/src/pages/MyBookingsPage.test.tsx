@@ -148,6 +148,25 @@ describe('MyBookingsPage', () => {
     expect(screen.queryByText('Не удалось загрузить бронирования')).not.toBeInTheDocument()
   })
 
+  it('ошибка загрузки заявок: сообщение и «Повторить», брони при этом показываются', async () => {
+    const user = userEvent.setup()
+    bookings = [makeBooking()]
+    let fail = true
+    const base = vi.mocked(api.get).getMockImplementation()!
+    vi.mocked(api.get).mockImplementation(async (path: string, query?: never) => {
+      if (path === '/requests/my' && fail) throw new ApiError(500, 'Jira недоступна')
+      return base(path, query)
+    })
+    renderPage()
+    expect(await screen.findByText('Не удалось загрузить заявки')).toBeInTheDocument()
+    expect(screen.getByText('Jira недоступна')).toBeInTheDocument()
+    expect(screen.getByText('PC-010')).toBeInTheDocument()
+
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    await waitFor(() => expect(screen.queryByText('Не удалось загрузить заявки')).not.toBeInTheDocument())
+  })
+
   it('рисует карточку активной брони: заказ, характеристики, отдел, ответственный, цель', async () => {
     bookings = [makeBooking({ purpose: 'Сборка релиза' })]
     renderPage()

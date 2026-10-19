@@ -86,7 +86,8 @@ describe('MyVms', () => {
       return [makeVm()]
     })
     renderWithProviders(<MyVms />)
-    expect(await screen.findByText(/Не удалось загрузить виртуальные машины: Сервер недоступен/)).toBeInTheDocument()
+    expect(await screen.findByText('Не удалось загрузить виртуальные машины')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
 
     fail = false
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
