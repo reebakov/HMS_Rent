@@ -19,3 +19,15 @@ class Conflict(DomainError):
 
 class Forbidden(DomainError):
     status_code = 403
+
+
+class Unauthorized(DomainError):
+    status_code = 401
+
+
+class Unprocessable(DomainError):
+    status_code = 422
+
+
+class TooManyRequests(DomainError):
+    status_code = 429

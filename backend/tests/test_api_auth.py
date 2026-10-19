@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.api.routes import auth as auth_routes
+from app.services import auth as auth_service, auth_throttle
 from app.core import admins
 from app.core.config import settings
 from app.core.security import create_session_token
@@ -24,10 +25,10 @@ ADMIN = UserRole.admin.value
 
 @pytest.fixture(autouse=True)
 def _reset_throttle():
-    for store in (auth_routes._failed, auth_routes._failed_by_user):
+    for store in (auth_throttle._failed, auth_throttle._failed_by_user):
         store.clear()
     yield
-    for store in (auth_routes._failed, auth_routes._failed_by_user):
+    for store in (auth_throttle._failed, auth_throttle._failed_by_user):
         store.clear()
 
 
@@ -89,13 +90,13 @@ async def test_login_cookie_flags(client, make_user, monkeypatch):
 async def test_password_is_verified_off_the_event_loop(client, make_user, monkeypatch):
     """scrypt считается в рабочем потоке: иначе каждый вход замораживает весь event loop."""
     await make_user("admin")
-    real, seen = auth_routes.verify_password, []
+    real, seen = auth_service.verify_password, []
 
     def spy(password, stored):
         seen.append(threading.current_thread() is threading.main_thread())
         return real(password, stored)
 
-    monkeypatch.setattr(auth_routes, "verify_password", spy)
+    monkeypatch.setattr(auth_service, "verify_password", spy)
     assert (await _login(client, "admin")).status_code == 200
     assert (await _login(client, "admin", "wrong")).status_code == 401
     assert seen == [False, False]
@@ -153,7 +154,7 @@ async def test_lockout_expires(client, make_user):
     for _ in range(settings.login_max_attempts):
         await _login(client, "admin", "wrong")
     old = time.time() - settings.login_lock_minutes * 60 - 1
-    for store in (auth_routes._failed, auth_routes._failed_by_user):  # попытки «состарились»
+    for store in (auth_throttle._failed, auth_throttle._failed_by_user):  # попытки «состарились»
         for key in list(store):
             store[key] = [old] * len(store[key])
     assert (await _login(client, "admin")).status_code == 200
@@ -188,7 +189,7 @@ async def test_lockout_uses_last_forwarded_address(client, make_user):
 async def test_username_wide_cap_stops_spoofed_addresses(client, make_user):
     """Если адрес подделан и каждый раз новый, перебор упирается в общий потолок на логин."""
     await make_user("admin", role=ADMIN)
-    cap = settings.login_max_attempts * auth_routes.LOGIN_USER_LIMIT_FACTOR
+    cap = settings.login_max_attempts * auth_throttle.LOGIN_USER_LIMIT_FACTOR
     for i in range(cap):
         assert (await _login(client, "admin", "wrong", ip=f"10.1.{i // 250}.{i % 250}")).status_code == 401
     assert (await _login(client, "admin", ip="198.51.100.7")).status_code == 429
@@ -198,12 +199,12 @@ async def test_expired_throttle_keys_are_dropped(client, make_user):
     await make_user("admin", role=ADMIN)
     await _login(client, "admin", "wrong", ip="203.0.113.9")
     old = time.time() - settings.login_lock_minutes * 60 - 1
-    for store in (auth_routes._failed, auth_routes._failed_by_user):
+    for store in (auth_throttle._failed, auth_throttle._failed_by_user):
         for key in list(store):
             store[key] = [old]
     await _login(client, "admin", "wrong", ip="203.0.113.9")  # проверка выбрасывает устаревшие попытки
-    assert [len(v) for v in auth_routes._failed.values()] == [1]
-    assert [len(v) for v in auth_routes._failed_by_user.values()] == [1]
+    assert [len(v) for v in auth_throttle._failed.values()] == [1]
+    assert [len(v) for v in auth_throttle._failed_by_user.values()] == [1]
 
 
 async def test_lockout_applies_to_unknown_usernames_too(client):

@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import select
 
 from app.api.routes import auth as auth_routes
+from app.services import auth_throttle
 from app.core import admins
 from app.core.config import settings
 from app.integrations.auth import bouncer
@@ -26,7 +27,7 @@ def bouncer_on(monkeypatch):
     for k, v in dict(bouncer_client_id="cid", bouncer_client_secret="sec", bouncer_authorize_url="https://sso.example/authorize",
                      bouncer_token_url=TOKEN_URL, public_url="https://rent.corp.io/").items():
         monkeypatch.setattr(settings, k, v)
-    auth_routes._failed.clear()
+    auth_throttle._failed.clear()
 
 
 @pytest.fixture

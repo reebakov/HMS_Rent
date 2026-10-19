@@ -1,34 +1,20 @@
-import asyncio
-import time
-from collections import defaultdict
-from datetime import datetime, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
-from app.core.security import create_oauth_state, create_session_token, read_oauth_state, verify_password
+from app.core.security import create_oauth_state, create_session_token, read_oauth_state
 from app.integrations.auth import bouncer
-from app.integrations.auth.base import AuthError, AuthResult
-from app.integrations.auth.dev import dev_login
-from app.models import User, UserRole
+from app.integrations.auth.base import AuthError
+from app.models import User
 from app.schemas.auth import AuthConfigOut, LoginIn, SessionOut, UserOut
-from app.services import runtime
+from app.services import auth, runtime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 OAUTH_COOKIE = "hmsrent_oauth"
-# Неудачные попытки входа живут в памяти процесса (backend запускается одним процессом).
-# Основной счётчик — по паре (логин, адрес): чужой перебор не блокирует настоящему админу вход с его адреса.
-# Запасной — по одному логину со всех адресов, с потолком в LOGIN_USER_LIMIT_FACTOR раз выше: если адрес
-# подделан (X-Forwarded-For), перебор всё равно упирается в этот потолок.
-_failed: dict[tuple[str, str], list[float]] = defaultdict(list)
-_failed_by_user: dict[str, list[float]] = defaultdict(list)
-LOGIN_USER_LIMIT_FACTOR = 10
-_PRUNE_ABOVE = 10_000  # ключей в словаре, после которых вычищаем устаревшие (чтобы память не росла от случайных логинов)
 
 
 def _session_out(user: User) -> SessionOut:
@@ -57,56 +43,6 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _recent(store: dict, key, window: float) -> list[float]:
-    """Свежие попытки по ключу; устаревшие выбрасываются, пустой ключ удаляется."""
-    attempts = [t for t in store.get(key, ()) if time.time() - t < window]
-    if attempts:
-        store[key] = attempts
-    else:
-        store.pop(key, None)
-    return attempts
-
-
-def _check_throttle(username: str, ip: str) -> None:
-    window = settings.login_lock_minutes * 60
-    by_pair = len(_recent(_failed, (username, ip), window))
-    by_user = len(_recent(_failed_by_user, username, window))
-    if by_pair >= settings.login_max_attempts or by_user >= settings.login_max_attempts * LOGIN_USER_LIMIT_FACTOR:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
-                            f"Слишком много попыток. Повторите через {settings.login_lock_minutes} мин.")
-
-
-def _register_failure(username: str, ip: str) -> None:
-    now = time.time()
-    _failed[(username, ip)].append(now)
-    _failed_by_user[username].append(now)
-    if len(_failed) > _PRUNE_ABOVE or len(_failed_by_user) > _PRUNE_ABOVE:
-        window = settings.login_lock_minutes * 60
-        for key in list(_failed):
-            _recent(_failed, key, window)
-        for key in list(_failed_by_user):
-            _recent(_failed_by_user, key, window)
-
-
-async def _upsert_sso_user(session: DB, result: AuthResult, source: str) -> User:
-    """Сотрудник из Bouncer/dev: создаём при первом входе, обновляем имя."""
-    user = await session.scalar(select(User).where(User.username == result.username))
-    if user is None:
-        user = User(username=result.username, auth_source=source)
-        session.add(user)
-    elif not user.is_active:
-        raise AuthError("Учётная запись отключена администратором портала")
-    elif user.auth_source == "local":
-        raise AuthError("Этот логин принадлежит локальной учётке администратора")
-    user.display_name = result.display_name
-    user.email = result.email
-    user.avatar_url = result.avatar_url
-    user.role = UserRole.admin.value if result.is_admin else UserRole.user.value
-    user.last_login_at = datetime.now(timezone.utc)
-    await session.commit()
-    return user
-
-
 @router.get("/config", response_model=AuthConfigOut)
 async def auth_config() -> AuthConfigOut:
     return AuthConfigOut(
@@ -120,28 +56,7 @@ async def auth_config() -> AuthConfigOut:
 @router.post("/login", response_model=SessionOut)
 async def login(data: LoginIn, request: Request, response: Response, session: DB) -> SessionOut:
     """Локальные учётки администраторов (логин + пароль). В dev-режиме — вход любым логином."""
-    username = data.username.strip().lower()
-    ip = _client_ip(request)
-    _check_throttle(username, ip)
-    user = await session.scalar(select(User).where(User.username == username))
-
-    if user is not None and user.auth_source == "local" and settings.auth_local_enabled:
-        # scrypt занимает десятки миллисекунд процессора: в потоке, чтобы не стопорить event loop
-        if not user.is_active or not await asyncio.to_thread(verify_password, data.password, user.password_hash):
-            _register_failure(username, ip)
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
-        _failed.pop((username, ip), None)
-        user.last_login_at = datetime.now(timezone.utc)
-        await session.commit()
-    elif settings.auth_dev_enabled:
-        try:
-            user = await _upsert_sso_user(session, dev_login(username), "dev")
-        except AuthError as exc:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
-    else:
-        _register_failure(username, ip)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
-
+    user = await auth.login(session, data.username, data.password, _client_ip(request))
     _set_session(response, user)
     return _session_out(user)
 
@@ -181,7 +96,7 @@ async def bouncer_callback(request: Request, session: DB, code: str = "", state:
     if not saved or not code or saved.get("state") != state:
         return fail("Сессия входа устарела, попробуйте ещё раз")
     try:
-        user = await _upsert_sso_user(session, await bouncer.exchange_code(code, saved["nonce"]), "bouncer")
+        user = await auth.upsert_sso_user(session, await bouncer.exchange_code(code, saved["nonce"]), "bouncer")
     except AuthError as exc:
         return fail(str(exc))
 
