@@ -16,6 +16,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType
 from app.services.events import add_event
@@ -86,7 +87,7 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
     return done
 
 
-async def _write(source, comp: Computer, values: dict, extras: dict, status_attribute: str | None) -> str | None:
+async def _write(source: InsightSource, comp: Computer, values: dict, extras: dict, status_attribute: str | None) -> str | None:
     """Пишет значения в Insight. Возвращает предупреждение, если статус записан, а доп. поля — нет."""
     try:
         await source.update_object(comp.insight_object_id, comp.insight_object_type_id, values, optional=set(extras))

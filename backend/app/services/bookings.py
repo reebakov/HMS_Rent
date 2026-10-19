@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.db.session import SessionLocal
+from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source, get_mapping
-from app.integrations.insight.mapping import map_object
+from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate
@@ -39,11 +40,11 @@ def status_after_return(comp: Computer) -> str:
     return insight
 
 
-async def _fresh_from_insight(comp: Computer):
+async def _fresh_from_insight(comp: Computer) -> ComputerData | None:
     """Статус ПК в Insight «прямо сейчас». None — проверить не удалось (бронь не блокируем)."""
     if comp.insight_object_id is None or comp.writeback_pending:
         return None  # если наши изменения ещё не доехали до Insight, его статус заведомо устаревший
-    source = None
+    source: InsightSource | None = None
     try:
         source = create_insight_source()
         obj = await source.get_object(comp.insight_object_id)

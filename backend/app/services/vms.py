@@ -10,6 +10,7 @@ from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
+from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import departments, runtime
 from app.services.orders import next_order_number
@@ -24,7 +25,7 @@ async def _alive_count(session: AsyncSession, user_id: int) -> int:
     ) or 0
 
 
-def _available_templates(cfg) -> list:
+def _available_templates(cfg: RuntimeConfig) -> list[VmTemplate]:
     """Шаблоны, из которых можно создавать: включены и указано имя шаблона в vCenter."""
     return [t for t in cfg.vm_templates if t.enabled and t.template]
 

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.integrations.insight.factory import create_insight_source
-from app.integrations.insight.mapping import map_object
+from app.integrations.insight.mapping import ComputerData, InsightMapping, map_object
 from app.models import (
     Booking, BookingStatus, Computer, ComputerStatus, Department, EventType, Pool, SyncRun, SyncRunStatus,
 )
@@ -40,7 +40,7 @@ FIELD_LABELS = {
 NOISY_ATTRIBUTES = {"Updated", "Created", "Key"}  # меняются при любой правке — в деталях не показываем
 
 
-def _fmt(value) -> str:
+def _fmt(value: object) -> str:
     if value is None or value == "":
         return "—"
     if isinstance(value, bool):
@@ -48,7 +48,7 @@ def _fmt(value) -> str:
     return str(value)[:200]
 
 
-def _attribute_diff(old: dict, new: dict, mapping) -> list[dict]:
+def _attribute_diff(old: dict, new: dict, mapping: InsightMapping) -> list[dict]:
     """Изменившиеся атрибуты Insight, которые не показаны выше как поля портала (пул, команда, срок…)."""
     covered = set(mapping.attributes.values()) | {mapping.specs_attribute} | NOISY_ATTRIBUTES
     return [
@@ -206,7 +206,7 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
 async def _pull_rental_fields(
     session: AsyncSession,
     comp: Computer,
-    data,
+    data: ComputerData,
     *,
     booked: bool,
     pools: dict[str, Pool],

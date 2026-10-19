@@ -29,6 +29,10 @@ class InsightSource(Protocol):
         """Все компьютеры/ВМ, попадающие под запрос из маппинга (limit > 0 — только первые N)."""
         ...
 
+    async def get_object(self, object_id: int) -> InsightObject | None:
+        """Один объект «прямо сейчас» (None — не найден) — для перепроверки статуса перед бронью."""
+        ...
+
     async def update_object(
         self, object_id: int, object_type_id: int | None, values: dict[str, str | None],
         optional: set[str] | None = None,
