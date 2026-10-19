@@ -52,9 +52,12 @@ let options: VmOptions
 
 const Where = () => <span data-testid="path">{useLocation().pathname}</span>
 
+/** Начальное состояние формы (шаблон, ползунки, имя) выставляет эффект после загрузки /vms/options, а порядок ответов
+ * опций и отделов не гарантирован: ждём результат эффекта (имя из сессии), иначе ползунки можно прочитать до него */
 async function setup(onClose = vi.fn()) {
   renderWithProviders(<><VmBuilderDialog open onClose={onClose} /><Where /></>, { route: '/' })
   await screen.findByRole('option', { name: 'Аналитика' })
+  await waitFor(() => expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue(session.user.display_name))
   return { onClose, user: userEvent.setup() }
 }
 
@@ -301,14 +304,6 @@ describe('VmBuilderDialog', () => {
   })
 })
 
-/** Начальное состояние (шаблон, диск, имя) выставляет эффект после загрузки /vms/options, а порядок ответов опций и
- * отделов не гарантирован: ждём результат эффекта, иначе слайдер можно прочитать до него */
-async function setupTemplates() {
-  const ctx = await setup()
-  await screen.findByDisplayValue('Иван Иванов')
-  return ctx.user
-}
-
 const osButton = (label: string) => screen.getByRole('button', { name: new RegExp(label) })
 const diskSlider = () => sliders()[2]
 const description = (text: string) => screen.getByText(text, { exact: false })
@@ -320,7 +315,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
   })
 
   it('рисует все шаблоны: доступные с минимальным диском, недоступные — «скоро» и отключены', async () => {
-    await setupTemplates()
+    await setup()
     expect(screen.getByText('Операционная система')).toBeInTheDocument()
     expect(osButton('Windows 10')).toHaveTextContent('диск от 50 ГБ')
     expect(osButton('Windows 10')).toBeEnabled()
@@ -332,7 +327,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
 
   it('по умолчанию выбран первый доступный шаблон, недоступный в начале списка пропускается', async () => {
     options = makeTemplateOptions([ubuntu, win11, win10])
-    await setupTemplates()
+    await setup()
     expect(osButton('Windows 11')).toHaveClass('border-primary')
     expect(osButton('Windows 10')).not.toHaveClass('border-primary')
     expect(osButton('Ubuntu 22.04')).not.toHaveClass('border-primary')
@@ -340,7 +335,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
   })
 
   it('клик по другому доступному шаблону переключает выбор и описание', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     expect(description('будет создана на Windows 10')).toBeInTheDocument()
     await user.click(osButton('Windows 11'))
     expect(osButton('Windows 11')).toHaveClass('border-primary')
@@ -349,7 +344,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
   })
 
   it('шаблон «скоро» не выбирается кликом', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     await user.click(osButton('Ubuntu 22.04'))
     expect(osButton('Ubuntu 22.04')).not.toHaveClass('border-primary')
     expect(osButton('Windows 10')).toHaveClass('border-primary')
@@ -358,7 +353,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
 
   it('нет доступных шаблонов — выбора нет, описание нейтральное, создать нельзя', async () => {
     options = makeTemplateOptions([{ ...ubuntu }, { ...win10, available: false }])
-    const user = await setupTemplates()
+    const { user } = await setup()
     expect(screen.getByText('Выберите операционную систему и ресурсы')).toBeInTheDocument()
     expect(osButton('Ubuntu 22.04')).toBeDisabled()
     expect(osButton('Windows 10')).toBeDisabled()
@@ -368,7 +363,7 @@ describe('VmBuilderDialog: выбор ОС', () => {
 
   it('пустой список шаблонов — создать нельзя', async () => {
     options = makeTemplateOptions([])
-    const user = await setupTemplates()
+    const { user } = await setup()
     expect(screen.queryByText('Операционная система')).toBeInTheDocument()
     await fillValid(user)
     expect(submit()).toBeDisabled()
@@ -382,18 +377,18 @@ describe('VmBuilderDialog: минимальный диск от шаблона',
 
   it('шаблон строже общего лимита — слайдер стартует с минимума шаблона', async () => {
     options = makeTemplateOptions([win11], { min_disk_gb: 40 })
-    await setupTemplates()
+    await setup()
     expect([diskSlider().min, diskSlider().max, diskSlider().value]).toEqual(['100', '200', '100'])
   })
 
   it('шаблон мягче общего лимита — действует общий минимум', async () => {
     options = makeTemplateOptions([{ ...win10, min_disk_gb: 20 }], { min_disk_gb: 40 })
-    await setupTemplates()
+    await setup()
     expect([diskSlider().min, diskSlider().value]).toEqual(['40', '40'])
   })
 
   it('смена шаблона пересчитывает минимум и поднимает значение диска', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     expect([diskSlider().min, diskSlider().value]).toEqual(['50', '50'])
     await user.click(osButton('Windows 11'))
     expect([diskSlider().min, diskSlider().value]).toEqual(['100', '100'])
@@ -401,14 +396,14 @@ describe('VmBuilderDialog: минимальный диск от шаблона',
   })
 
   it('выбранный пользователем диск выше минимума нового шаблона сохраняется', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     fireEvent.change(diskSlider(), { target: { value: '150' } })
     await user.click(osButton('Windows 11'))
     expect(diskSlider().value).toBe('150')
   })
 
   it('на отправку уходит диск не меньше минимума шаблона', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     fireEvent.change(diskSlider(), { target: { value: '60' } })
     await user.click(osButton('Windows 11'))
     await fillValid(user)
@@ -425,7 +420,7 @@ describe('VmBuilderDialog: отправка с шаблоном', () => {
 
   it('по умолчанию уходит template_key первого доступного шаблона', async () => {
     options = makeTemplateOptions([ubuntu, win10, win11])
-    const user = await setupTemplates()
+    const { user } = await setup()
     await fillValid(user)
     await user.click(submit())
     await waitFor(() => expect(api.post).toHaveBeenCalled())
@@ -433,7 +428,7 @@ describe('VmBuilderDialog: отправка с шаблоном', () => {
   })
 
   it('уходит template_key выбранного шаблона', async () => {
-    const user = await setupTemplates()
+    const { user } = await setup()
     await user.click(osButton('Windows 11'))
     await fillValid(user)
     await user.click(submit())
