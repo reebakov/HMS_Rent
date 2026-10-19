@@ -4,9 +4,11 @@ import { Cloud, Loader2 } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { VM_STATUS } from '@/features/vms/MyVms'
 import { useAdminVms, useReleaseVm } from '@/lib/queries'
+import type { Vm } from '@/lib/types'
 import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
 
 /** Все виртуалки из конструктора: кто, когда, какие ресурсы; админ может удалить любую */
@@ -14,12 +16,14 @@ export function VmsPage() {
   const [showDeleted, setShowDeleted] = useState(false)
   const vms = useAdminVms(showDeleted)
   const release = useReleaseVm()
+  const [removing, setRemoving] = useState<Vm | null>(null)
 
-  const remove = async (id: number, name: string) => {
-    if (!window.confirm(`Удалить виртуалку ${name}? Она будет выключена и удалена вместе с диском.`)) return
+  const remove = async () => {
+    if (!removing) return
     try {
-      await release.mutateAsync(id)
-      toast.success(`${name} будет удалена`)
+      await release.mutateAsync(removing.id)
+      toast.success(`${removing.name} будет удалена`)
+      setRemoving(null)
     } catch (e) {
       toast.error(errorMessage(e))
     }
@@ -89,7 +93,7 @@ export function VmsPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {['ready', 'failed', 'queued'].includes(vm.status) && (
-                            <Button size="sm" variant="ghost" onClick={() => remove(vm.id, vm.name)}>
+                            <Button size="sm" variant="ghost" onClick={() => setRemoving(vm)}>
                               Удалить
                             </Button>
                           )}
@@ -103,6 +107,16 @@ export function VmsPage() {
           )}
         </DataState>
       </Card>
+
+      <ConfirmDialog
+        open={!!removing}
+        onClose={() => setRemoving(null)}
+        title={removing ? `Удалить виртуалку ${removing.name}?` : ''}
+        description="Она будет выключена и удалена вместе с диском."
+        confirmLabel="Удалить"
+        pending={release.isPending}
+        onConfirm={remove}
+      />
     </>
   )
 }

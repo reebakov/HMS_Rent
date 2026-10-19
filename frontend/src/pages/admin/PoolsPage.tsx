@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Eye, EyeOff, Layers, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Card, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataState, QueryError } from '@/components/ui/data-state'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
@@ -25,6 +26,7 @@ export function PoolsPage() {
   const departments = useDepartments()
   const [editing, setEditing] = useState<Editing | null>(null)
   const [filling, setFilling] = useState<Pool | null>(null)
+  const [deleting, setDeleting] = useState<Pool | null>(null)
   const [names, setNames] = useState('')
 
   const submit = async () => {
@@ -49,11 +51,12 @@ export function PoolsPage() {
     }
   }
 
-  const destroy = async (pool: Pool) => {
-    if (!window.confirm(`Удалить пул «${pool.name}»? Компьютеры останутся в инвентаризации без пула.`)) return
+  const destroy = async () => {
+    if (!deleting) return
     try {
-      await remove.mutateAsync(pool.id)
+      await remove.mutateAsync(deleting.id)
       toast.success('Пул удалён')
+      setDeleting(null)
     } catch (e) {
       toast.error(errorMessage(e))
     }
@@ -148,7 +151,7 @@ export function PoolsPage() {
                     <Button size="icon" variant="ghost" title="Изменить" onClick={() => setEditing({ id: pool.id, name: pool.name, description: pool.description ?? '', departmentIds: pool.departments.map((d) => d.id) })}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" title="Удалить" onClick={() => destroy(pool)}>
+                    <Button size="icon" variant="ghost" title="Удалить" onClick={() => setDeleting(pool)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -210,6 +213,16 @@ export function PoolsPage() {
           </div>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Удалить пул «${deleting.name}»?` : ''}
+        description="Компьютеры останутся в инвентаризации без пула."
+        confirmLabel="Удалить"
+        pending={remove.isPending}
+        onConfirm={destroy}
+      />
 
       <Dialog
         open={!!filling}

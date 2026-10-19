@@ -71,11 +71,27 @@ describe('VmsPage', () => {
   })
 
   it('удаление после подтверждения: POST /vms/{id}/release', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderWithProviders(<VmsPage />)
     const row = (await screen.findByText('rent-design-01')).closest('tr')!
     await user.click(within(row).getByRole('button', { name: 'Удалить' }))
+    const dialog = screen.getByRole('dialog', {
+      name: 'Удалить виртуалку rent-design-01?',
+      description: 'Она будет выключена и удалена вместе с диском.',
+    })
+    expect(api.post).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: 'Удалить' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/1/release'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('«Отмена» закрывает окно без запроса', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<VmsPage />)
+    const row = (await screen.findByText('rent-design-01')).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Удалить' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Отмена' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
   })
 })

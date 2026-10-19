@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { AlarmClock, Cloud, Mail, Monitor } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { Button, buttonClass } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { Badge } from '@/components/ui/badge'
 import { useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
@@ -13,14 +15,16 @@ export function OverduePage() {
   const overdue = useOverdue()
   const returnPc = useReturnBooking()
   const releaseVm = useReleaseVm()
+  const [taking, setTaking] = useState<OverdueItem | null>(null)
 
-  const takeBack = async (item: OverdueItem) => {
-    const what = item.kind === 'pc' ? 'Вернуть компьютер' : 'Удалить виртуалку'
-    if (!window.confirm(`${what} ${item.name} без участия арендатора?`)) return
+  const takeBack = async () => {
+    if (!taking) return
+    const item = taking
     try {
       if (item.kind === 'pc') await returnPc.mutateAsync({ id: item.id, comment: 'Возврат администратором: просрочка' })
       else await releaseVm.mutateAsync(item.id)
       toast.success(item.kind === 'pc' ? `${item.name} возвращён` : `${item.name} будет удалена`)
+      setTaking(null)
     } catch (e) {
       toast.error(errorMessage(e))
     }
@@ -92,7 +96,7 @@ export function OverduePage() {
                                 Написать
                               </a>
                             )}
-                            <Button size="sm" variant="outline" onClick={() => takeBack(item)}>
+                            <Button size="sm" variant="outline" onClick={() => setTaking(item)}>
                               {item.kind === 'pc' ? 'Вернуть' : 'Удалить'}
                             </Button>
                           </div>
@@ -106,6 +110,15 @@ export function OverduePage() {
           )}
         </DataState>
       </Card>
+
+      <ConfirmDialog
+        open={!!taking}
+        onClose={() => setTaking(null)}
+        title={taking ? `${taking.kind === 'pc' ? 'Вернуть компьютер' : 'Удалить виртуалку'} ${taking.name} без участия арендатора?` : ''}
+        confirmLabel={taking?.kind === 'pc' ? 'Вернуть' : 'Удалить'}
+        pending={returnPc.isPending || releaseVm.isPending}
+        onConfirm={takeBack}
+      />
     </>
   )
 }

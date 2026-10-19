@@ -5,7 +5,7 @@ import { Badge, type Tone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
 import { DataState } from '@/components/ui/data-state'
-import { Dialog } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
 import type { ServiceRequest, Vm, VmStatus } from '@/lib/types'
 import { ReportProblemButton, RequestBadges } from '@/features/support/ServiceDesk'
@@ -111,24 +111,17 @@ export function MyVms({
             })}
           </div>
 
-          <Dialog
+          <ConfirmDialog
             open={!!confirm}
-            onOpenChange={(o) => !o && setConfirm(null)}
+            onClose={() => setConfirm(null)}
             title={confirm ? `Отказаться от ${confirm.name}?` : ''}
             description="Виртуалка будет выключена и удалена вместе с диском. Сохраните нужные файлы заранее."
-            footer={
-              <>
-                <Button variant="outline" onClick={() => setConfirm(null)}>
-                  Отмена
-                </Button>
-                <Button variant="danger" loading={release.isPending} onClick={doRelease}>
-                  Удалить
-                </Button>
-              </>
-            }
+            confirmLabel="Удалить"
+            pending={release.isPending}
+            onConfirm={doRelease}
           >
             <p className="text-[13px] text-muted-foreground">Отменить удаление после подтверждения будет нельзя.</p>
-          </Dialog>
+          </ConfirmDialog>
         </Card>
       )}
     </DataState>

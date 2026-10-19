@@ -133,67 +133,77 @@ describe('OverduePage: состояния', () => {
 })
 
 describe('OverduePage: «Вернуть» / «Удалить»', () => {
-  it('ПК: после подтверждения возвращает бронь администратором с комментарием', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    const user = userEvent.setup()
-    renderWithProviders(<OverduePage />)
+  const confirmDialog = (name: string) => screen.getByRole('dialog', { name })
+  const confirmPc = async (user: ReturnType<typeof userEvent.setup>) => {
     await screen.findByText('PC-010')
     await user.click(within(row('PC-010')).getByRole('button', { name: 'Вернуть' }))
-    expect(confirm).toHaveBeenCalledWith('Вернуть компьютер PC-010 без участия арендатора?')
+    return within(confirmDialog('Вернуть компьютер PC-010 без участия арендатора?'))
+  }
+  const confirmVm = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByText('vm-build-01')
+    await user.click(within(row('vm-build-01')).getByRole('button', { name: 'Удалить' }))
+    return within(confirmDialog('Удалить виртуалку vm-build-01 без участия арендатора?'))
+  }
+
+  it('ПК: после подтверждения возвращает бронь администратором с комментарием', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OverduePage />)
+    const dialog = await confirmPc(user)
+    expect(api.post).not.toHaveBeenCalled()
+    await user.click(dialog.getByRole('button', { name: 'Вернуть' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings/10/return', { comment: 'Возврат администратором: просрочка' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('PC-010 возвращён'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
   it('ВМ: после подтверждения освобождает виртуалку', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('vm-build-01')
-    await user.click(within(row('vm-build-01')).getByRole('button', { name: 'Удалить' }))
-    expect(confirm).toHaveBeenCalledWith('Удалить виртуалку vm-build-01 без участия арендатора?')
+    const dialog = await confirmVm(user)
+    expect(api.post).not.toHaveBeenCalled()
+    await user.click(dialog.getByRole('button', { name: 'Удалить' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/5/release'))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('vm-build-01 будет удалена'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('отказ в подтверждении — запросов нет', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('«Отмена» закрывает окно — запросов нет', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('PC-010')
-    await user.click(within(row('PC-010')).getByRole('button', { name: 'Вернуть' }))
+    const dialog = await confirmPc(user)
+    await user.click(dialog.getByRole('button', { name: 'Отмена' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('ошибка API — тост с текстом ошибки', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('ошибка API — тост с текстом ошибки, окно остаётся для повтора', async () => {
     vi.mocked(api.post).mockRejectedValue(new Error('Бронь уже закрыта'))
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('PC-010')
-    await user.click(within(row('PC-010')).getByRole('button', { name: 'Вернуть' }))
+    const dialog = await confirmPc(user)
+    await user.click(dialog.getByRole('button', { name: 'Вернуть' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Бронь уже закрыта'))
     expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('не-Error в ошибке — тост «Ошибка»', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.post).mockRejectedValue('boom')
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('vm-build-01')
-    await user.click(within(row('vm-build-01')).getByRole('button', { name: 'Удалить' }))
+    const dialog = await confirmVm(user)
+    await user.click(dialog.getByRole('button', { name: 'Удалить' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Ошибка'))
   })
 
   it('после действия список перезапрашивается', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('PC-010')
+    const dialog = await confirmPc(user)
     const before = vi.mocked(api.get).mock.calls.length
-    await user.click(within(row('PC-010')).getByRole('button', { name: 'Вернуть' }))
+    await user.click(dialog.getByRole('button', { name: 'Вернуть' }))
     await waitFor(() => expect(vi.mocked(api.get).mock.calls.length).toBeGreaterThan(before))
   })
 })

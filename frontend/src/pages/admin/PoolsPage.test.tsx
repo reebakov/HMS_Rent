@@ -230,34 +230,45 @@ describe('PoolsPage', () => {
   })
 
   describe('удаление', () => {
-    it('после подтверждения шлёт DELETE', async () => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-      const user = userEvent.setup()
-      renderWithProviders(<PoolsPage />)
+    const askDelete = async (user: ReturnType<typeof userEvent.setup>) => {
       await screen.findByText('Аренда')
       await user.click(within(card('Аренда')).getByTitle('Удалить'))
-      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Удалить пул «Аренда»?'))
+      return within(
+        screen.getByRole('dialog', {
+          name: 'Удалить пул «Аренда»?',
+          description: 'Компьютеры останутся в инвентаризации без пула.',
+        }),
+      )
+    }
+
+    it('после подтверждения шлёт DELETE', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(<PoolsPage />)
+      const dialog = await askDelete(user)
+      expect(api.del).not.toHaveBeenCalled()
+      await user.click(dialog.getByRole('button', { name: 'Удалить' }))
       await waitFor(() => expect(api.del).toHaveBeenCalledWith('/admin/pools/1'))
       expect(toast.success).toHaveBeenCalledWith('Пул удалён')
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     })
 
     it('без подтверждения ничего не удаляет', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(false)
       const user = userEvent.setup()
       renderWithProviders(<PoolsPage />)
-      await screen.findByText('Аренда')
-      await user.click(within(card('Аренда')).getByTitle('Удалить'))
+      const dialog = await askDelete(user)
+      await user.click(dialog.getByRole('button', { name: 'Отмена' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       expect(api.del).not.toHaveBeenCalled()
     })
 
-    it('ошибка удаления — тост; не-Error даёт «Ошибка»', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true)
+    it('ошибка удаления — тост, окно остаётся; не-Error даёт «Ошибка»', async () => {
       vi.mocked(api.del).mockRejectedValue('boom')
       const user = userEvent.setup()
       renderWithProviders(<PoolsPage />)
-      await screen.findByText('Аренда')
-      await user.click(within(card('Аренда')).getByTitle('Удалить'))
+      const dialog = await askDelete(user)
+      await user.click(dialog.getByRole('button', { name: 'Удалить' }))
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Ошибка'))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
   })
 
