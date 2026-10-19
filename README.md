@@ -85,6 +85,7 @@ hms-rent/
 3. **Вход** — [docs/BOUNCER_SSO.md](docs/BOUNCER_SSO.md): Bouncer для сотрудников, администраторы — по
    почты из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
+5. **Секреты** — [docs/SECRETS.md](docs/SECRETS.md): где лежат, какие права нужны, как менять при утечке.
 
 ## Деплой на сервер
 
