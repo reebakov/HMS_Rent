@@ -1,4 +1,5 @@
 """Виртуалки: заявка (services/vms.py) и фоновые задачи (services/vm_jobs.py). vSphere и Mattermost — фейки."""
+import asyncio
 from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden
+from app.db.session import SessionLocal
 from app.integrations.vsphere.client import VmInfo
 from app.models import VirtualMachine
 from app.schemas.vm import VmCreate
@@ -377,3 +379,48 @@ async def test_release_api_and_my_list(client, login, api, vm_on, ctx, session):
     r = await client.post(api(f"/vms/{vm.id}/release"))
     assert r.status_code == 200 and r.json()["status"] == "deleted"
     assert (await client.post(api("/vms/9999/release"))).status_code == 404
+
+
+# ---------- гонки ----------
+
+async def test_release_waits_for_worker_that_took_the_vm(session, vm_on, ctx):
+    """Worker уже взял ВМ из очереди (строка заблокирована): отказ дожидается его и видит «creating», а не «queued»."""
+    vm = await request(session, ctx)
+    async with SessionLocal() as worker:
+        taken = await vm_jobs._take(worker, "queued")
+        assert taken.id == vm.id
+        async with SessionLocal() as other:
+            releasing = asyncio.create_task(vms.release(other, ctx.user, vm.id))
+            await asyncio.sleep(0.3)
+            assert not releasing.done()  # без FOR UPDATE отказ прочитал бы «queued» и сразу пометил ВМ удалённой
+            taken.status = "creating"
+            await worker.commit()
+            with pytest.raises(Conflict, match="создаётся"):
+                await releasing
+    assert (await status_of(session, vm)).status == "creating"
+
+
+async def _create_in_own_session(user, dept_id, name):
+    async with SessionLocal() as s:
+        return await vms.create_request(s, user, payload(dept_id, name=name))
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+async def test_per_user_limit_holds_under_concurrent_requests(session, vm_on, ctx, limit):
+    """Пять одновременных заявок одного человека: проходит ровно limit, остальные — отказ по лимиту."""
+    await runtime.update(session, {"vm_max_per_user": limit})
+    results = await asyncio.gather(
+        *(_create_in_own_session(ctx.user, ctx.dept.id, f"vm-race{i}") for i in range(5)), return_exceptions=True)
+    created = [r for r in results if isinstance(r, VirtualMachine)]
+    refused = [r for r in results if not isinstance(r, VirtualMachine)]
+    assert len(created) == limit
+    assert all(isinstance(e, Conflict) and "доступных виртуалок" in str(e) for e in refused), refused
+    assert await vms._alive_count(session, ctx.user.id) == limit
+
+
+async def test_limit_lock_does_not_block_other_users(session, vm_on, ctx, make_user):
+    await runtime.update(session, {"vm_max_per_user": 1})
+    other = await make_user("petrov", department=ctx.dept)
+    results = await asyncio.gather(
+        _create_in_own_session(ctx.user, ctx.dept.id, "vm-first"), _create_in_own_session(other, ctx.dept.id, "vm-second"))
+    assert all(isinstance(r, VirtualMachine) for r in results)

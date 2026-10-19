@@ -16,6 +16,7 @@ from app.services import runtime
 from app.services.orders import next_order_number
 
 ALIVE = ("queued", "creating", "ready", "deleting")
+VM_LIMIT_LOCK_KEY = 73010002  # пространство ключей advisory-lock для лимита ВМ на пользователя (свой ключ у sync.py)
 
 
 async def _alive_count(session: AsyncSession, user_id: int) -> int:
@@ -56,6 +57,9 @@ async def options(session: AsyncSession, user: User) -> VmOptions:
 
 
 async def create_request(session: AsyncSession, user: User, data: VmCreate) -> VirtualMachine:
+    # Лимит «ВМ на человека» считается по строкам, которых ещё нет: без блокировки два параллельных запроса
+    # оба увидят «мест хватает». Lock снимается сам при commit/rollback, запросы других пользователей не ждут.
+    await session.execute(select(func.pg_advisory_xact_lock(VM_LIMIT_LOCK_KEY, user.id)))
     opts = await options(session, user)
     if not opts.enabled:
         raise Conflict(opts.reason or "Конструктор недоступен")
@@ -102,7 +106,14 @@ async def get_vm(session: AsyncSession, vm_id: int) -> VirtualMachine:
 
 async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachine:
     """Отказ от ВМ: worker выключит и удалит её в vSphere."""
-    vm = await get_vm(session, vm_id)
+    # FOR UPDATE: worker берёт ВМ из очереди через _take. Без блокировки отказ мог прочитать «queued», пока
+    # клон уже запущен, и пометить ВМ удалённой — в vCenter осталась бы лишняя машина.
+    vm = await session.scalar(
+        select(VirtualMachine).where(VirtualMachine.id == vm_id).with_for_update(of=VirtualMachine)
+        .execution_options(populate_existing=True)
+    )
+    if vm is None:
+        raise NotFound("Виртуалка не найдена")
     if vm.user_id != user.id and not user.is_admin:
         raise Forbidden("Удалить ВМ может её владелец или администратор")
     if vm.status in ("deleting", "deleted"):
