@@ -3,7 +3,6 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from app.schemas.admin import EventPage
 
 from app.api.deps import DB, AdminUser
@@ -16,7 +15,7 @@ from app.schemas.admin import (
 )
 from app.schemas.booking import BookingOut
 from app.schemas.department import DepartmentCreate, DepartmentOut, DepartmentUpdate
-from app.services import inventory, pools
+from app.services import departments, inventory, pools
 from app.services.events import add_event
 from app.services.sync import run_sync
 from app.services.tiering import classify
@@ -111,60 +110,19 @@ async def update_computer(computer_id: int, data: ComputerAdminUpdate, admin: Ad
 
 # ---------- Пулы выдачи ----------
 
-async def _departments(session, ids: list[int]) -> list[Department]:
-    if not ids:
-        return []
-    found = list((await session.scalars(select(Department).where(Department.id.in_(ids)))).all())
-    if len(found) != len(set(ids)):
-        raise HTTPException(404, "Один из отделов не найден")
-    return found
-
-
 @router.get("/pools", response_model=list[PoolOut])
 async def list_pools(_: AdminUser, session: DB) -> list[PoolOut]:
-    return [
-        PoolOut.model_validate(item["pool"]).model_copy(
-            update={"total": item["total"], "available": item["available"], "booked": item["booked"]}
-        )
-        for item in await pools.pool_stats(session)
-    ]
+    return await pools.list_pools(session)
 
 
 @router.post("/pools", response_model=PoolOut, status_code=201)
 async def create_pool(data: PoolSave, _: AdminUser, session: DB) -> Pool:
-    if not data.name:
-        raise HTTPException(422, "Укажите название пула")
-    pool = Pool(name=data.name, description=data.description,
-                is_published=True if data.is_published is None else data.is_published)
-    pool.departments = await _departments(session, data.department_ids or [])
-    session.add(pool)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise HTTPException(409, "Пул с таким названием уже есть") from exc
-    return await session.get(Pool, pool.id, populate_existing=True)
+    return await pools.create_pool(session, data)
 
 
 @router.patch("/pools/{pool_id}", response_model=PoolOut)
 async def update_pool(pool_id: int, data: PoolSave, _: AdminUser, session: DB) -> PoolOut:
-    pool = await session.get(Pool, pool_id)
-    if pool is None:
-        raise HTTPException(404, "Пул не найден")
-    changes = data.model_dump(exclude_unset=True)
-    if "department_ids" in changes:
-        pool.departments = await _departments(session, changes.pop("department_ids") or [])
-    for field, value in changes.items():
-        setattr(pool, field, value)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise HTTPException(409, "Пул с таким названием уже есть") from exc
-    stats = next(i for i in await pools.pool_stats(session) if i["pool"].id == pool.id)
-    return PoolOut.model_validate(pool).model_copy(
-        update={"total": stats["total"], "available": stats["available"], "booked": stats["booked"]}
-    )
+    return await pools.update_pool(session, pool_id, data)
 
 
 @router.delete("/pools/{pool_id}", status_code=204)
@@ -219,29 +177,12 @@ async def departments_usage(_: AdminUser, session: DB) -> list[DepartmentUsage]:
 
 @router.post("/departments", response_model=DepartmentOut, status_code=201)
 async def create_department(data: DepartmentCreate, _: AdminUser, session: DB) -> Department:
-    dept = Department(name=data.name, code=data.code, head_name=data.head_name)
-    session.add(dept)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise HTTPException(409, "Отдел с таким названием уже есть") from exc
-    return dept
+    return await departments.create(session, data)
 
 
 @router.patch("/departments/{department_id}", response_model=DepartmentOut)
 async def update_department(department_id: int, data: DepartmentUpdate, _: AdminUser, session: DB) -> Department:
-    dept = await session.get(Department, department_id)
-    if dept is None:
-        raise HTTPException(404, "Отдел не найден")
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(dept, field, value)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise HTTPException(409, "Отдел с таким названием уже есть") from exc
-    return dept
+    return await departments.update(session, department_id, data)
 
 
 # ---------- Синхронизация с Insight ----------
