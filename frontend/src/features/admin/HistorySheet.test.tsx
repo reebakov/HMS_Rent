@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { ComputerHistorySheet } from './ComputerHistorySheet'
 import { api } from '@/lib/api'
-import { makeComputer, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
 import type { AssetEvent, Booking, ComputerHistory, InventoryRow } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -273,11 +273,16 @@ describe('ComputerHistorySheet', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('ошибка загрузки — остаётся скелетон, без падения', async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error('500'))
-    open()
-    expect(await screen.findByRole('dialog', { name: 'Компьютер' })).toBeInTheDocument()
-    await waitFor(() => expect(api.get).toHaveBeenCalled())
+  it('ошибка загрузки — текст ошибки и «Повторить» вместо вечного скелетона; повтор показывает карточку', async () => {
+    failGetOnce(vi.mocked(api.get), '/admin/computers/10')
+    const { user } = open()
+    expect(await screen.findByText('Не удалось загрузить карточку компьютера')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Компьютер' }).querySelector('.animate-pulse')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Обзор' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('dialog', { name: 'PC-010' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Обзор' })).toBeInTheDocument()
   })
 })

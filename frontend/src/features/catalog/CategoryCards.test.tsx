@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CategoryCards } from './CategoryCards'
+import { stubQuery } from '@/test/helpers'
 import type { TierSummary } from '@/lib/types'
 
 const summary: TierSummary[] = [
@@ -13,7 +14,7 @@ const summary: TierSummary[] = [
 
 describe('CategoryCards', () => {
   it('показывает карточки категорий с числом свободных и диапазоном ОЗУ', () => {
-    render(<CategoryCards summary={summary} value="medium" onChange={() => undefined} />)
+    render(<CategoryCards query={stubQuery({ data: summary })} value="medium" onChange={() => undefined} />)
     expect(screen.getByRole('button', { name: /Слабые/ })).toHaveTextContent('3')
     expect(screen.getByRole('button', { name: /Слабые/ })).toHaveTextContent('из 5')
     expect(screen.getByRole('button', { name: /Слабые/ })).toHaveTextContent('8 ГБ ОЗУ')
@@ -21,23 +22,46 @@ describe('CategoryCards', () => {
   })
 
   it('скрывает категории без единого ПК (vm с total=0)', () => {
-    render(<CategoryCards summary={summary} value="weak" onChange={() => undefined} />)
+    render(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={() => undefined} />)
     expect(screen.queryByRole('button', { name: /Виртуальные/ })).not.toBeInTheDocument()
   })
 
   it('клик по карточке вызывает onChange с категорией', async () => {
     const onChange = vi.fn()
-    render(<CategoryCards summary={summary} value="weak" onChange={onChange} />)
+    render(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={onChange} />)
     await userEvent.click(screen.getByRole('button', { name: /Мощные/ }))
     expect(onChange).toHaveBeenCalledWith('powerful')
   })
 
   it('карточка конструктора ВМ показывается только с onBuildVm', async () => {
     const onBuildVm = vi.fn()
-    const { rerender } = render(<CategoryCards summary={summary} value="weak" onChange={() => undefined} />)
+    const { rerender } = render(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={() => undefined} />)
     expect(screen.queryByText('Виртуализация')).not.toBeInTheDocument()
-    rerender(<CategoryCards summary={summary} value="weak" onChange={() => undefined} onBuildVm={onBuildVm} />)
+    rerender(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={() => undefined} onBuildVm={onBuildVm} />)
     await userEvent.click(screen.getByRole('button', { name: /Виртуализация/ }))
     expect(onBuildVm).toHaveBeenCalledOnce()
+  })
+
+  it('пока сводки нет — скелетоны, а не карточки', () => {
+    const { container } = render(<CategoryCards query={stubQuery()} value="weak" onChange={() => undefined} />)
+    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('ошибка загрузки: текст ошибки и «Повторить» вместо вечных скелетонов; клик перезапрашивает', async () => {
+    const refetch = vi.fn()
+    const { container } = render(
+      <CategoryCards
+        query={stubQuery({ isError: true, error: new Error('Сервер недоступен'), refetch })}
+        value="weak"
+        onChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('Не удалось загрузить категории')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(refetch).toHaveBeenCalledOnce()
   })
 })

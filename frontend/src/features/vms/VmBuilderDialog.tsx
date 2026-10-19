@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { DataState, QueryError } from '@/components/ui/data-state'
 import { Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
@@ -118,91 +119,101 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
         </>
       }
     >
-      {!o ? (
-        <p className="py-8 text-center text-muted-foreground">Загрузка…</p>
-      ) : !o.enabled ? (
-        <div className="rounded-lg border border-warning/25 bg-warning/5 px-4 py-3 text-[13px] text-warning">{o.reason}</div>
-      ) : (
-        <div className="space-y-5">
-          <Field
-            label="Имя виртуалки"
-            required
-            hint={`В vCenter будет «${o.name_prefix}${name || 'имя'}». Латиница, цифры и дефис, 3–20 символов`}
-            error={name && !nameOk ? 'Только a–z, 0–9 и дефис; не начинать и не заканчивать дефисом' : undefined}
-          >
-            <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="design-01" />
-          </Field>
+      <DataState
+        query={options}
+        errorTitle="Не удалось загрузить параметры конструктора"
+        loading={
+          <p className="py-8 text-center text-muted-foreground">Загрузка…</p>
+        }
+      >
+        {(o) =>
+          !o.enabled ? (
+            <div className="rounded-lg border border-warning/25 bg-warning/5 px-4 py-3 text-[13px] text-warning">{o.reason}</div>
+          ) : (
+            <div className="space-y-5">
+              <Field
+                label="Имя виртуалки"
+                required
+                hint={`В vCenter будет «${o.name_prefix}${name || 'имя'}». Латиница, цифры и дефис, 3–20 символов`}
+                error={name && !nameOk ? 'Только a–z, 0–9 и дефис; не начинать и не заканчивать дефисом' : undefined}
+              >
+                <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="design-01" />
+              </Field>
 
-          <div>
-            <p className="mb-2 text-[13px] font-medium">Операционная система</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {o.templates.map((t) => {
-                const Icon = t.os === 'linux' ? Terminal : Monitor
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    disabled={!t.available}
-                    onClick={() => setTemplateKey(t.key)}
-                    className={cn(
-                      'flex items-center gap-3 rounded-xl border p-3 text-left text-[13px] transition-colors',
-                      t.key === templateKey ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted/50',
-                      !t.available && 'cursor-not-allowed opacity-50 hover:bg-transparent',
-                    )}
-                  >
-                    <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{t.label}</span>
-                      <span className="block text-xs text-muted-foreground">{t.available ? `диск от ${t.min_disk_gb} ГБ` : 'скоро'}</span>
-                    </span>
-                  </button>
-                )
-              })}
+              <div>
+                <p className="mb-2 text-[13px] font-medium">Операционная система</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {o.templates.map((t) => {
+                    const Icon = t.os === 'linux' ? Terminal : Monitor
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        disabled={!t.available}
+                        onClick={() => setTemplateKey(t.key)}
+                        className={cn(
+                          'flex items-center gap-3 rounded-xl border p-3 text-left text-[13px] transition-colors',
+                          t.key === templateKey ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted/50',
+                          !t.available && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+                        )}
+                      >
+                        <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{t.label}</span>
+                          <span className="block text-xs text-muted-foreground">{t.available ? `диск от ${t.min_disk_gb} ГБ` : 'скоро'}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Amount icon={Cpu} label="Ядра" unit="шт" value={cpu} range={{ min: o.min_cpu, max: o.max_cpu, step: 1 }} onChange={setCpu} />
+                <Amount icon={MemoryStick} label="Память" unit="ГБ" value={ram} range={{ min: o.min_ram_gb, max: o.max_ram_gb, step: 2 }} onChange={setRam} />
+                <Amount icon={HardDrive} label="Диск" unit="ГБ" value={Math.max(disk, minDisk)} range={{ min: minDisk, max: o.max_disk_gb, step: 10 }} onChange={setDisk} />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Отдел" required>
+                  <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                    <option value="" disabled>
+                      Выберите отдел
+                    </option>
+                    {departments.data?.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Вернуть до" hint="Необязательно">
+                  <Input type="date" min={new Date().toISOString().slice(0, 10)} value={until} onChange={(e) => setUntil(e.target.value)} />
+                </Field>
+                <Field label="Имя и фамилия" required>
+                  <Input value={person} onChange={(e) => setPerson(e.target.value)} />
+                </Field>
+                <Field label="Ник" required>
+                  <Input value={nick} onChange={(e) => setNick(e.target.value)} />
+                </Field>
+              </div>
+
+              <QueryError query={departments} title="Не удалось загрузить отделы" />
+
+              <p className="text-xs text-muted-foreground">
+                Занято виртуалок: {o.used_by_me} из {o.max_per_user}. Диск больше {o.min_disk_gb} ГБ нужно будет расширить в Windows
+                («Управление дисками» → «Расширить том»).
+              </p>
+
+              {create.error && (
+                <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">
+                  {create.error.message}
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Amount icon={Cpu} label="Ядра" unit="шт" value={cpu} range={{ min: o.min_cpu, max: o.max_cpu, step: 1 }} onChange={setCpu} />
-            <Amount icon={MemoryStick} label="Память" unit="ГБ" value={ram} range={{ min: o.min_ram_gb, max: o.max_ram_gb, step: 2 }} onChange={setRam} />
-            <Amount icon={HardDrive} label="Диск" unit="ГБ" value={Math.max(disk, minDisk)} range={{ min: minDisk, max: o.max_disk_gb, step: 10 }} onChange={setDisk} />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Отдел" required>
-              <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-                <option value="" disabled>
-                  Выберите отдел
-                </option>
-                {departments.data?.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Вернуть до" hint="Необязательно">
-              <Input type="date" min={new Date().toISOString().slice(0, 10)} value={until} onChange={(e) => setUntil(e.target.value)} />
-            </Field>
-            <Field label="Имя и фамилия" required>
-              <Input value={person} onChange={(e) => setPerson(e.target.value)} />
-            </Field>
-            <Field label="Ник" required>
-              <Input value={nick} onChange={(e) => setNick(e.target.value)} />
-            </Field>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Занято виртуалок: {o.used_by_me} из {o.max_per_user}. Диск больше {o.min_disk_gb} ГБ нужно будет расширить в Windows
-            («Управление дисками» → «Расширить том»).
-          </p>
-
-          {create.error && (
-            <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">
-              {create.error.message}
-            </div>
-          )}
-        </div>
-      )}
+          )
+        }
+      </DataState>
     </Dialog>
   )
 }

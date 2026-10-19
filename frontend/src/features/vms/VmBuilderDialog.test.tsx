@@ -5,7 +5,7 @@ import { useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { VmBuilderDialog } from './VmBuilderDialog'
 import { api, ApiError } from '@/lib/api'
-import { makeSession, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
 import type { VmOptions, VmTemplateOption } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -92,6 +92,32 @@ describe('VmBuilderDialog', () => {
     renderWithProviders(<VmBuilderDialog open onClose={() => undefined} />)
     expect(screen.getByText('Загрузка…')).toBeInTheDocument()
     expect(submit()).toBeDisabled()
+  })
+
+  it('ошибка загрузки настроек: текст ошибки и «Повторить» вместо вечной «Загрузки…»; повтор показывает форму', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/vms/options')
+    renderWithProviders(<VmBuilderDialog open onClose={() => undefined} />)
+    expect(await screen.findByText('Не удалось загрузить параметры конструктора')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Загрузка…')).not.toBeInTheDocument()
+    expect(submit()).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByLabelText(/Имя виртуалки/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('ошибка загрузки отделов: сообщение и «Повторить» вместо пустого списка; повтор подгружает отделы', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/departments')
+    renderWithProviders(<VmBuilderDialog open onClose={() => undefined} />)
+    expect(await screen.findByText('Не удалось загрузить отделы')).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Аналитика' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('option', { name: 'Аналитика' })).toBeInTheDocument()
+    expect(screen.queryByText('Не удалось загрузить отделы')).not.toBeInTheDocument()
   })
 
   it('отключённый конструктор показывает причину и не даёт создать', async () => {

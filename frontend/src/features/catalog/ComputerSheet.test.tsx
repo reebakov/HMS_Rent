@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ComputerSheet } from './ComputerSheet'
-import { api, ApiError } from '@/lib/api'
-import { makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
+import { api } from '@/lib/api'
+import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
 import type { ComputerDetail } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -162,11 +162,16 @@ describe('ComputerSheet', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('ошибка загрузки — остаётся скелетон, кнопки брони нет', async () => {
-    vi.mocked(api.get).mockRejectedValue(new ApiError(404, 'Не найден'))
-    setup()
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalled())
-    expect(screen.getByRole('dialog', { name: 'Компьютер' })).toBeInTheDocument()
+  it('ошибка загрузки — текст ошибки и «Повторить» вместо вечного скелетона, кнопки брони нет; повтор показывает карточку', async () => {
+    failGetOnce(vi.mocked(api.get), '/computers/10', 'Не найден')
+    const { user } = setup()
+    expect(await screen.findByText('Не удалось загрузить карточку компьютера')).toBeInTheDocument()
+    expect(screen.getByText('Не найден')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Компьютер' }).querySelector('.animate-pulse')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Забронировать' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('dialog', { name: 'PC-010' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Забронировать' })).toBeInTheDocument()
   })
 })

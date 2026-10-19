@@ -1,8 +1,9 @@
 import type { ReactElement } from 'react'
-import type { Mock } from 'vitest'
+import { vi, type Mock } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
+import type { QueryLike } from '@/components/ui/data-state'
 import type { Computer, Session } from '@/lib/types'
 
 export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?: string } = {}) {
@@ -13,6 +14,15 @@ export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?:
     </QueryClientProvider>,
   )
 }
+
+/** Результат запроса для компонентов, которые принимают query пропсом: по умолчанию — загрузка */
+export const stubQuery = <T,>(over: Partial<QueryLike<T>> = {}): QueryLike<T> => ({
+  data: undefined,
+  isError: false,
+  error: null,
+  refetch: vi.fn(),
+  ...over,
+})
 
 /** GET по path один раз падает с ошибкой, дальше работает прежняя подмена: для проверки «Повторить» */
 export function failGetOnce(get: Mock, path: string, message = 'Сервер недоступен') {

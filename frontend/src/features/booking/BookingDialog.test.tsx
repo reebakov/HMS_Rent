@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { BookingDialog } from './BookingDialog'
 import { api, ApiError } from '@/lib/api'
-import { makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -42,6 +42,21 @@ describe('BookingDialog', () => {
   beforeEach(() => {
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(bookingResponse)
+  })
+
+  it('ошибка загрузки отделов: сообщение и «Повторить» вместо пустого списка, бронь недоступна; повтор подгружает отделы', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.get).mockImplementation(async () => departments)
+    failGetOnce(vi.mocked(api.get), '/departments')
+    renderWithProviders(<BookingDialog computer={computer} onClose={vi.fn()} />)
+    expect(await screen.findByText('Не удалось загрузить отделы')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Аналитика' })).not.toBeInTheDocument()
+    expect(submitButton()).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await waitForDepartments()).toBeInTheDocument()
+    expect(screen.queryByText('Не удалось загрузить отделы')).not.toBeInTheDocument()
   })
 
   it('ничего не рисует без выбранного компьютера', () => {

@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CatalogPage } from './CatalogPage'
 import { api } from '@/lib/api'
-import { makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
 import type { Computer, TierSummary } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -123,6 +123,31 @@ describe('CatalogPage', () => {
       expect(q?.gpu_only).toBeUndefined()
       expect(q?.tier).toBe('weak')
     })
+  })
+
+  it('ошибка загрузки списка ПК: текст ошибки и «Повторить», счётчик «0 компьютеров» не показывается; повтор перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/computers')
+    renderWithProviders(<CatalogPage />)
+    expect(await screen.findByText('Не удалось загрузить компьютеры')).toBeInTheDocument()
+    expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
+    expect(screen.queryByText('Свободных компьютеров не найдено')).not.toBeInTheDocument()
+    expect(screen.queryByText(/компьютер\S* доступно/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('PC-001')).toBeInTheDocument()
+    expect(screen.getByText('3 компьютера доступно')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки категорий: текст ошибки и «Повторить» вместо вечных скелетонов; повтор показывает карточки', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/catalog/summary')
+    renderWithProviders(<CatalogPage />)
+    expect(await screen.findByText('Не удалось загрузить категории')).toBeInTheDocument()
+    expect(screen.getByText('PC-001')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('button', { name: /Мощные/ })).toBeInTheDocument()
   })
 
   it('клик «Забронировать» открывает диалог бронирования выбранного ПК', async () => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/ui/data-state'
 import { Field, Input, Select, Textarea } from '@/components/ui/input'
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
@@ -104,6 +105,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
               ))}
             </Select>
           </Field>
+          <QueryError query={departments} title="Не удалось загрузить отделы" />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Имя и фамилия" required>

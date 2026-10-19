@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from './ServiceDesk'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { ServiceComment, ServiceRequest } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -76,11 +76,16 @@ describe('ReportProblemButton', () => {
     expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
   })
 
-  it('ошибка загрузки конфига — кнопка скрыта', async () => {
+  it('ошибка загрузки конфига — кнопка не пропадает: видна, недоступна и объясняет почему', async () => {
+    const user = userEvent.setup()
     vi.mocked(api.get).mockRejectedValue(new ApiError(500, 'Сервер недоступен'))
-    renderButton()
+    const onClick = renderButton()
     await waitFor(() => expect(screen.getByTestId('cfg')).toHaveTextContent('loaded'))
-    expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Сообщить о проблеме' })
+    expect(button).toBeDisabled()
+    expect(screen.getByTitle('Не удалось проверить, подключён ли Service Desk')).toContainElement(button)
+    await user.click(button)
+    expect(onClick).not.toHaveBeenCalled()
   })
 })
 
@@ -263,10 +268,17 @@ describe('RequestSheet', () => {
     expect(screen.queryByText('Администраторы ещё не ответили')).not.toBeInTheDocument()
   })
 
-  it('ошибка загрузки — текст ошибки', async () => {
-    vi.mocked(api.get).mockRejectedValue(new ApiError(404, 'Заявка не найдена'))
+  it('ошибка загрузки — заголовок, текст ошибки и «Повторить», который перезапрашивает', async () => {
+    const user = userEvent.setup()
+    failGetOnce(vi.mocked(api.get), '/requests/5', 'Заявка не найдена')
     renderSheet()
-    expect(await screen.findByText('Заявка не найдена')).toBeInTheDocument()
+    expect(await screen.findByText('Не удалось загрузить заявку')).toBeInTheDocument()
+    expect(screen.getByText('Заявка не найдена')).toBeInTheDocument()
+    expect(screen.queryByText('Администраторы ещё не ответили')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Не включается')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('показывает ключ, статус, тему и ссылку на Service Desk', async () => {

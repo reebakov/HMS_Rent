@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { ExternalLink, LifeBuoy, Loader2, Send } from 'lucide-react'
 import { Dialog, Sheet } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { DataState } from '@/components/ui/data-state'
 import { Badge, type Tone } from '@/components/ui/badge'
 import { Field, Textarea } from '@/components/ui/input'
 import { useAddComment, useCreateRequest, useRequestDetail, useSdConfig } from '@/lib/queries'
@@ -28,15 +29,18 @@ export function RequestBadges({ requests, onOpen }: { requests: ServiceRequest[]
   )
 }
 
-/** Кнопка «Сообщить о проблеме» — скрыта, если Service Desk не подключён */
+/** Кнопка «Сообщить о проблеме» — скрыта, если Service Desk не подключён; если проверить не удалось — недоступна с подсказкой */
 export function ReportProblemButton({ onClick }: { onClick: () => void }) {
   const cfg = useSdConfig()
-  if (!cfg.data?.enabled) return null
+  if (!cfg.isError && !cfg.data?.enabled) return null
   return (
-    <Button variant="ghost" size="sm" onClick={onClick}>
-      <LifeBuoy className="h-3.5 w-3.5" />
-      Сообщить о проблеме
-    </Button>
+    // подсказка на обёртке: у отключённой кнопки браузер тултип не показывает
+    <span title={cfg.isError ? 'Не удалось проверить, подключён ли Service Desk' : undefined}>
+      <Button variant="ghost" size="sm" disabled={cfg.isError} onClick={onClick}>
+        <LifeBuoy className="h-3.5 w-3.5" />
+        Сообщить о проблеме
+      </Button>
+    </span>
   )
 }
 
@@ -85,7 +89,8 @@ export function ReportProblemDialog({ target, onClose }: { target: ProblemTarget
 
 /** Заявка: статус и переписка с администраторами (публичные комментарии из Jira) */
 export function RequestSheet({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const { data, isLoading, error } = useRequestDetail(id)
+  const detail = useRequestDetail(id)
+  const { data } = detail
   const add = useAddComment()
   const [reply, setReply] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
@@ -137,36 +142,40 @@ export function RequestSheet({ id, onClose }: { id: number | null; onClose: () =
         ) : undefined
       }
     >
-      {isLoading ? (
-        <div className="flex justify-center py-10">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : error ? (
-        <p className="rounded-lg bg-danger/5 px-3 py-2 text-[13px] text-danger">{error.message}</p>
-      ) : r ? (
-        <div className="space-y-4">
-          <p className="text-[13px] font-medium">{r.summary}</p>
-          {r.error && <p className="rounded-lg bg-danger/5 px-3 py-2 text-[13px] text-danger">{r.error}</p>}
-          {!data?.comments.length ? (
-            <p className="py-6 text-center text-[13px] text-muted-foreground">Администраторы ещё не ответили</p>
-          ) : (
-            <div className="space-y-3">
-              {data.comments.map((c, i) => (
-                <div
-                  key={i}
-                  className={c.from_portal ? 'ml-8 rounded-xl bg-primary/10 px-4 py-3' : 'mr-8 rounded-xl border bg-muted/40 px-4 py-3'}
-                >
-                  <p className="text-xs text-muted-foreground">
-                    {c.from_portal ? 'Вы (с сайта)' : c.author} · {formatDateTime(c.created)}
-                  </p>
-                  <p className="mt-1 whitespace-pre-wrap text-[13px]">{c.from_portal ? c.body.replace(/^\[HMS Rent\] [^:]+: /, '') : c.body}</p>
-                </div>
-              ))}
-              <div ref={bottom} />
-            </div>
-          )}
-        </div>
-      ) : null}
+      <DataState
+        query={detail}
+        errorTitle="Не удалось загрузить заявку"
+        loading={
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        }
+      >
+        {(d) => (
+          <div className="space-y-4">
+            <p className="text-[13px] font-medium">{d.request.summary}</p>
+            {d.request.error && <p className="rounded-lg bg-danger/5 px-3 py-2 text-[13px] text-danger">{d.request.error}</p>}
+            {!d.comments.length ? (
+              <p className="py-6 text-center text-[13px] text-muted-foreground">Администраторы ещё не ответили</p>
+            ) : (
+              <div className="space-y-3">
+                {d.comments.map((c, i) => (
+                  <div
+                    key={i}
+                    className={c.from_portal ? 'ml-8 rounded-xl bg-primary/10 px-4 py-3' : 'mr-8 rounded-xl border bg-muted/40 px-4 py-3'}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {c.from_portal ? 'Вы (с сайта)' : c.author} · {formatDateTime(c.created)}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px]">{c.from_portal ? c.body.replace(/^\[HMS Rent\] [^:]+: /, '') : c.body}</p>
+                  </div>
+                ))}
+                <div ref={bottom} />
+              </div>
+            )}
+          </div>
+        )}
+      </DataState>
     </Sheet>
   )
 }

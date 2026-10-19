@@ -68,15 +68,15 @@ export function CatalogPage() {
         description="Выберите категорию мощности, затем подходящий компьютер или виртуальную машину"
       />
 
-      <CategoryCards summary={summary.data} value={tier} onChange={(t) => update({ tier: t })} onBuildVm={() => setVmOpen(true)} />
+      <CategoryCards query={summary} value={tier} onChange={(t) => update({ tier: t })} onBuildVm={() => setVmOpen(true)} />
 
       <div className="mb-4 mt-8 flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h2 className="text-lg font-semibold tracking-tight">{TIERS[tier].label}</h2>
           <p className="text-[13px] text-muted-foreground">
-            {computers.isFetching && !computers.data
-              ? 'Загружаем…'
-              : `${count} ${plural(count, ['компьютер', 'компьютера', 'компьютеров'])} доступно`}
+            {computers.data
+              ? `${count} ${plural(count, ['компьютер', 'компьютера', 'компьютеров'])} доступно`
+              : !computers.isError && 'Загружаем…'}
           </p>
         </div>
 
@@ -120,8 +120,7 @@ export function CatalogPage() {
       </div>
 
       <ComputerList
-        computers={computers.data}
-        loading={computers.isLoading}
+        query={computers}
         compact={view === 'compact'}
         onOpen={setOpenedId}
         onBook={setBooking}

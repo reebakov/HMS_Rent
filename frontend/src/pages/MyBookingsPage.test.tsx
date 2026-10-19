@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { makeSession, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
 import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -151,18 +151,12 @@ describe('MyBookingsPage', () => {
   it('ошибка загрузки заявок: сообщение и «Повторить», брони при этом показываются', async () => {
     const user = userEvent.setup()
     bookings = [makeBooking()]
-    let fail = true
-    const base = vi.mocked(api.get).getMockImplementation()!
-    vi.mocked(api.get).mockImplementation(async (path: string, query?: never) => {
-      if (path === '/requests/my' && fail) throw new ApiError(500, 'Jira недоступна')
-      return base(path, query)
-    })
+    failGetOnce(vi.mocked(api.get), '/requests/my', 'Jira недоступна')
     renderPage()
     expect(await screen.findByText('Не удалось загрузить заявки')).toBeInTheDocument()
     expect(screen.getByText('Jira недоступна')).toBeInTheDocument()
     expect(screen.getByText('PC-010')).toBeInTheDocument()
 
-    fail = false
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
     await waitFor(() => expect(screen.queryByText('Не удалось загрузить заявки')).not.toBeInTheDocument())
   })
