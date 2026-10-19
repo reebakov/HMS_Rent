@@ -24,54 +24,68 @@ docker compose up -d --build
 В демо-режиме Insight не нужен: 60 тестовых ПК берутся из `backend/seed/mock_computers.json`.
 Swagger с описанием API: **http://localhost:8080/api/docs**.
 
-## Что умеет первая версия
+## Возможности
 
 | Сотрудник | Администратор |
 |---|---|
 | Вход через корпоративный SSO (Bouncer) | Сводка парка: свободно / занято / недоступно / проблемы |
 | Категории мощности со счётчиками свободных ПК | Инвентаризация: все ПК, за каким отделом, кто взял, с какой даты |
 | Список ПК с характеристиками, поиск, фильтры | Пулы выдачи: какие ПК видят сотрудники |
-| | Выгрузка инвентаризации в CSV (открывается в Excel) |
-| Карточка ПК со всеми атрибутами из Insight | Журнал выдачи: все брони и возвраты с датами и длительностью |
-| Бронирование: отдел, имя, ник, срок, цель | Отделы: справочник + сколько и каких ПК у каждого отдела |
-| «Мои бронирования», возврат с комментарием | История каждого ПК: брони, смены статуса в Insight, правки |
-| Светлая и тёмная тема | Расхождения с Insight и просрочки возврата |
+| Карточка ПК со всеми атрибутами из Insight | Выгрузка инвентаризации в CSV (открывается в Excel) |
+| Бронирование: отдел, имя, ник, срок, цель | Журнал выдачи: все брони и возвраты с датами и длительностью |
+| «Моя аренда»: возврат с комментарием | Отделы: справочник + сколько и каких ПК у каждого отдела |
+| Виртуальные машины: конструктор с выбором шаблона ОС, ядер, памяти и диска | Виртуальные машины, шаблоны ОС и лимиты конструктора («Настройки») |
+| Заявки в Jira Service Desk: «Сообщить о проблеме», возврат ПК, переписка | История каждого ПК: брони, смены статуса в Insight, правки |
+| Светлая и тёмная тема | Расхождения с Insight, просрочки возврата и ежедневная сводка в Mattermost |
 | | Синхронизация с Insight по расписанию и по кнопке |
+| | Сотрудники: отдел, блокировка, заведение заранее |
 
 ## Структура проекта
 
 ```
 hms-rent/
-├── docker-compose.yml        # db + backend + worker + frontend
+├── docker-compose.yml        # разработка и демо: db + backend + worker + frontend со сборкой из исходников
+├── docker-compose.prod.yml   # прод: те же сервисы на образах из ghcr.io (собирает CI)
+├── docker-compose.tls.yml    # дополнение к проду: HTTPS (подключается, когда есть certs/)
+├── docker-compose.test.yml   # тесты backend (make test)
 ├── .env.example              # все настройки с комментариями
-├── Makefile                  # make up / make logs / make dev-*
+├── Makefile                  # make up / test / test-frontend / dev-*
+├── scripts/deploy.sh         # выкатка на сервере: образы, дамп БД, перезапуск, автооткат
+├── deploy/nginx/             # конфиги nginx для HTTPS (tls.conf, app.inc)
+├── .github/workflows/ci.yml  # CI: тесты, проверка конфигов, публикация образов
 ├── docs/
-│   ├── ARCHITECTURE.md       # модель данных, статусы, пулы, правила синхронизации
+│   ├── ARCHITECTURE.md       # модель данных, статусы, пулы, синхронизация, ВМ, заявки, просрочки
 │   ├── INSIGHT_SETUP.md      # подключение jira.marvin-it.com, insight-check
-│   └── BOUNCER_SSO.md        # вход через Bouncer (OIDC) и учётки администраторов
+│   ├── BOUNCER_SSO.md        # вход через Bouncer (OIDC) и учётки администраторов
+│   ├── VSPHERE.md            # конструктор ВМ: подключение к vCenter
+│   ├── SERVICE_DESK.md       # заявки в Jira Service Desk
+│   ├── DOMAIN_TLS.md         # домен и HTTPS
+│   └── SECRETS.md            # секреты: где лежат, права, ротация
 ├── backend/                  # Python 3.12 · FastAPI · SQLAlchemy 2 (async) · PostgreSQL
 │   ├── app/
 │   │   ├── main.py           # FastAPI-приложение
-│   │   ├── worker.py         # фоновый процесс: синхронизация + запись в Insight
-│   │   ├── cli.py            # create-admin, set-password, users, insight-check
+│   │   ├── worker.py         # фоновый процесс: синхронизация, запись в Insight, очередь ВМ, заявки, просрочки
+│   │   ├── cli.py            # create-admin, set-password, users, disable, enable, insight-check, sd-check, push-pools
 │   │   ├── core/             # настройки, сессии (JWT в httpOnly-cookie), ошибки
 │   │   ├── db/               # подключение к БД, базовые классы моделей
-│   │   ├── models/           # таблицы: computers, departments, bookings, asset_events, users, sync_runs
+│   │   ├── models/           # таблицы: computers, bookings, asset_events, departments, pools, users,
+│   │   │                     #   virtual_machines, service_requests, sync_runs, app_settings
 │   │   ├── schemas/          # pydantic-схемы запросов/ответов API
-│   │   ├── api/routes/       # auth, catalog, bookings, admin
-│   │   ├── services/         # бизнес-логика: бронь, синхронизация, инвентаризация, категории
+│   │   ├── api/routes/       # auth, catalog, bookings, vms, requests, admin, admin_extra, admin_ops
+│   │   ├── services/         # бизнес-логика: брони, синхронизация, инвентаризация, пулы, ВМ, заявки, просрочки
 │   │   └── integrations/
 │   │       ├── insight/      # клиент Insight (Server/DC), mock, маппинг атрибутов
+│   │       ├── vsphere/      # клиент vCenter (pyvmomi)
 │   │       ├── auth/         # вход: Bouncer (OIDC), dev
+│   │       ├── servicedesk.py  # клиент Jira Service Desk
 │   │       └── notify.py     # уведомления в Mattermost
-│   ├── config/insight_mapping.yaml   # маппинг под jira.marvin-it.com (IT Assets → Automat)
-│   ├── config/insight_mapping.mock.yaml  # маппинг демо-данных
+│   ├── config/               # admins.txt, маппинг Insight под jira.marvin-it.com и маппинг демо-данных
 │   ├── seed/mock_computers.json      # демо-данные
 │   └── alembic/              # миграции БД
 └── frontend/                 # React 18 · TypeScript · Vite · Tailwind · TanStack Query
     └── src/
         ├── pages/            # Login, Catalog, MyBookings, admin/*
-        ├── features/         # catalog, booking, admin — составные блоки страниц
+        ├── features/         # admin, booking, catalog, support, vms — составные блоки страниц
         ├── components/       # ui-кит (button, dialog, badge…) и layout (сайдбар, шапка)
         ├── auth/             # контекст сессии
         └── lib/              # API-клиент, хуки запросов, типы, словари статусов/категорий
@@ -83,8 +97,9 @@ hms-rent/
    проверка `python -m app.cli insight-check`, затем `INSIGHT_MODE=live`.
 2. **Пулы** — после синхронизации админ добавляет ПК в опубликованный пул: только их видят сотрудники.
 3. **Вход** — [docs/BOUNCER_SSO.md](docs/BOUNCER_SSO.md): Bouncer для сотрудников, администраторы — по
-   почты из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
+   почте из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
+   Остальные настройки и их значения по умолчанию — в `.env.example`.
 5. **Секреты** — [docs/SECRETS.md](docs/SECRETS.md): где лежат, какие права нужны, как менять при утечке.
 
 ## Деплой на сервер
@@ -115,9 +130,11 @@ backend при старте. Откат на конкретный коммит: 
 (GitHub → профиль → Packages → `hms-rent-backend` / `hms-rent-frontend` → Package settings → Change visibility → Public;
 в образах нет секретов, `.env` не копируется) либо выполните `sudo docker login ghcr.io` с токеном `read:packages`.
 Переход со сборки на сервере на образы: `sudo git pull --ff-only origin main && sudo ./scripts/deploy.sh --redeploy`.
-Параметры окружения скрипта: `IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`.
+Параметры скрипта (`IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`) и порты — в `.env.example`.
+Применить правку `.env` на проде: `sudo ./scripts/deploy.sh --redeploy`.
 
-HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md). Включается сам, когда в `certs/` лежат `fullchain.pem` и `privkey.pem`.
+HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md) (на проде пока не включён). Включается сам, когда в `certs/`
+лежат `fullchain.pem` и `privkey.pem`.
 
 ## Локальная разработка без Docker
 
@@ -144,4 +161,5 @@ cd frontend && npm install && npm run dev
 - `make test-down` — остановить и удалить тестовые контейнеры и тома.
 - Без Docker: `cd frontend && npm run test` (или `npm run test:watch`), `cd backend && pytest`.
 - Тесты фронтенда лежат рядом с кодом (`*.test.ts(x)`), общие хелперы — в `frontend/src/test/`.
-- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`. Если менялась только документация, скрипты выкатки или compose-файлы прода (изменений в `backend/`, `frontend/`, `.github/` и `docker-compose.test.yml` нет), тесты пропускаются; образы на push в `main` собираются всегда.
+- CI (`.github/workflows/ci.yml`) запускает те же проверки на каждый pull request и push в `main`, а также (всегда)
+  проверку конфигов: `deploy.sh`, compose-файлы и nginx. Когда тесты пропускаются — `AGENTS.md`, раздел «Тесты».
