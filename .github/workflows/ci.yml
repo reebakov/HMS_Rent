@@ -39,6 +39,45 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Тесты нужны: $code"
 
+  # Лёгкая проверка конфигов (~20 с). Запускается всегда и не зависит от job «changes»: именно правки документации,
+  # скриптов выкатки и compose-файлов тесты пропускают, а ошибка в deploy.sh, compose или nginx ломает только выкатку
+  # и без этой проверки всплыла бы на сервере. Входит в needs job «Образы»: красные конфиги блокируют публикацию.
+  # Это не меняет логику пропуска тестов: job никогда не пропускается, поэтому !failure() у «Образов» остаётся верным.
+  config:
+    name: Конфигурация (deploy.sh, compose, nginx)
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Синтаксис и shellcheck deploy.sh
+        run: |
+          bash -n scripts/deploy.sh
+          shellcheck scripts/deploy.sh   # shellcheck есть на ubuntu-latest
+      - name: docker compose config (разработка, прод, прод с HTTPS)
+        run: |
+          cp .env.example .env   # env_file: .env обязателен; заодно проверяется, что пример разбирается
+          docker compose config -q
+          docker compose -f docker-compose.prod.yml config -q
+          docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml config -q
+          docker compose -f docker-compose.test.yml config -q
+      # образ nginx тот же, что в frontend/Dockerfile; backend подменяется адресом-заглушкой, иначе nginx -t не найдёт upstream
+      - name: nginx -t (http)
+        run: |
+          docker run --rm --add-host backend:127.0.0.1 \
+            -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
+      - name: nginx -t (https)
+        run: |
+          certs="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=ci" \
+            -keyout "$certs/privkey.pem" -out "$certs/fullchain.pem"
+          docker run --rm --add-host backend:127.0.0.1 \
+            -v "$PWD/deploy/nginx/tls.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/deploy/nginx/app.inc:/etc/nginx/app.inc:ro" \
+            -v "$certs:/etc/nginx/certs:ro" \
+            nginx:1.27-alpine nginx -t
+
   backend:
     name: Backend (pytest)
     needs: changes
@@ -107,7 +146,7 @@ jobs:
 
   images:
     name: Образы (${{ matrix.name }})
-    needs: [changes, backend, frontend]
+    needs: [changes, backend, frontend, config]
     # !failure() вместо неявного success(): образы строятся и тогда, когда тесты пропущены (код не менялся)
     if: ${{ !cancelled() && !failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
