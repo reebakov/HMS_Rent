@@ -3,12 +3,11 @@ import csv
 import io
 from collections import defaultdict
 from datetime import date, datetime, time, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core import clock
 from app.db.search import ilike_any
 from app.integrations.insight.factory import get_mapping
 from app.models import AssetEvent, Booking, BookingStatus, Computer, ComputerStatus, Department, SyncRun, Tier
@@ -35,7 +34,7 @@ def computer_issues(comp: Computer, booking: Booking | None) -> list[str]:
         issues.append(f"В Insight статус «{comp.insight_status}», но ПК закреплён за отделом")
     if booking and runtime.current().insight_writeback and not comp.writeback_pending and insight == ComputerStatus.available:
         issues.append("В Insight ПК числится свободным")
-    if booking and booking.expected_return_at and booking.expected_return_at < date.today():
+    if booking and booking.expected_return_at and booking.expected_return_at < clock.today():
         issues.append(f"Просрочен возврат (до {booking.expected_return_at:%d.%m.%Y})")
     if comp.writeback_error:
         issues.append(f"Ошибка записи в Insight: {comp.writeback_error[:150]}")
@@ -137,7 +136,7 @@ async def get_stats(session: AsyncSession) -> StatsOut:
         select(
             func.count(),
             func.count(func.distinct(Booking.department_id)),
-            func.count().filter(Booking.expected_return_at < date.today()),
+            func.count().filter(Booking.expected_return_at < clock.today()),
         ).where(active)
     )).one()
     issue_rows, _ = await list_inventory(session, issues_only=True, limit=None)
@@ -275,7 +274,7 @@ def inventory_csv(rows: list[InventoryRow]) -> str:
             STATUS_LABELS.get(r.status, r.status), r.insight_status or "",
             r.pool.name if r.pool else "", r.department.name if r.department else "", r.order_number or "",
             b.requester_name if b else "", b.requester_nick if b else "",
-            f"{b.booked_at.astimezone(ZoneInfo(settings.display_timezone)):%d.%m.%Y %H:%M}" if b else "",
+            f"{b.booked_at.astimezone(clock.display_tz()):%d.%m.%Y %H:%M}" if b else "",
             f"{r.usage_until:%d.%m.%Y}" if r.usage_until else "",
             " | ".join(r.issues),
         ])

@@ -1,6 +1,6 @@
 """Сервис бронирования (app/services/bookings.py) на реальном PostgreSQL."""
 import asyncio
-from datetime import date, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -9,6 +9,7 @@ import pytest_asyncio
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from app.core import clock
 from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightObject
@@ -76,7 +77,7 @@ def set_writeback(monkeypatch, value: bool):
 # ---------- create_booking: успех ----------
 
 async def test_create_booking_success(session, env):
-    until = date.today() + timedelta(days=7)
+    until = clock.today() + timedelta(days=7)
     b = await bookings.create_booking(session, env.user, payload(env.comp, env.dept, purpose="Тесты", expected_return_at=until))
 
     assert b.status == BookingStatus.active

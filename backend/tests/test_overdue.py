@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.core import clock as app_clock
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import AppSetting, VirtualMachine
@@ -31,21 +32,16 @@ async def add_vm(session, user, department, *, status: str = "ready", expected_r
 
 @pytest.fixture(autouse=True)
 def fixed_today(monkeypatch):
-    monkeypatch.setattr(overdue, "_today", lambda: TODAY)
+    monkeypatch.setattr(app_clock, "today", lambda: TODAY)
 
 
 @pytest.fixture
 def clock(monkeypatch):
-    """clock(hour, day=TODAY) — «сейчас» в локальной таймзоне портала; влияет и на _today, и на daily_digest."""
+    """clock(hour, day=TODAY) — «сейчас» в локальной таймзоне портала; влияет и на today(), и на daily_digest."""
     def _set(hour: int, day: date = TODAY) -> None:
         now = datetime(day.year, day.month, day.day, hour, 30, tzinfo=ZoneInfo(settings.display_timezone))
-
-        class FakeDatetime(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return now.astimezone(tz) if tz else now.replace(tzinfo=None)
-
-        monkeypatch.setattr(overdue, "datetime", FakeDatetime)
+        monkeypatch.setattr(app_clock, "now", lambda: now)
+        monkeypatch.setattr(app_clock, "today", now.date)  # перекрывает автоматический fixed_today
     return _set
 
 

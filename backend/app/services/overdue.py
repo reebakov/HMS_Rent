@@ -3,12 +3,12 @@
 Видно в Админке → «Просрочки» (+ счётчик в меню). Раз в день worker шлёт сводку в Mattermost,
 если задан MATTERMOST_WEBHOOK_URL.
 """
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.core.config import settings
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingStatus, VirtualMachine
@@ -17,12 +17,8 @@ DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (
 DIGEST_HOUR = 10  # во сколько слать сводку по местному времени
 
 
-def _today() -> date:
-    return datetime.now(ZoneInfo(settings.display_timezone)).date()
-
-
 async def list_overdue(session: AsyncSession) -> tuple[list[Booking], list[VirtualMachine]]:
-    today = _today()
+    today = clock.today()
     bookings = (await session.scalars(
         select(Booking).where(Booking.status == BookingStatus.active, Booking.expected_return_at < today)
         .order_by(Booking.expected_return_at)
@@ -36,13 +32,13 @@ async def list_overdue(session: AsyncSession) -> tuple[list[Booking], list[Virtu
 
 
 def days_overdue(due: date | None) -> int:
-    return (_today() - due).days if due else 0
+    return (clock.today() - due).days if due else 0
 
 
 async def daily_digest(session: AsyncSession) -> None:
     if not settings.mattermost_webhook_url:
         return
-    now = datetime.now(ZoneInfo(settings.display_timezone))
+    now = clock.now()
     if now.hour < DIGEST_HOUR:
         return
     row = await session.get(AppSetting, DIGEST_KEY)

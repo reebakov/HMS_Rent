@@ -3,8 +3,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.core import clock as app_clock
 from app.models import SyncRun, UserRole
-from app.services import overdue
 from tests.sync_fakes import add_booking
 from tests.test_overdue import add_vm
 
@@ -13,7 +13,7 @@ TODAY = date(2026, 6, 15)
 
 @pytest.fixture(autouse=True)
 def fixed_today(monkeypatch):
-    monkeypatch.setattr(overdue, "_today", lambda: TODAY)
+    monkeypatch.setattr(app_clock, "today", lambda: TODAY)
 
 
 @pytest.fixture

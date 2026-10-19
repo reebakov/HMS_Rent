@@ -1,12 +1,13 @@
 """Виртуалки: заявка (services/vms.py) и фоновые задачи (services/vm_jobs.py). vSphere и Mattermost — фейки."""
 import asyncio
-from datetime import date, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
+from app.core import clock
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden
 from app.db.session import SessionLocal
@@ -180,7 +181,7 @@ def test_payload_validation():
     with pytest.raises(ValueError):
         payload(1, name="Bad Name!")
     with pytest.raises(ValueError):
-        payload(1, expected_return_at=date.today() - timedelta(days=1))
+        payload(1, expected_return_at=clock.today() - timedelta(days=1))
 
 
 async def test_options_api_and_create_api(client, login, api, vm_on, ctx):

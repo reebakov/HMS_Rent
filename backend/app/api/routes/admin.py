@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.schemas.admin import EventPage
 
 from app.api.deps import DB, AdminUser
+from app.core import clock
 from app.core.config import settings
 from app.models import AssetEvent, Booking, Computer, Department, EventType, Pool, SyncRun
 from app.schemas.admin import (
@@ -60,7 +61,7 @@ async def inventory_export(
     pool_id: str | None = Query(default=None, pattern=POOL_FILTER),
 ) -> Response:
     rows, _total = await inventory.list_inventory(session, department_id=department_id, pool_id=pool_id, limit=None)
-    filename = f"inventory_{date.today():%Y-%m-%d}.csv"
+    filename = f"inventory_{clock.today():%Y-%m-%d}.csv"
     return Response(
         content=inventory.inventory_csv(rows).encode("utf-8"),
         media_type="text/csv; charset=utf-8",

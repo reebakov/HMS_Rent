@@ -2,11 +2,12 @@
 
 Доступ неадминов проверяет test_api_access.py — здесь только поведение под админом.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import func, select
 
+from app.core import clock
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import AssetEvent, Booking, Computer, Department, EventType, Pool, SyncRun, UserRole
@@ -14,7 +15,7 @@ from app.models.pool import pool_departments
 from tests.sync_fakes import FakeInsight, add_booking, insight_obj, patch_source
 
 ADMIN = UserRole.admin.value
-TODAY = date.today()
+TODAY = clock.today()
 
 
 @pytest.fixture

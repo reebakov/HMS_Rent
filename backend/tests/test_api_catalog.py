@@ -1,9 +1,10 @@
 """Каталог (видимость по пулам/отделам, фильтры, счётчики), бронирование и возврат через HTTP."""
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
+from app.core import clock
 from app.models import Computer, ComputerStatus, Tier, UserRole
 
 ADMIN = UserRole.admin.value
@@ -184,7 +185,7 @@ async def shop(make_department, make_pool, make_computer, make_user, login):
 
 
 async def test_create_booking_ok(client, shop, session, api):
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = clock.today() + timedelta(days=1)
     r = await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"], purpose=" тест ",
                                                           expected_return_at=tomorrow.isoformat()))
     assert r.status_code == 201, r.text
@@ -247,7 +248,7 @@ async def test_booking_unknown_or_inactive_department_is_404(client, shop, make_
 @pytest.mark.parametrize("patch", [
     {"requester_name": "И"}, {"requester_nick": ""}, {"purpose": "x" * 2001},
     {"requester_name": "     "}, {"requester_nick": "   "},  # одни пробелы — это пустое значение
-    {"expected_return_at": (date.today() - timedelta(days=1)).isoformat()}, {"expected_return_at": "not-a-date"},
+    {"expected_return_at": (clock.today() - timedelta(days=1)).isoformat()}, {"expected_return_at": "not-a-date"},
 ])
 async def test_booking_validation_422(client, shop, api, patch):
     assert (await client.post(api("/bookings"), json={**_payload(shop["comp"], shop["dept"]), **patch})

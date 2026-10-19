@@ -5,11 +5,12 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.core import clock
 from app.services import inventory, runtime
 from app.services.inventory import _safe_cell
 from tests.sync_fakes import add_booking
 
-TODAY = date.today()
+TODAY = clock.today()
 
 
 async def names(session, **kw) -> list[str]:
