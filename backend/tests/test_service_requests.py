@@ -66,6 +66,9 @@ def boom(text="Service Desk 500: boom") -> Exception:
     return real_sd.ServiceDeskError(text)
 
 
+REJECTED = "Service Desk отклонил запрос, попробуйте позже"
+
+
 @pytest.fixture
 def sd(monkeypatch):
     fake = FakeSd()
@@ -185,8 +188,9 @@ async def test_create_problem_missing_target(session, env, sd, kw, exc):
 
 async def test_create_problem_jira_error_not_saved(session, env, sd):
     sd.create_error = boom("Service Desk 400: customfield_1: обязательное поле")
-    with pytest.raises(DomainError, match="Не удалось создать заявку: .*обязательное поле"):
+    with pytest.raises(DomainError) as e:
         await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Проблема!")
+    assert str(e.value) == f"Не удалось создать заявку: {REJECTED}"  # подробностей Jira пользователь не видит
     assert await rows() == []
 
 
@@ -300,8 +304,9 @@ async def test_get_with_comments_jira_down(session, env, sd, what):
         sd.status_errors["HMS-100"] = boom()
     else:
         sd.comments_error = boom()
-    with pytest.raises(DomainError, match="Jira недоступна: Service Desk 500"):
+    with pytest.raises(DomainError) as e:
         await svc.get_with_comments(session, env.owner, req.id)
+    assert str(e.value) == REJECTED
     if what == "status":
         assert (await fresh(req.id)).status == "Старый"  # статус при сбое не трогаем
 
@@ -361,8 +366,9 @@ async def test_add_comment_without_issue_key(session, env, sd):
 async def test_add_comment_jira_error(session, env, sd):
     req = await add_req(session, env.owner)
     sd.send_error = boom()
-    with pytest.raises(DomainError, match="Не удалось отправить сообщение: Service Desk 500"):
+    with pytest.raises(DomainError) as e:
         await svc.add_comment(session, env.owner, req.id, "ok")
+    assert str(e.value) == f"Не удалось отправить сообщение: {REJECTED}"
 
 
 async def test_add_comment_access_and_not_found(session, env, sd):

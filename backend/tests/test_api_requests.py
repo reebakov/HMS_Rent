@@ -201,7 +201,7 @@ async def test_request_detail_jira_down_is_400(client, login, api, session, env,
     sd.comments_error = boom()
     login(env.owner)
     r = await client.get(api(f"/requests/{req.id}"))
-    assert r.status_code == 400 and "Jira недоступна" in r.json()["detail"]
+    assert r.status_code == 400 and r.json()["detail"] == "Service Desk отклонил запрос, попробуйте позже"
 
 
 # ---------- POST /requests/{id}/comments ----------
