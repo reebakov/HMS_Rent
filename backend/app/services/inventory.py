@@ -107,10 +107,10 @@ async def list_inventory(
         computers = (await session.scalars(ordered.where(_MAY_HAVE_ISSUES))).unique().all()
         bookings = await _active_bookings(session, [c.id for c in computers])
         rows = [r for r in (_row(c, bookings.get(c.id)) for c in computers) if r.issues]
-        return rows[offset: offset + limit if limit else None], len(rows)
+        return rows[offset: offset + limit if limit is not None else None], len(rows)
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
-    if limit:
+    if limit is not None:
         ordered = ordered.limit(limit).offset(offset)
     computers = (await session.scalars(ordered)).unique().all()
     bookings = await _active_bookings(session, [c.id for c in computers])
@@ -247,10 +247,7 @@ async def list_events(
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
     
-    stmt = stmt.order_by(AssetEvent.created_at.desc(), AssetEvent.id.desc())
-    if limit:
-        stmt = stmt.limit(limit).offset(offset)
-        
+    stmt = stmt.order_by(AssetEvent.created_at.desc(), AssetEvent.id.desc()).limit(limit).offset(offset)
     items = list((await session.scalars(stmt)).unique().all())
     return items, total or 0
 

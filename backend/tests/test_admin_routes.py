@@ -132,15 +132,27 @@ async def test_inventory_issues_only_returns_flagged_computers(client, boss, api
     assert "Ошибка записи в Insight: boom" in body["items"][1]["issues"]
 
 
-async def test_inventory_pagination_and_limit_clamp(client, boss, api, make_computer):
+async def test_inventory_pagination(client, boss, api, make_computer):
     for _ in range(3):
         await make_computer()
     r = (await client.get(api("/admin/inventory"), params={"limit": 2, "offset": 1})).json()
     assert r["total"] == 3 and [i["name"] for i in r["items"]] == ["A002", "A003"]
-    # limit < 1 поднимается до 1, а не отдаёт всё
-    r = (await client.get(api("/admin/inventory"), params={"limit": 0})).json()
-    assert len(r["items"]) == 1 and r["total"] == 3
-    assert (await client.get(api("/admin/inventory"), params={"limit": "abc"})).status_code == 422
+
+
+@pytest.mark.parametrize("path, params", [
+    ("/admin/inventory", {"limit": 0}), ("/admin/inventory", {"limit": -1}), ("/admin/inventory", {"limit": 501}),
+    ("/admin/inventory", {"limit": "abc"}), ("/admin/inventory", {"offset": -1}),
+    ("/admin/events", {"limit": 0}), ("/admin/events", {"limit": -1}), ("/admin/events", {"limit": 501}),
+    ("/admin/events", {"offset": -1}),
+], ids=lambda v: str(v))
+async def test_page_bounds_are_client_error(client, boss, api, path, params):
+    """limit вне 1..500 и отрицательный offset — 422: раньше limit=0 отдавал всё, а offset<0 ронял запрос (500)."""
+    assert (await client.get(api(path), params=params)).status_code == 422
+
+
+@pytest.mark.parametrize("path", ["/admin/inventory", "/admin/events"])
+async def test_page_upper_bound_is_accepted(client, boss, api, path):
+    assert (await client.get(api(path), params={"limit": 500, "offset": 0})).status_code == 200
 
 
 async def test_inventory_non_numeric_pool_id_is_client_error(client, boss, api):
@@ -647,11 +659,6 @@ async def test_events_empty(client, boss, api):
 @pytest.mark.parametrize("params", [{"limit": "x"}, {"offset": "x"}, {"date_to": "bad"}])
 async def test_events_bad_params_422(client, boss, api, params):
     assert (await client.get(api("/admin/events"), params=params)).status_code == 422
-
-
-async def test_events_negative_limit_is_client_error(client, boss, api, events_data):
-    assert (await client.get(api("/admin/events"), params={"limit": -1})).status_code == 422
-    assert (await client.get(api("/admin/events"), params={"offset": -1})).status_code == 422
 
 
 # ---------- Отделы ----------

@@ -44,12 +44,12 @@ async def inventory_list(
     pool_id: str | None = Query(default=None, pattern=POOL_FILTER),
     issues_only: bool = False,
     include_archived: bool = False,
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ) -> InventoryPage:
     items, total = await inventory.list_inventory(
         session, q=q, status=status, tier=tier, department_id=department_id, pool_id=pool_id,
-        issues_only=issues_only, include_archived=include_archived, limit=min(max(limit, 1), 500), offset=offset,
+        issues_only=issues_only, include_archived=include_archived, limit=limit, offset=offset,
     )
     return InventoryPage(items=items, total=total)
 
@@ -196,7 +196,7 @@ async def journal(
 @router.get("/events", response_model=EventPage)
 async def events(
     _: AdminUser, session: DB, 
-    limit: int = Query(50, ge=0), offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
     event_type: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
