@@ -47,19 +47,50 @@ def _client() -> httpx.AsyncClient:
                              headers=headers, auth=auth, verify=settings.sd_verify_ssl, timeout=20)
 
 
+async def _send(http: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
+    """Запрос к Jira: недоступность и таймаут превращаются в ServiceDeskError с понятным текстом."""
+    try:
+        return await http.request(method, url, **kwargs)
+    except httpx.HTTPError as exc:  # str(ReadTimeout()) бывает пустым — имя класса есть всегда
+        detail = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        raise ServiceDeskError(f"Service Desk недоступен ({method} {url}): {detail}") from exc
+
+
+def _json_object(resp: httpx.Response) -> dict:
+    """Тело ответа как JSON-объект. HTML вместо JSON (страница логина при протухшем токене) -> ServiceDeskError."""
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise ServiceDeskError(f"Service Desk вернул не JSON (HTTP {resp.status_code}): {resp.text[:120]!r}") from exc
+    if not isinstance(data, dict):
+        raise ServiceDeskError(f"Service Desk вернул неожиданный ответ (HTTP {resp.status_code}): {resp.text[:120]!r}")
+    return data
+
+
 def _error(resp: httpx.Response) -> str:
     try:
         data = resp.json()
-        msgs = data.get("errorMessage") or "; ".join(data.get("errorMessages") or [])
-        fields = "; ".join(f"{k}: {v}" for k, v in (data.get("errors") or {}).items())
-        return f"Service Desk {resp.status_code}: {msgs or fields or resp.text[:200]}"
     except ValueError:
+        data = None
+    if not isinstance(data, dict):  # не JSON или JSON-массив — показываем начало тела как есть
         return f"Service Desk {resp.status_code}: {resp.text[:200]}"
+    msgs = data.get("errorMessage") or "; ".join(data.get("errorMessages") or [])
+    fields = "; ".join(f"{k}: {v}" for k, v in (data.get("errors") or {}).items())
+    return f"Service Desk {resp.status_code}: {msgs or fields or resp.text[:200]}"
 
 
 def _status(data: dict) -> SdStatus:
-    cur = data.get("currentStatus") or {}
+    cur = data.get("currentStatus")
+    cur = cur if isinstance(cur, dict) else {}
     return SdStatus(status=cur.get("status"), category=(cur.get("statusCategory") or "").lower() or None)
+
+
+def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
+    data = _json_object(resp)
+    key = data.get("issueKey")
+    if not key:
+        raise ServiceDeskError("Service Desk не вернул ключ заявки")
+    return key, _status(data)
 
 
 async def create_request(request_type_id: int, summary: str, description: str,
@@ -72,35 +103,33 @@ async def create_request(request_type_id: int, summary: str, description: str,
     }
     async with _client() as http:
         if on_behalf_of and settings.sd_raise_on_behalf:
-            resp = await http.post("/request", json={**payload, "raiseOnBehalfOf": on_behalf_of})
+            resp = await _send(http, "POST", "/request", json={**payload, "raiseOnBehalfOf": on_behalf_of})
             if resp.status_code < 400:
-                data = resp.json()
-                return data["issueKey"], _status(data)
+                return _created(resp)
             log.info("raiseOnBehalfOf=%s не принят (%s) — создаю от сервисной учётки", on_behalf_of, resp.status_code)
-        resp = await http.post("/request", json=payload)
+        resp = await _send(http, "POST", "/request", json=payload)
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
-        data = resp.json()
-        return data["issueKey"], _status(data)
+        return _created(resp)
 
 
 async def get_status(issue_key: str) -> SdStatus:
     async with _client() as http:
-        resp = await http.get(f"/request/{issue_key}")
+        resp = await _send(http, "GET", f"/request/{issue_key}")
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
-        return _status(resp.json())
+        return _status(_json_object(resp))
 
 
 async def get_comments(issue_key: str) -> list[SdComment]:
     """Только публичные комментарии — внутренние заметки агентов сотрудник не видит."""
     async with _client() as http:
-        resp = await http.get(f"/request/{issue_key}/comment", params={"public": "true", "internal": "false",
-                                                                       "limit": 100})
+        resp = await _send(http, "GET", f"/request/{issue_key}/comment",
+                           params={"public": "true", "internal": "false", "limit": 100})
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
         comments = []
-        for c in resp.json().get("values", []):
+        for c in _json_object(resp).get("values") or []:
             body = c.get("body") or ""
             comments.append(SdComment(
                 author=(c.get("author") or {}).get("displayName") or "Поддержка",
@@ -116,8 +145,8 @@ PORTAL_PREFIX = "[HMS Rent] "
 
 async def add_comment(issue_key: str, author_name: str, text: str) -> None:
     async with _client() as http:
-        resp = await http.post(f"/request/{issue_key}/comment",
-                               json={"body": f"{PORTAL_PREFIX}{author_name}: {text}", "public": True})
+        resp = await _send(http, "POST", f"/request/{issue_key}/comment",
+                           json={"body": f"{PORTAL_PREFIX}{author_name}: {text}", "public": True})
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
 
@@ -125,7 +154,7 @@ async def add_comment(issue_key: str, author_name: str, text: str) -> None:
 async def request_type_fields(request_type_id: int) -> list[dict]:
     """Поля типа заявки — для CLI-проверки: какие обязательны."""
     async with _client() as http:
-        resp = await http.get(f"/servicedesk/{settings.sd_service_desk_id}/requesttype/{request_type_id}/field")
+        resp = await _send(http, "GET", f"/servicedesk/{settings.sd_service_desk_id}/requesttype/{request_type_id}/field")
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
-        return resp.json().get("requestTypeFields", [])
+        return _json_object(resp).get("requestTypeFields") or []

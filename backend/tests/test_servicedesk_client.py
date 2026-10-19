@@ -267,8 +267,6 @@ async def test_client_has_timeout_and_base_url():
 
 # ---------- сетевые сбои ----------
 
-@pytest.mark.xfail(strict=True, reason="Сетевые ошибки httpx (таймаут, обрыв) не оборачиваются в ServiceDeskError: "
-                                       "create_problem/refresh_open их не ловят — 500 вместо понятной ошибки")
 @pytest.mark.parametrize("exc", [httpx.ConnectError("refused"), httpx.ReadTimeout("slow")], ids=["connect", "timeout"])
 @pytest.mark.parametrize("name", CALLS)
 async def test_network_errors_become_servicedesk_error(jira, name, exc):
@@ -278,7 +276,6 @@ async def test_network_errors_become_servicedesk_error(jira, name, exc):
         await call()
 
 
-@pytest.mark.xfail(strict=True, reason="Успешный (2xx) ответ не в JSON даёт JSONDecodeError вместо ServiceDeskError")
 @pytest.mark.parametrize("name", ["create", "status", "comments", "fields"])
 async def test_non_json_success_becomes_servicedesk_error(jira, name):
     call, method, path = CALLS[name]
@@ -287,14 +284,12 @@ async def test_non_json_success_becomes_servicedesk_error(jira, name):
         await call()
 
 
-@pytest.mark.xfail(strict=True, reason="Ответ 2xx без issueKey даёт KeyError вместо ServiceDeskError")
 async def test_create_without_issue_key_becomes_servicedesk_error(jira):
     jira.post(f"{API}/request").respond(201, json={"id": "1"})
     with pytest.raises(sd.ServiceDeskError):
         await sd.create_request(1248, "T", "D", None)
 
 
-@pytest.mark.xfail(strict=True, reason="_error ожидает JSON-объект: тело ошибки-массив даёт AttributeError, а не ServiceDeskError")
 async def test_error_body_json_array(jira):
     jira.get(f"{API}/request/HMS-5").respond(500, json=["boom"])
     with pytest.raises(sd.ServiceDeskError):
