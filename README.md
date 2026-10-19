@@ -44,6 +44,7 @@ Swagger с описанием API: **http://localhost:8080/api/docs**.
 
 ```
 hms-rent/
+├── docker-compose.base.yml   # общая часть сервисов dev и прода (подключается через extends, сам не запускается)
 ├── docker-compose.yml        # разработка и демо: db + backend + worker + frontend со сборкой из исходников
 ├── docker-compose.prod.yml   # прод: те же сервисы на образах из ghcr.io (собирает CI)
 ├── docker-compose.tls.yml    # дополнение к проду: HTTPS (подключается, когда есть certs/)
@@ -51,7 +52,7 @@ hms-rent/
 ├── .env.example              # все настройки с комментариями
 ├── Makefile                  # make up / test / test-frontend / dev-*
 ├── scripts/deploy.sh         # выкатка на сервере: образы, дамп БД, перезапуск, автооткат
-├── deploy/nginx/             # конфиги nginx для HTTPS (tls.conf, app.inc)
+├── deploy/nginx/tls.conf     # nginx в режиме HTTPS (server-блоки с TLS; locations берёт из frontend/nginx/app.inc)
 ├── .github/workflows/ci.yml  # CI: тесты, проверка конфигов, публикация образов
 ├── docs/
 │   ├── ARCHITECTURE.md       # модель данных, статусы, пулы, синхронизация, ВМ, заявки, просрочки

@@ -24,7 +24,8 @@
   3. очередь виртуальных машин: создание (до 2 за круг), удаление (до 5), обновление IP;
   4. обновление статусов заявок Service Desk (раз в 2 минуты на заявку);
   5. ежедневная сводка просрочек в Mattermost.
-* **frontend** — статическая сборка React, nginx отдаёт её и проксирует `/api` на backend. Если на сервере есть
+* **frontend** — статическая сборка React, nginx отдаёт её и проксирует `/api` на backend (locations и gzip — в
+  `frontend/nginx/app.inc`, один файл для http и https). Если на сервере есть
   сертификат, nginx принимает HTTPS (подробности в «Доставка и окружения»).
 
 ## Структура backend
@@ -196,13 +197,15 @@
 
 ## Доставка и окружения
 
-* **Разработка и демо:** `docker-compose.yml` собирает образы из исходников, режим `INSIGHT_MODE=mock`.
+* **Разработка и демо:** `docker-compose.yml` собирает образы из исходников, режим `INSIGHT_MODE=mock`. Описание сервисов,
+  общее для dev и прода, лежит в `docker-compose.base.yml` (подключается через `extends`); в `docker-compose.yml` и
+  `docker-compose.prod.yml` остаются `build` или `image` и монтирование кода.
 * **CI** (GitHub Actions, `.github/workflows/ci.yml`): тесты backend и frontend (правило пропуска — `AGENTS.md`,
   «Тесты»), проверка конфигов (`deploy.sh`, compose, nginx) и публикация образов `ghcr.io/reebakov/hms-rent-backend` и
   `-frontend` с тегом-sha коммита.
 * **Прод:** `docker-compose.prod.yml` на готовых образах, обновление командой `sudo ./scripts/deploy.sh` (порядок шагов
-  и откат — `README.md`, «Деплой на сервер»). С диска сервера читаются только `backend/config` и, для HTTPS, конфиги
-  nginx из `deploy/nginx` и сертификат.
+  и откат — `README.md`, «Деплой на сервер»). С диска сервера читаются только `backend/config` и, для HTTPS, `deploy/nginx/tls.conf`,
+  `frontend/nginx/app.inc` и сертификат.
 * **HTTPS:** `docker-compose.tls.yml` подключается сам, если есть `certs/fullchain.pem` и `certs/privkey.pem`
   (`docs/DOMAIN_TLS.md`; на проде пока не включён). Секреты и права файлов — `docs/SECRETS.md`.
 

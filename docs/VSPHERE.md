@@ -16,6 +16,9 @@
 ОС (`vm_templates`) редактируется в Админка → «Настройки» и важнее `.env`; описание полей шаблона — в
 `docs/ARCHITECTURE.md`, раздел «Виртуальные машины и шаблоны ОС».
 
+Соответствие `vc26.ff.local` → `10.1.1.50` задано в контейнерах backend и worker напрямую (`extra_hosts` в
+`docker-compose.base.yml`), а не через DNS; при смене адреса оно правится там.
+
 Применить правку `.env`: на проде — `sudo ./scripts/deploy.sh --redeploy`, при разработке —
 `docker compose up -d --force-recreate backend worker`.
 Проверка: Админка → «Настройки» → «Проверить» — найдёт датацентр, vApp и шаблон, ничего не меняя.
