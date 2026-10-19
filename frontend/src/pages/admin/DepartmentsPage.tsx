@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Building2, Plus } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
@@ -64,57 +65,55 @@ export function DepartmentsPage() {
           empty={<EmptyState icon={Building2} title="Отделов пока нет" action={<Button onClick={() => open()}>Добавить первый</Button>} />}
         >
           {(data) => (
-            <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-[13px]">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">Отдел</th>
-                    <th className="px-4 py-2.5 font-medium">Руководитель</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Сейчас ПК</th>
-                    {TIER_ORDER.map((t) => (
-                      <th key={t} className="px-4 py-2.5 text-right font-medium">
-                        {TIERS[t].label}
-                      </th>
-                    ))}
-                    <th className="px-4 py-2.5 text-right font-medium">Всего броней</th>
-                    <th className="px-4 py-2.5 font-medium">Последняя</th>
-                    <th className="px-4 py-2.5" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {data.map((d) => (
-                    <tr key={d.department_id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{d.name}</span>
-                          {d.code && <span className="font-mono text-xs text-muted-foreground">{d.code}</span>}
-                          {!d.is_active && <Badge>скрыт</Badge>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{d.head_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-right text-base font-semibold tabular">{d.active}</td>
-                      {TIER_ORDER.map((t) => (
-                        <td key={t} className="px-4 py-3 text-right tabular text-muted-foreground">
-                          {d.by_tier[t] ?? 0}
-                        </td>
-                      ))}
-                      <td className="px-4 py-3 text-right tabular">{d.total_bookings}</td>
-                      <td className="px-4 py-3 tabular text-muted-foreground">{formatDate(d.last_booked_at)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => open(d)}>
-                            Изменить
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => toggle(d)}>
-                            {d.is_active ? 'Скрыть' : 'Вернуть'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+            <DataTable
+              className="min-w-[900px]"
+              head={
+                <>
+                  <Th>Отдел</Th>
+                  <Th>Руководитель</Th>
+                  <Th right>Сейчас ПК</Th>
+                  {TIER_ORDER.map((t) => (
+                    <Th key={t} right>
+                      {TIERS[t].label}
+                    </Th>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                  <Th right>Всего броней</Th>
+                  <Th>Последняя</Th>
+                  <Th />
+                </>
+              }
+            >
+              {data.map((d) => (
+                <tr key={d.department_id} className="hover:bg-muted/40">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{d.name}</span>
+                      {d.code && <span className="font-mono text-xs text-muted-foreground">{d.code}</span>}
+                      {!d.is_active && <Badge>скрыт</Badge>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{d.head_name ?? '—'}</td>
+                  <td className="px-4 py-3 text-right text-base font-semibold tabular">{d.active}</td>
+                  {TIER_ORDER.map((t) => (
+                    <td key={t} className="px-4 py-3 text-right tabular text-muted-foreground">
+                      {d.by_tier[t] ?? 0}
+                    </td>
+                  ))}
+                  <td className="px-4 py-3 text-right tabular">{d.total_bookings}</td>
+                  <td className="px-4 py-3 tabular text-muted-foreground">{formatDate(d.last_booked_at)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => open(d)}>
+                        Изменить
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => toggle(d)}>
+                        {d.is_active ? 'Скрыть' : 'Вернуть'}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
           )}
         </DataState>
       </Card>

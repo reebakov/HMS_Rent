@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react'
 import { Card, CardHeader, PageHeader, Skeleton } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DataState } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { useRunSync, useSyncInfo } from '@/lib/queries'
 import type { SyncInfo } from '@/lib/types'
@@ -76,38 +77,36 @@ export function SyncPage() {
 
             <Card className="mt-6">
               <CardHeader title="Последние запуски" />
-              <div className="scroll-thin overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-[13px]">
-                  <thead className="bg-muted/40 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2.5 font-medium">Начало</th>
-                      <th className="px-4 py-2.5 font-medium">Результат</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Объектов</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Новых</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Изменено</th>
-                      <th className="px-4 py-2.5 text-right font-medium">В архив</th>
-                      <th className="px-4 py-2.5 font-medium">Ошибка</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {data.runs.map((r) => (
-                      <tr key={r.id}>
-                        <td className="px-4 py-3 tabular">{formatDateTime(r.started_at)}</td>
-                        <td className="px-4 py-3">
-                          {r.status === 'success' ? <Badge tone="success" dot>Успешно</Badge> : <Badge tone="danger" dot>Ошибка</Badge>}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular">{r.total}</td>
-                        <td className="px-4 py-3 text-right tabular">{count(r.id, 'created', r.created)}</td>
-                        <td className="px-4 py-3 text-right tabular">{count(r.id, 'updated', r.updated)}</td>
-                        <td className="px-4 py-3 text-right tabular">{count(r.id, 'archived', r.archived)}</td>
-                        <td className="max-w-[320px] truncate px-4 py-3 text-danger" title={r.error ?? undefined}>
-                          {r.error ?? ''}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                className="min-w-[760px]"
+                head={
+                  <>
+                    <Th>Начало</Th>
+                    <Th>Результат</Th>
+                    <Th right>Объектов</Th>
+                    <Th right>Новых</Th>
+                    <Th right>Изменено</Th>
+                    <Th right>В архив</Th>
+                    <Th>Ошибка</Th>
+                  </>
+                }
+              >
+                {data.runs.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-3 tabular">{formatDateTime(r.started_at)}</td>
+                    <td className="px-4 py-3">
+                      {r.status === 'success' ? <Badge tone="success" dot>Успешно</Badge> : <Badge tone="danger" dot>Ошибка</Badge>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular">{r.total}</td>
+                    <td className="px-4 py-3 text-right tabular">{count(r.id, 'created', r.created)}</td>
+                    <td className="px-4 py-3 text-right tabular">{count(r.id, 'updated', r.updated)}</td>
+                    <td className="px-4 py-3 text-right tabular">{count(r.id, 'archived', r.archived)}</td>
+                    <td className="max-w-[320px] truncate px-4 py-3 text-danger" title={r.error ?? undefined}>
+                      {r.error ?? ''}
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
             </Card>
           </>
         )}

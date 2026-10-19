@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Cloud } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VmStatusBadge } from '@/components/ui/badge'
@@ -54,50 +55,48 @@ export function VmsPage() {
           empty={<EmptyState icon={Cloud} title="Виртуалок пока нет" description="Они появятся, когда сотрудники соберут их в конструкторе" />}
         >
           {(data) => (
-            <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-[13px]">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">№ заказа</th>
-                    <th className="px-4 py-2.5 font-medium">ВМ</th>
-                    <th className="px-4 py-2.5 font-medium">Ресурсы</th>
-                    <th className="px-4 py-2.5 font-medium">Владелец</th>
-                    <th className="px-4 py-2.5 font-medium">IP</th>
-                    <th className="px-4 py-2.5 font-medium">Создана</th>
-                    <th className="px-4 py-2.5 font-medium">Вернуть до</th>
-                    <th className="px-4 py-2.5 font-medium">Статус</th>
-                    <th className="px-4 py-2.5" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {data.map((vm) => (
-                    <tr key={vm.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
-                      <td className="px-4 py-3 font-semibold">{vm.name}</td>
-                      <td className="px-4 py-3 tabular">{vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{vm.department.name}</p>
-                        <p className="text-xs text-muted-foreground">{vm.requester_name} ({vm.requester_nick})</p>
-                      </td>
-                      <td className="px-4 py-3 font-mono">{vm.ip_address ?? '—'}</td>
-                      <td className="px-4 py-3 tabular">{formatDateTime(vm.created_at)}</td>
-                      <td className="px-4 py-3 tabular">{vm.expected_return_at ? formatDate(vm.expected_return_at) : '—'}</td>
-                      <td className="px-4 py-3">
-                        <VmStatusBadge status={vm.status} />
-                        {vm.error && <p className="mt-1 max-w-[260px] truncate text-xs text-danger" title={vm.error}>{vm.error}</p>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {canReleaseVm(vm.status) && (
-                          <Button size="sm" variant="ghost" onClick={() => setRemoving(vm)}>
-                            Удалить
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="min-w-[980px]"
+              head={
+                <>
+                  <Th>№ заказа</Th>
+                  <Th>ВМ</Th>
+                  <Th>Ресурсы</Th>
+                  <Th>Владелец</Th>
+                  <Th>IP</Th>
+                  <Th>Создана</Th>
+                  <Th>Вернуть до</Th>
+                  <Th>Статус</Th>
+                  <Th />
+                </>
+              }
+            >
+              {data.map((vm) => (
+                <tr key={vm.id} className="hover:bg-muted/40">
+                  <td className="px-4 py-3 tabular text-muted-foreground">№{vm.order_number}</td>
+                  <td className="px-4 py-3 font-semibold">{vm.name}</td>
+                  <td className="px-4 py-3 tabular">{vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} CPU · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{vm.department.name}</p>
+                    <p className="text-xs text-muted-foreground">{vm.requester_name} ({vm.requester_nick})</p>
+                  </td>
+                  <td className="px-4 py-3 font-mono">{vm.ip_address ?? '—'}</td>
+                  <td className="px-4 py-3 tabular">{formatDateTime(vm.created_at)}</td>
+                  <td className="px-4 py-3 tabular">{vm.expected_return_at ? formatDate(vm.expected_return_at) : '—'}</td>
+                  <td className="px-4 py-3">
+                    <VmStatusBadge status={vm.status} />
+                    {vm.error && <p className="mt-1 max-w-[260px] truncate text-xs text-danger" title={vm.error}>{vm.error}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {canReleaseVm(vm.status) && (
+                      <Button size="sm" variant="ghost" onClick={() => setRemoving(vm)}>
+                        Удалить
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
           )}
         </DataState>
       </Card>

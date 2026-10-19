@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { UserPlus } from 'lucide-react'
 import { Card, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
@@ -66,50 +67,48 @@ export function UsersPage() {
         <QueryError query={departments} title="Не удалось загрузить отделы" />
         <DataState query={users} errorTitle="Не удалось загрузить сотрудников" loading={<RowsSkeleton />}>
           {(data) => (
-            <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-[13px]">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">Сотрудник</th>
-                    <th className="px-4 py-2.5 font-medium">Вход</th>
-                    <th className="px-4 py-2.5 font-medium">Отдел</th>
-                    <th className="px-4 py-2.5 font-medium">Последний вход</th>
-                    <th className="px-4 py-2.5" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {data.map((u) => (
-                    <tr key={u.id} className={u.is_active ? '' : 'opacity-60'}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">
-                          {u.display_name} {u.role === 'admin' && <Badge tone="primary">админ</Badge>}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{u.email ?? u.username}</p>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {{ bouncer: 'Bouncer', microsoft: 'Bouncer', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select className="h-8 w-52" aria-label={`Отдел: ${u.display_name}`} value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
-                          <option value="">— без отдела —</option>
-                          {departments.data?.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{u.last_login_at ? formatRelative(u.last_login_at) : 'ещё не входил'}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Button size="sm" variant="ghost" onClick={() => toggleActive(u.id, u.is_active)}>
-                          {u.is_active ? 'Заблокировать' : 'Разблокировать'}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="min-w-[820px]"
+              head={
+                <>
+                  <Th>Сотрудник</Th>
+                  <Th>Вход</Th>
+                  <Th>Отдел</Th>
+                  <Th>Последний вход</Th>
+                  <Th />
+                </>
+              }
+            >
+              {data.map((u) => (
+                <tr key={u.id} className={u.is_active ? '' : 'opacity-60'}>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">
+                      {u.display_name} {u.role === 'admin' && <Badge tone="primary">админ</Badge>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{u.email ?? u.username}</p>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {{ bouncer: 'Bouncer', microsoft: 'Bouncer', local: 'Локальная учётка', dev: 'Dev' }[u.auth_source]}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Select className="h-8 w-52" aria-label={`Отдел: ${u.display_name}`} value={u.department?.id ?? ''} onChange={(e) => setDepartment(u.id, e.target.value)}>
+                      <option value="">— без отдела —</option>
+                      {departments.data?.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{u.last_login_at ? formatRelative(u.last_login_at) : 'ещё не входил'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => toggleActive(u.id, u.is_active)}>
+                      {u.is_active ? 'Заблокировать' : 'Разблокировать'}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
           )}
         </DataState>
       </Card>

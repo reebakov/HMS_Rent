@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowLeftRight, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Input, Select } from '@/components/ui/input'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { useDebouncedSearch } from '@/lib/hooks'
@@ -67,57 +68,55 @@ export function JournalPage() {
           empty={<EmptyState icon={ArrowLeftRight} title="Записей нет" description="Бронирования появятся здесь сразу после создания" />}
         >
           {(data) => (
-            <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-[13px]">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">№ заказа</th>
-                    <th className="px-4 py-2.5 font-medium">Компьютер</th>
-                    <th className="px-4 py-2.5 font-medium">Отдел</th>
-                    <th className="px-4 py-2.5 font-medium">Ответственный</th>
-                    <th className="px-4 py-2.5 font-medium">Взят</th>
-                    <th className="px-4 py-2.5 font-medium">Вернуть до</th>
-                    <th className="px-4 py-2.5 font-medium">Возвращён</th>
-                    <th className="px-4 py-2.5 font-medium">Длительность</th>
-                    <th className="px-4 py-2.5 font-medium">Статус</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {data.map((b) => (
-                    <tr key={b.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3 tabular text-muted-foreground">№{b.order_number}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{b.computer.name}</span>
-                          <TierBadge tier={b.computer.tier} />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-medium">{b.department.name}</td>
-                      <td className="px-4 py-3">
-                        {b.requester_name}
-                        <span className="block text-xs text-muted-foreground">
-                          {b.requester_nick} · аккаунт {b.user.username}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 tabular">{formatDateTime(b.booked_at)}</td>
-                      <td className={cn('px-4 py-3 tabular', b.status === 'active' && isOverdue(b.expected_return_at) && 'text-danger')}>
-                        {b.expected_return_at ? formatDate(b.expected_return_at) : '—'}
-                      </td>
-                      <td className="px-4 py-3 tabular">
-                        {b.returned_at ? formatDateTime(b.returned_at) : '—'}
-                        {b.returned_by && b.returned_by.id !== b.user.id && (
-                          <span className="block text-xs text-muted-foreground">вернул {b.returned_by.display_name}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDuration(b.booked_at, b.returned_at)}</td>
-                      <td className="px-4 py-3">
-                        {b.status === 'active' ? <Badge tone="primary" dot>Активна</Badge> : <Badge>Закрыта</Badge>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="min-w-[960px]"
+              head={
+                <>
+                  <Th>№ заказа</Th>
+                  <Th>Компьютер</Th>
+                  <Th>Отдел</Th>
+                  <Th>Ответственный</Th>
+                  <Th>Взят</Th>
+                  <Th>Вернуть до</Th>
+                  <Th>Возвращён</Th>
+                  <Th>Длительность</Th>
+                  <Th>Статус</Th>
+                </>
+              }
+            >
+              {data.map((b) => (
+                <tr key={b.id} className="hover:bg-muted/40">
+                  <td className="px-4 py-3 tabular text-muted-foreground">№{b.order_number}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{b.computer.name}</span>
+                      <TierBadge tier={b.computer.tier} />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-medium">{b.department.name}</td>
+                  <td className="px-4 py-3">
+                    {b.requester_name}
+                    <span className="block text-xs text-muted-foreground">
+                      {b.requester_nick} · аккаунт {b.user.username}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 tabular">{formatDateTime(b.booked_at)}</td>
+                  <td className={cn('px-4 py-3 tabular', b.status === 'active' && isOverdue(b.expected_return_at) && 'text-danger')}>
+                    {b.expected_return_at ? formatDate(b.expected_return_at) : '—'}
+                  </td>
+                  <td className="px-4 py-3 tabular">
+                    {b.returned_at ? formatDateTime(b.returned_at) : '—'}
+                    {b.returned_by && b.returned_by.id !== b.user.id && (
+                      <span className="block text-xs text-muted-foreground">вернул {b.returned_by.display_name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDuration(b.booked_at, b.returned_at)}</td>
+                  <td className="px-4 py-3">
+                    {b.status === 'active' ? <Badge tone="primary" dot>Активна</Badge> : <Badge>Закрыта</Badge>}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
           )}
         </DataState>
       </Card>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Activity, Search } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
+import { DataTable, Th } from '@/components/ui/table'
 import { Input, Select } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
 import { useDebouncedSearch } from '@/lib/hooks'
@@ -56,37 +57,35 @@ export function EventsPage() {
           isEmpty={(d) => !d.items.length}
         >
           {() => (
-            <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-[13px]">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 font-medium">Дата и время</th>
-                    <th className="px-4 py-2.5 font-medium">Компьютер</th>
-                    <th className="px-4 py-2.5 font-medium">Тип события</th>
-                    <th className="px-4 py-2.5 font-medium">Сообщение / Статусы</th>
-                    <th className="px-4 py-2.5 font-medium">Кто сделал</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map((e) => (
-                    <tr key={e.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-3 tabular whitespace-nowrap text-muted-foreground">{formatDateTime(e.created_at)}</td>
-                      <td className="px-4 py-3 font-semibold">{e.computer.name}</td>
-                      <td className="px-4 py-3 font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</td>
-                      <td className="px-4 py-3">
-                        <p>{e.message}</p>
-                        {(e.from_status || e.to_status) && (
-                          <p className="mt-0.5 text-xs text-muted-foreground font-mono">
-                            [{e.from_status || '—'} ➔ {e.to_status || '—'}]
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{e.actor?.display_name || 'Система'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="min-w-[960px]"
+              head={
+                <>
+                  <Th>Дата и время</Th>
+                  <Th>Компьютер</Th>
+                  <Th>Тип события</Th>
+                  <Th>Сообщение / Статусы</Th>
+                  <Th>Кто сделал</Th>
+                </>
+              }
+            >
+              {rows.map((e) => (
+                <tr key={e.id} className="hover:bg-muted/40">
+                  <td className="px-4 py-3 tabular whitespace-nowrap text-muted-foreground">{formatDateTime(e.created_at)}</td>
+                  <td className="px-4 py-3 font-semibold">{e.computer.name}</td>
+                  <td className="px-4 py-3 font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</td>
+                  <td className="px-4 py-3">
+                    <p>{e.message}</p>
+                    {(e.from_status || e.to_status) && (
+                      <p className="mt-0.5 text-xs text-muted-foreground font-mono">
+                        [{e.from_status || '—'} ➔ {e.to_status || '—'}]
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{e.actor?.display_name || 'Система'}</td>
+                </tr>
+              ))}
+            </DataTable>
           )}
         </DataState>
 
