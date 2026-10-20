@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import DB, AdminUser, CurrentUser
 from app.models import VirtualMachine
-from app.schemas.vm import VmCreate, VmOptions, VmOut
+from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmOut
 from app.services import vms as service
 
 router = APIRouter(tags=["vms"])
@@ -26,6 +26,11 @@ async def my_vms(user: CurrentUser, session: DB) -> list[VirtualMachine]:
 @router.post("/vms/{vm_id}/release", response_model=VmOut)
 async def release_vm(vm_id: int, user: CurrentUser, session: DB) -> VirtualMachine:
     return await service.release(session, user, vm_id)
+
+
+@router.post("/vms/{vm_id}/extend", response_model=VmOut)
+async def extend_vm(vm_id: int, data: VmExtend, user: CurrentUser, session: DB) -> VirtualMachine:
+    return await service.extend(session, user, vm_id, data)
 
 
 @router.get("/admin/vms", response_model=list[VmOut])

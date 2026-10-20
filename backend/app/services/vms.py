@@ -11,8 +11,8 @@ from app.db.integrity import conflict_on_integrity_error
 from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
 from app.schemas.settings import RuntimeConfig, VmTemplate
-from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
-from app.services import departments, runtime
+from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmTemplateOption
+from app.services import departments, overdue, runtime
 from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number
 
@@ -109,8 +109,8 @@ async def get_vm(session: AsyncSession, vm_id: int) -> VirtualMachine:
     return vm
 
 
-async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachine:
-    """Отказ от ВМ: worker выключит и удалит её в vSphere."""
+async def _lock_vm(session: AsyncSession, user: User, vm_id: int, forbidden: str) -> VirtualMachine:
+    """ВМ под блокировкой; менять её может автор, участник его команды или администратор."""
     # FOR UPDATE: worker берёт ВМ из очереди через _take. Без блокировки отказ мог прочитать «queued», пока
     # клон уже запущен, и пометить ВМ удалённой — в vCenter осталась бы лишняя машина.
     vm = await session.scalar(
@@ -119,8 +119,14 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
     )
     if vm is None:
         raise NotFound("Виртуалка не найдена")
-    ensure_access(user, vm.user_id, vm.department_id,
-                  "Удалить ВМ может тот, кто её заказывал, участник его команды или администратор")
+    ensure_access(user, vm.user_id, vm.department_id, forbidden)
+    return vm
+
+
+async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachine:
+    """Отказ от ВМ: worker выключит и удалит её в vSphere."""
+    vm = await _lock_vm(session, user, vm_id,
+                        "Удалить ВМ может тот, кто её заказывал, участник его команды или администратор")
     if vm.status in (VmStatus.deleting, VmStatus.deleted):
         raise Conflict("Виртуалка уже удаляется")
     if vm.status == VmStatus.creating:
@@ -130,6 +136,20 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
     vm.released_by_id = user.id
     if vm.status == VmStatus.deleted:
         vm.deleted_at = vm.released_at
+    await session.commit()
+    return await get_vm(session, vm.id)
+
+
+async def extend(session: AsyncSession, user: User, vm_id: int, data: VmExtend) -> VirtualMachine:
+    """Продление срока ВМ: сразу меняет срок и пишет продление в журнал. В Insight ВМ не записываются."""
+    vm = await _lock_vm(session, user, vm_id,
+                        "Продлить ВМ может тот, кто её заказывал, участник его команды или администратор")
+    if vm.status in (VmStatus.deleting, VmStatus.deleted):
+        raise Conflict("Виртуалка удаляется или уже удалена — продлить срок нельзя")
+    old = vm.expected_return_at
+    overdue.record_extension(session, user, old=old, new=data.expected_return_at, comment=data.comment,
+                             vm_id=vm.id)
+    vm.expected_return_at = data.expected_return_at
     await session.commit()
     return await get_vm(session, vm.id)
 

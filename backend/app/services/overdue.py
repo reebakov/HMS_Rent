@@ -1,4 +1,4 @@
-"""Сроки аренды: просрочки ПК и виртуалок и продления броней.
+"""Сроки аренды: просрочки ПК и виртуалок и продления ПК и ВМ.
 
 Видно в Админке → «Сроки аренды» (+ счётчик просрочек и непринятых продлений в меню). Раз в день worker шлёт
 сводку просрочек в Mattermost, если задан MATTERMOST_WEBHOOK_URL.
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.config import settings
-from app.core.errors import NotFound
+from app.core.errors import Conflict, NotFound
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingExtension, BookingStatus, User, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
@@ -51,6 +51,20 @@ async def list_items(session: AsyncSession) -> list[OverdueItem]:
         for v in vms
     ]
     return sorted(items, key=lambda i: -i.days)
+
+
+def record_extension(session: AsyncSession, user: User, *, old: date | None, new: date, comment: str | None,
+                     booking_id: int | None = None, vm_id: int | None = None) -> None:
+    """Продление ПК (booking_id) или ВМ (vm_id) в журнал; вызывается до изменения заказа, чтобы отказ ничего не менял."""
+    if old is not None and new <= old:
+        raise Conflict(f"Новый срок должен быть позже текущего ({old:%d.%m.%Y})")
+    # продление админа уже им «принято»: в счётчик новых попадают только продления арендаторов и их команд
+    session.add(BookingExtension(
+        booking_id=booking_id, vm_id=vm_id, user_id=user.id, old_return_at=old, new_return_at=new,
+        comment=comment or None,
+        acknowledged_at=datetime.now(timezone.utc) if user.is_admin else None,
+        acknowledged_by_id=user.id if user.is_admin else None,
+    ))
 
 
 async def list_extensions(session: AsyncSession) -> list[BookingExtension]:

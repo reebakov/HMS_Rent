@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.booking import BookingExtend
 from app.schemas.common import DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
 
 
@@ -21,6 +22,10 @@ class VmCreate(InputModel):
     @classmethod
     def lower(cls, value: str) -> str:
         return value.lower() if isinstance(value, str) else value
+
+
+class VmExtend(BookingExtend):
+    """Продление ВМ: новый срок и необязательная причина — как у брони ПК."""
 
 
 class VmOut(ORMModel):

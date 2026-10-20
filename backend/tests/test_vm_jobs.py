@@ -9,13 +9,12 @@ from sqlalchemy import select
 
 from app.core import clock
 from app.core.config import settings
-from app.core.errors import Conflict, DomainError, Forbidden
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.vsphere.client import VmInfo
-from app.models import VirtualMachine
-from app.schemas.vm import VmCreate
+from app.models import BookingExtension, VirtualMachine
+from app.schemas.vm import VmCreate, VmExtend
 from app.services import runtime, vm_jobs, vms
-
 
 TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
 
@@ -434,6 +433,146 @@ async def test_release_api_and_my_list(client, login, api, vm_on, ctx, session):
     r = await client.post(api(f"/vms/{vm.id}/release"))
     assert r.status_code == 200 and r.json()["status"] == "deleted"
     assert (await client.post(api("/vms/9999/release"))).status_code == 404
+
+
+# ---------- продление срока ----------
+
+def extend_to(days: int, comment: str | None = None) -> VmExtend:
+    return VmExtend(expected_return_at=clock.today() + timedelta(days=days), comment=comment)
+
+
+async def extensions_of_vm(vm_id: int) -> list[BookingExtension]:
+    async with SessionLocal() as s:
+        q = select(BookingExtension).where(BookingExtension.vm_id == vm_id).order_by(BookingExtension.id)
+        return list((await s.scalars(q)).unique().all())
+
+
+async def test_extend_by_owner(session, vm_on, ctx):
+    vm = await request(session, ctx)
+    old, new = vm.expected_return_at, clock.today() + timedelta(days=40)
+    vm = await vms.extend(session, ctx.user, vm.id, extend_to(40, "  ещё сборка  "))
+
+    assert vm.expected_return_at == new and vm.status == "queued"
+    [ext] = await extensions_of_vm(vm.id)
+    assert (ext.booking_id, ext.user_id, ext.old_return_at, ext.new_return_at, ext.comment) == (
+        None, ctx.user.id, old, new, "ещё сборка")
+    assert ext.acknowledged_at is None and ext.acknowledged_by_id is None  # ждёт «Принято» админа
+
+
+async def test_extend_by_teammate_logs_who_extended(session, vm_on, ctx, make_user):
+    mate = await make_user("petrov", department=ctx.dept)
+    vm = await vms.extend(session, mate, (await request(session, ctx)).id, extend_to(31))
+    assert vm.user_id == ctx.user.id
+    [ext] = await extensions_of_vm(vm.id)
+    assert ext.user_id == mate.id and ext.acknowledged_at is None
+
+
+async def test_extend_by_admin_is_already_acknowledged(session, vm_on, ctx, make_user):
+    admin = await make_user("boss", role="admin")
+    vm = await vms.extend(session, admin, (await request(session, ctx)).id, extend_to(31))
+    [ext] = await extensions_of_vm(vm.id)
+    assert ext.user_id == admin.id and ext.acknowledged_by_id == admin.id and ext.acknowledged_at is not None
+
+
+@pytest.mark.parametrize("team", ["other", "none"])
+async def test_extend_by_stranger_forbidden(session, vm_on, ctx, make_user, make_department, team):
+    stranger = await make_user("petrov", department=await make_department("Ops") if team == "other" else None)
+    vm = await request(session, ctx)
+    with pytest.raises(Forbidden, match="Продлить ВМ может тот, кто её заказывал, участник его команды"):
+        await vms.extend(session, stranger, vm.id, extend_to(31))
+    assert await extensions_of_vm(vm.id) == []
+    assert (await status_of(session, vm)).expected_return_at == clock.today() + timedelta(days=30)
+
+
+@pytest.mark.parametrize("status", ["queued", "creating", "ready", "failed"])
+async def test_extend_allowed_in_working_statuses(session, vm_on, ctx, status):
+    vm = await request(session, ctx)
+    vm.status = status
+    await session.commit()
+    assert (await vms.extend(session, ctx.user, vm.id, extend_to(31))).status == status
+
+
+@pytest.mark.parametrize("status", ["deleting", "deleted"])
+async def test_extend_deleted_or_deleting_conflict(session, vm_on, ctx, status):
+    vm = await request(session, ctx)
+    vm.status = status
+    await session.commit()
+    with pytest.raises(Conflict, match="удаляется или уже удалена"):
+        await vms.extend(session, ctx.user, vm.id, extend_to(31))
+    assert await extensions_of_vm(vm.id) == []
+
+
+@pytest.mark.parametrize("days", [30, 29, 0])
+async def test_extend_not_later_than_current_conflict(session, vm_on, ctx, days):
+    vm = await request(session, ctx)  # срок: сегодня + 30
+    with pytest.raises(Conflict, match="позже текущего"):
+        await vms.extend(session, ctx.user, vm.id, extend_to(days))
+    assert await extensions_of_vm(vm.id) == []
+    assert (await status_of(session, vm)).expected_return_at == clock.today() + timedelta(days=30)
+
+
+async def test_extend_vm_without_date(session, vm_on, ctx):
+    """У ВМ, созданных до обязательного срока, даты нет: продлить можно на любую с сегодняшней."""
+    vm = await request(session, ctx)
+    vm.expected_return_at = None
+    await session.commit()
+    vm = await vms.extend(session, ctx.user, vm.id, extend_to(0))
+    assert vm.expected_return_at == clock.today()
+    [ext] = await extensions_of_vm(vm.id)
+    assert ext.old_return_at is None
+
+
+@pytest.mark.parametrize("comment", [None, "", "   "])
+async def test_extend_empty_comment_becomes_none(session, vm_on, ctx, comment):
+    vm = await vms.extend(session, ctx.user, (await request(session, ctx)).id, extend_to(31, comment))
+    [ext] = await extensions_of_vm(vm.id)
+    assert ext.comment is None
+
+
+async def test_extend_missing_not_found(session, vm_on, ctx):
+    with pytest.raises(NotFound, match="Виртуалка не найдена"):
+        await vms.extend(session, ctx.user, 9999, extend_to(31))
+
+
+async def test_extend_waits_for_worker_that_took_the_vm(session, vm_on, ctx):
+    """Продление берёт ту же блокировку строки, что и worker: не пишет срок поверх взятой в работу ВМ."""
+    vm = await request(session, ctx)
+    async with SessionLocal() as worker:
+        assert (await vm_jobs._take(worker, "queued")).id == vm.id
+        async with SessionLocal() as other:
+            extending = asyncio.create_task(vms.extend(other, ctx.user, vm.id, extend_to(31)))
+            await asyncio.sleep(0.3)
+            assert not extending.done()
+            await worker.commit()
+            assert (await extending).expected_return_at == clock.today() + timedelta(days=31)
+
+
+async def test_extend_api(client, login, api, vm_on, ctx, session, make_user, make_department):
+    vm = await request(session, ctx)
+    new = (clock.today() + timedelta(days=45)).isoformat()
+    url = api(f"/vms/{vm.id}/extend")
+
+    login(await make_user("outsider", department=await make_department("Ops")))
+    assert (await client.post(url, json={"expected_return_at": new})).status_code == 403
+
+    login(await make_user("mate", department=ctx.dept))
+    r = await client.post(url, json={"expected_return_at": new, "comment": "ещё сборка"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["id"], r.json()["expected_return_at"], r.json()["status"]) == (vm.id, new, "queued")
+
+    assert (await client.post(url, json={"expected_return_at": new})).status_code == 409  # не позже текущего
+    assert (await client.post(api("/vms/9999/extend"), json={"expected_return_at": new})).status_code == 404
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"expected_return_at": None}, {"expected_return_at": "2020-01-01"}, {"expected_return_at": "не дата"},
+    {"expected_return_at": TOMORROW, "comment": "x" * 2001},
+], ids=["missing", "null", "past", "garbage", "long-comment"])
+async def test_extend_api_validation_422(client, login, api, vm_on, ctx, session, body):
+    vm = await request(session, ctx)
+    login(ctx.user)
+    assert (await client.post(api(f"/vms/{vm.id}/extend"), json=body)).status_code == 422
+    assert await extensions_of_vm(vm.id) == []
 
 
 # ---------- гонки ----------

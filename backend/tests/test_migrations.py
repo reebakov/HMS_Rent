@@ -5,17 +5,23 @@
 import os
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
+import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 import app.models  # noqa: F401 — регистрирует таблицы в metadata
 from app.db.base import Base
 from app.db.session import engine
+from app.models import BookingExtension
+from tests.sync_fakes import add_booking
+from tests.test_overdue import add_vm
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -76,3 +82,47 @@ async def test_models_match_migrations():
     async with engine.connect() as conn:
         result = await conn.run_sync(diff)
     assert result == [], f"модели расходятся с миграциями: {result}"
+
+
+# ---------- 0009: продления ВМ ----------
+
+async def _seed_extensions(session, make_user, make_department, make_computer) -> None:
+    """ПК с бронью и ВМ одного отдела; по одному продлению на ПК и на ВМ."""
+    dept = await make_department("QA")
+    user = await make_user("u", department=dept)
+    booking = await add_booking(session, await make_computer("PC-1"), user, dept)
+    vm = await add_vm(session, user, dept)
+    session.add_all([BookingExtension(booking_id=booking.id, user_id=user.id, new_return_at=date(2026, 7, 1)),
+                     BookingExtension(vm_id=vm.id, user_id=user.id, new_return_at=date(2026, 7, 2))])
+    await session.commit()
+
+
+async def _extension_booking_ids() -> list[int | None]:
+    async with engine.connect() as conn:
+        return list((await conn.execute(text("SELECT booking_id FROM booking_extensions ORDER BY id"))).scalars())
+
+
+async def test_extension_targets_exactly_one(session, make_user, make_department, make_computer):
+    """CHECK в БД: у продления ровно одно из booking_id / vm_id."""
+    await _seed_extensions(session, make_user, make_department, make_computer)
+    for columns, values in (("user_id, new_return_at", "1, '2026-07-03'"),  # id=1: таблицы очищены с RESTART IDENTITY
+                            ("booking_id, vm_id, user_id, new_return_at", "1, 1, 1, '2026-07-03'")):
+        with pytest.raises(IntegrityError, match="one_target"):
+            await session.execute(text(f"INSERT INTO booking_extensions ({columns}) VALUES ({values})"))
+        await session.rollback()
+
+
+async def test_downgrade_0009_keeps_pc_extensions_and_drops_vm_ones(session, make_user, make_department,
+                                                                    make_computer):
+    await _seed_extensions(session, make_user, make_department, make_computer)
+    assert await _extension_booking_ids() == [1, None]
+    try:
+        down = _alembic("downgrade", "0008")
+        assert down.returncode == 0, down.stderr[-2000:]
+        assert await _extension_booking_ids() == [1]  # в старой схеме нет vm_id: остались только продления ПК
+        up = _alembic("upgrade", "head")
+        assert up.returncode == 0, up.stderr[-2000:]
+        assert await _extension_booking_ids() == [1]
+    finally:
+        _alembic("upgrade", "head")
+        await engine.dispose()

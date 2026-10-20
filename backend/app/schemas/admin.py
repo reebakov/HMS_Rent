@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -7,6 +7,7 @@ from app.models.enums import Tier
 from app.schemas.booking import BookingOut
 from app.schemas.common import DepartmentShort, InputModel, ORMModel, UserShort, reject_explicit_null
 from app.schemas.computer import ComputerOut
+from app.schemas.vm import VmOut
 
 
 class SyncRunOut(ORMModel):
@@ -69,7 +70,10 @@ class OverdueItem(BaseModel):
 
 class ExtensionOut(ORMModel):
     id: int
-    booking: BookingOut
+    kind: Literal["pc", "vm"]
+    name: str  # имя ПК или ВМ
+    booking: BookingOut | None  # продление ПК
+    vm: VmOut | None  # продление ВМ
     user: UserShort  # кто продлил
     old_return_at: date | None
     new_return_at: date

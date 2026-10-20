@@ -12,9 +12,9 @@ from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source, get_mapping
 from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
-from app.models import Booking, BookingExtension, BookingStatus, Computer, ComputerStatus, EventType, User
+from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate, BookingExtend
-from app.services import departments, runtime, service_requests
+from app.services import departments, overdue, runtime, service_requests
 from app.services.access import ensure_access, mine_or_team
 from app.services.events import add_event
 from app.services.orders import next_order_number
@@ -162,19 +162,12 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
 async def extend_booking(session: AsyncSession, user: User, booking_id: int, data: BookingExtend) -> Booking:
     booking, comp = await _lock_active(session, user, booking_id, "Продлить аренду")
     old, new = booking.expected_return_at, data.expected_return_at
-    if old is not None and new <= old:
-        raise Conflict(f"Новый срок должен быть позже текущего ({old:%d.%m.%Y})")
     comment = data.comment or None
+    overdue.record_extension(session, user, old=old, new=new, comment=comment, booking_id=booking.id)
 
     booking.expected_return_at = new
     comp.usage_until = new
     comp.writeback_pending = runtime.current().insight_writeback
-    # продление админа уже им «принято»: в счётчик новых попадают только продления арендаторов
-    acknowledged = datetime.now(timezone.utc) if user.is_admin else None
-    session.add(BookingExtension(
-        booking_id=booking.id, user_id=user.id, old_return_at=old, new_return_at=new, comment=comment,
-        acknowledged_at=acknowledged, acknowledged_by_id=user.id if user.is_admin else None,
-    ))
     add_event(
         session,
         computer_id=comp.id,

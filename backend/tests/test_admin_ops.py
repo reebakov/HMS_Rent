@@ -1,6 +1,7 @@
 """Админка: детали запуска синхронизации (GET /admin/sync/runs/{id}), просрочки (GET /admin/overdue)
 и продления (GET /admin/extensions, POST /admin/extensions/{id}/ack)."""
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -159,7 +160,69 @@ async def test_extensions_fields(admin, api, session, rented):
     assert (item["id"], item["user"]["display_name"], item["comment"]) == (ext.id, "Иван Иванов", "ещё неделя")
     assert (item["old_return_at"], item["new_return_at"]) == ("2026-06-15", "2026-06-22")
     assert item["booking"]["computer"]["name"] == "PC-1" and item["booking"]["department"]["name"] == "QA"
+    assert (item["kind"], item["name"], item["vm"]) == ("pc", "PC-1", None)
     assert item["acknowledged_at"] is None and item["acknowledged_by"] is None and item["created_at"]
+
+
+def _dept(booking):
+    """Отдел брони для фабрик (department из bookings лениво не подгружается в async)."""
+    return SimpleNamespace(id=booking.department_id)
+
+
+async def add_vm_extension(session, vm, user, **kw) -> BookingExtension:
+    ext = BookingExtension(vm_id=vm.id, user_id=user.id, old_return_at=TODAY, new_return_at=TODAY + timedelta(days=7), **kw)
+    session.add(ext)
+    await session.commit()
+    return ext
+
+
+async def test_extensions_list_both_kinds(admin, api, session, rented):
+    """Журнал общий для ПК и ВМ: kind различает вид, у ПК заполнен booking, у ВМ — vm."""
+    user, booking = rented
+    vm = await add_vm(session, user, _dept(booking), name="rent-box", expected_return_at=TODAY + timedelta(days=7))
+    pc_ext = await add_extension(session, booking, user, created_at=datetime.now(timezone.utc) - timedelta(hours=1))
+    vm_ext = await add_vm_extension(session, vm, user, comment="ещё сборка")
+
+    items = {i["id"]: i for i in (await admin.get(api("/admin/extensions"))).json()}
+    assert list(items) == [vm_ext.id, pc_ext.id]  # свежие сверху независимо от вида
+    v = items[vm_ext.id]
+    assert (v["kind"], v["name"], v["booking"], v["comment"]) == ("vm", "rent-box", None, "ещё сборка")
+    assert (v["vm"]["id"], v["vm"]["order_number"], v["vm"]["department"]["name"], v["vm"]["status"]) == (
+        vm.id, vm.order_number, "QA", "ready")
+    assert (v["old_return_at"], v["new_return_at"], v["user"]["display_name"]) == ("2026-06-15", "2026-06-22", "Иван Иванов")
+    assert (items[pc_ext.id]["kind"], items[pc_ext.id]["name"]) == ("pc", "PC-1")
+
+
+async def test_extension_ack_vm(admin, api, session, rented):
+    user, booking = rented
+    vm = await add_vm(session, user, _dept(booking))
+    ext = await add_vm_extension(session, vm, user)
+    r = await admin.post(api(f"/admin/extensions/{ext.id}/ack"))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["kind"], body["vm"]["id"], body["booking"]) == ("vm", vm.id, None)
+    assert body["acknowledged_at"] and body["acknowledged_by"]["username"] == "boss"
+    again = (await admin.post(api(f"/admin/extensions/{ext.id}/ack"))).json()  # повтор ничего не меняет
+    assert again["acknowledged_at"] == body["acknowledged_at"]
+
+
+async def test_vm_extension_by_teammate_then_admin_sees_it_new_and_vm_not_overdue(admin, login, api, session, make_user,
+                                                                                  rented):
+    """Сквозной путь: ВМ просрочена, команда продлила → просрочка ушла, продление ждёт «Принято», потом принято."""
+    user, booking = rented
+    vm = await add_vm(session, user, _dept(booking), name="rent-late", expected_return_at=TODAY - timedelta(days=3))
+    assert [(i["name"], i["days"]) for i in (await admin.get(api("/admin/overdue"))).json()] == [("rent-late", 3)]
+
+    mate = await make_user("mate", department=_dept(booking))
+    new = (TODAY + timedelta(days=10)).isoformat()
+    assert (await login(mate).post(api(f"/vms/{vm.id}/extend"), json={"expected_return_at": new})).status_code == 200
+
+    login(await make_user("boss2", role=UserRole.admin.value))
+    assert (await admin.get(api("/admin/overdue"))).json() == []
+    (ext,) = (await admin.get(api("/admin/extensions"))).json()
+    assert (ext["kind"], ext["name"], ext["acknowledged_at"], ext["new_return_at"]) == ("vm", "rent-late", None, new)
+    assert ext["user"]["username"] == "mate" and ext["vm"]["expected_return_at"] == new
+    assert (await admin.post(api(f"/admin/extensions/{ext['id']}/ack"))).json()["acknowledged_by"]["username"] == "boss2"
 
 
 async def test_extensions_new_first_then_recent_acknowledged(admin, api, session, rented, make_user):
