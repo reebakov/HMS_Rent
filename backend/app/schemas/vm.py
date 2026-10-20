@@ -14,7 +14,7 @@ class VmCreate(InputModel):
     requester_name: str = Field(min_length=2, max_length=255)
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
-    expected_return_at: ReturnDate | None = None
+    expected_return_at: ReturnDate
     template_key: str | None = None  # шаблон ОС; пусто — первый доступный
 
     @field_validator("name", mode="before")

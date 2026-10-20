@@ -17,6 +17,9 @@ from app.schemas.vm import VmCreate
 from app.services import runtime, vm_jobs, vms
 
 
+TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
+
+
 class FakeVSphere:
     """Замена модуля app.integrations.vsphere.client целиком: без pyVmomi и сети."""
 
@@ -82,7 +85,8 @@ async def vm_on(session, monkeypatch):
 
 def payload(dept_id: int, **kw) -> VmCreate:
     data = {"name": "Dev-Box", "cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan", "purpose": "тесты"}
+            "requester_name": "Иван Иванов", "requester_nick": "ivan", "purpose": "тесты",
+            "expected_return_at": clock.today() + timedelta(days=30)}
     return VmCreate(**(data | kw))
 
 
@@ -187,7 +191,7 @@ async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
     opts = (await client.get(api("/vms/options"))).json()
     assert opts["enabled"] and opts["name_prefix"] == "rent-" and opts["used_by_me"] == 0
     body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv"}
+            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body)
     assert r.status_code == 201 and r.json()["name"] == "rent-api-box" and r.json()["status"] == "queued"
     assert (await client.post(api("/vms"), json=body)).status_code == 409
@@ -198,8 +202,28 @@ async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
 async def test_create_api_whitespace_only_requester_is_422(client, login, api, vm_on, ctx, patch):
     login(ctx.user)
     body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv"} | patch
+            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW} | patch
     assert (await client.post(api("/vms"), json=body)).status_code == 422
+
+
+@pytest.mark.parametrize("value", [None, "", "2020-01-01", "missing"], ids=["null", "empty", "past", "missing"])
+async def test_create_api_return_date_is_required_422(client, login, api, vm_on, ctx, session, value):
+    """Срок использования обязателен для ВМ, как и для ПК: без него, пустой или в прошлом — 422, заказ не создаётся."""
+    login(ctx.user)
+    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+            "requester_name": "Иван", "requester_nick": "iv"}
+    if value != "missing":
+        body["expected_return_at"] = value
+    assert (await client.post(api("/vms"), json=body)).status_code == 422
+    assert await vms.list_vms(session) == []
+
+
+async def test_create_api_saves_return_date(client, login, api, vm_on, ctx):
+    login(ctx.user)
+    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
+    r = await client.post(api("/vms"), json=body)
+    assert r.status_code == 201 and r.json()["expected_return_at"] == TOMORROW
 
 
 # ---------- worker: создание ----------

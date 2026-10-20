@@ -3,6 +3,7 @@
 vSphere — фейки: без pyVmomi-соединения и сети. Общие хелперы test_vm_jobs.py не импортируем, свои — ниже.
 """
 from contextlib import contextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 from pyVmomi import vim
 from sqlalchemy import func, select
 
+from app.core import clock
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError
 from app.db.session import SessionLocal
@@ -78,9 +80,13 @@ async def ctx(make_user, make_department):
     return SimpleNamespace(dept=dept, user=await make_user("ivanov", department=dept))
 
 
+TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
+
+
 def payload(dept_id: int, **kw) -> VmCreate:
     data = {"name": "dev-box", "cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan"}
+            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "expected_return_at": clock.today() + timedelta(days=30)}
     return VmCreate(**(data | kw))
 
 
@@ -499,7 +505,7 @@ async def test_create_api_saves_template_and_returns_it(client, login, api, sess
     login(ctx.user)
     await set_templates(session, tpl("win10", "T10", label="Windows 10"))
     body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv"}
+            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body | {"template_key": "win10"})
     assert r.status_code == 201
     assert (r.json()["template_key"], r.json()["os_label"]) == ("win10", "Windows 10")
