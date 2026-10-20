@@ -26,7 +26,9 @@ const makeSettings = (over: Partial<AppSettings> = {}): AppSettings => ({
 
 let settings: AppSettings
 const save = () => screen.getByRole('button', { name: 'Сохранить' })
-const tplRow = (i: number) => screen.getAllByRole('row')[i + 1]
+// первая таблица на странице — шаблоны ОС (ниже — готовые размеры ВМ)
+const tplRows = () => within(screen.getAllByRole('table')[0]).getAllByRole('row')
+const tplRow = (i: number) => tplRows()[i + 1]
 const patchBody = () => vi.mocked(api.patch).mock.calls[vi.mocked(api.patch).mock.calls.length - 1][1] as Record<string, unknown>
 
 beforeEach(() => {
@@ -71,7 +73,7 @@ describe('SettingsPage: загрузка и отображение', () => {
     expect(screen.getByLabelText(/^Ядер до/)).toHaveValue(16)
     expect(screen.getByText('vCenter: vc.example.com')).toBeInTheDocument()
     expect(screen.getByText('Шаблоны ОС для виртуалок')).toBeInTheDocument()
-    expect(screen.getAllByRole('row')).toHaveLength(3)
+    expect(tplRows()).toHaveLength(3)
     expect(within(tplRow(0)).getByDisplayValue('Windows 11')).toBeInTheDocument()
     expect(within(tplRow(1)).getByDisplayValue('Ubuntu')).toBeInTheDocument()
     expect(save()).toBeDisabled()
@@ -81,7 +83,7 @@ describe('SettingsPage: загрузка и отображение', () => {
     settings = makeSettings({ vm_templates: undefined as never })
     renderWithProviders(<SettingsPage />)
     await screen.findByText('Шаблоны ОС для виртуалок')
-    expect(screen.getAllByRole('row')).toHaveLength(1)
+    expect(tplRows()).toHaveLength(1)
   })
 })
 

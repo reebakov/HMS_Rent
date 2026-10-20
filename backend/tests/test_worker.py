@@ -99,7 +99,7 @@ async def test_slow_vm_step_does_not_block_insight_cycle(calls, monkeypatch):
     vm_task = asyncio.create_task(worker._step("Создание ВМ", vm_jobs.create_pending))
     await asyncio.sleep(0)  # ВМ-шаг начался и завис на ожидании
     await worker._tick(0.0, clock=Clock())
-    assert calls == ["sync", "writeback", "sd", "digest"] and not vm_task.done()
+    assert calls == ["sync", "writeback", "sd", "digest", "reminders"] and not vm_task.done()
     release.set()
     await vm_task
 
@@ -144,7 +144,7 @@ async def test_repeat_survives_failing_step(slept, caplog):
 async def test_insight_loop_does_one_tick_then_pauses(calls, slept):
     with pytest.raises(StopLoop):
         await worker._insight_loop()
-    assert calls == ["sync", "writeback", "sd", "digest"] and slept == [worker.TICK_SEC]
+    assert calls == ["sync", "writeback", "sd", "digest", "reminders"] and slept == [worker.TICK_SEC]
 
 
 @pytest.fixture
