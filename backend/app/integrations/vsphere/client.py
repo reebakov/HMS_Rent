@@ -176,6 +176,13 @@ def _finish_setup(vm, disk_gb: int) -> None:
     _wait(vm.PowerOnVM_Task(), "Включение")
 
 
+def set_annotation(moid: str, annotation: str) -> None:
+    """Заменяет Notes ВМ (арендатор, отдел, срок). Ошибка vCenter — VSphereError."""
+    with connect() as si:
+        vm = vim.VirtualMachine(moid, si._stub)  # noqa: SLF001
+        _wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(annotation=annotation)), "Обновление описания")
+
+
 def vm_status(moid: str) -> VmInfo | None:
     with connect() as si:
         vm = vim.VirtualMachine(moid, si._stub)  # noqa: SLF001

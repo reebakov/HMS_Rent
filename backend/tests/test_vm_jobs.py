@@ -13,7 +13,7 @@ from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.vsphere.client import VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
-from app.schemas.vm import VmCreate, VmExtend
+from app.schemas.vm import VmCreate, VmExtend, VmOut
 from app.services import runtime, vm_jobs, vms
 
 TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
@@ -27,6 +27,8 @@ class FakeVSphere:
         self.delete_errors: list[Exception | None] = []
         self.created: list[tuple] = []
         self.deleted: list[str] = []  # moid удалённых ВМ
+        self.annotations: list[tuple[str, str]] = []  # (moid, текст) каждой записи Notes
+        self.annotation_errors: list[Exception | None] = []
         self.existing: dict[str, VmInfo] = {}
         self.ip: str | None = "10.0.0.5"
 
@@ -40,6 +42,11 @@ class FakeVSphere:
         self.deleted.append(moid)
         if self.delete_errors and (err := self.delete_errors.pop(0)):
             raise err
+
+    def set_annotation(self, moid, annotation):
+        if self.annotation_errors and (err := self.annotation_errors.pop(0)):
+            raise err
+        self.annotations.append((moid, annotation))
 
     def vm_status(self, moid):
         return VmInfo(moid=moid, name="x", power_state="poweredOn", ip_address=self.ip)
@@ -342,6 +349,69 @@ async def test_upkeep_deletes_at_most_batch_and_fills_ip(session, vm_on, ctx, vs
     assert len(vsphere.deleted) == 2  # третья дождётся следующего круга
     await vm_jobs.upkeep(session, deletions=2)
     assert len(vsphere.deleted) == 3
+
+
+# ---------- срок в Notes ВМ ----------
+
+async def test_annotation_not_rewritten_when_term_unchanged(session, vm_on, ctx, vsphere, notify):
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    vm = await status_of(session, vm)
+    assert vm.notes_return_at == vm.expected_return_at  # при создании срок уже записан в Notes
+    await vm_jobs.refresh_annotations(session)
+    assert vsphere.annotations == []
+
+
+async def test_extend_rewrites_annotation_once(session, vm_on, ctx, vsphere, notify):
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    first = vsphere.created[0][4]
+    new_term = clock.today() + timedelta(days=60)
+    await vms.extend(session, ctx.user, vm.id, extend_to(60))
+    await vm_jobs.refresh_annotations(session)
+    (moid, text), = vsphere.annotations
+    assert moid == "vm-1" and f"Вернуть до: {new_term:%d.%m.%Y}" in text
+    created_line = next(line for line in text.splitlines() if line.startswith("Создана:"))
+    assert created_line in first  # время создания при обновлении не меняется
+    assert (await status_of(session, vm)).notes_return_at == new_term
+    await vm_jobs.refresh_annotations(session)  # повторно ничего не пишем
+    assert len(vsphere.annotations) == 1
+
+
+async def test_annotation_failure_is_retried_next_round(session, vm_on, ctx, vsphere, notify):
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    await vms.extend(session, ctx.user, vm.id, extend_to(60))
+    vsphere.annotation_errors = [RuntimeError("vCenter недоступен")]
+    await vm_jobs.refresh_annotations(session)  # ошибка не пробрасывается
+    assert vsphere.annotations == [] and (await status_of(session, vm)).notes_return_at != clock.today() + timedelta(days=60)
+    await vm_jobs.refresh_annotations(session)
+    assert len(vsphere.annotations) == 1
+
+
+async def test_annotation_skips_vms_that_are_not_ready_or_have_no_moid(session, vm_on, ctx, vsphere, notify):
+    queued = await request(session, ctx)  # срок есть, а в Notes ничего не записано, но ВМ ещё нет в vCenter
+    await vms.extend(session, ctx.user, queued.id, extend_to(60))
+    await vm_jobs.refresh_annotations(session)
+    assert vsphere.annotations == []
+
+
+# ---------- данные подключения ----------
+
+@pytest.mark.parametrize("os_value, method", [("windows", "RDP"), ("linux", "VNC"), (None, None)])
+async def test_vm_connection_method_by_os(session, vm_on, ctx, os_value, method):
+    vm = await request(session, ctx)
+    vm.os = os_value
+    await session.commit()
+    out = VmOut.model_validate(await status_of(session, vm))
+    assert (out.connection_login, out.connection_method) == ("user", method)
+
+
+async def test_order_stores_template_os(session, vm_on, ctx):
+    await runtime.update(session, {"vm_templates": [
+        {"key": "ubuntu", "label": "Ubuntu 22.04", "os": "linux", "template": "T", "min_disk_gb": 20, "enabled": True}]})
+    vm = await request(session, ctx, template_key="ubuntu", disk_gb=50)
+    assert vm.os == "linux" and VmOut.model_validate(vm).connection_method == "VNC"
 
 
 async def test_refresh_ips_fills_missing_ip(session, vm_on, ctx, vsphere, notify):

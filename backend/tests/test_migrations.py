@@ -126,3 +126,23 @@ async def test_downgrade_0009_keeps_pc_extensions_and_drops_vm_ones(session, mak
     finally:
         _alembic("upgrade", "head")
         await engine.dispose()
+
+
+# ---------- 0011: ОС виртуалки и срок в Notes ----------
+
+async def test_0011_backfills_os_from_label(session, make_user, make_department):
+    """У старых ВМ ОС выводится из названия: без названия и Windows — windows, Ubuntu и др. — linux, прочее — пусто."""
+    dept = await make_department("QA")
+    user = await make_user("u", department=dept)
+    labels = ["Windows 10", None, "Ubuntu 22.04", "Debian 12", "Своя ОС"]
+    for i, label in enumerate(labels):
+        await add_vm(session, user, dept, name=f"vm-os-{i}", os_label=label)
+    try:
+        assert _alembic("downgrade", "0010").returncode == 0
+        assert _alembic("upgrade", "head").returncode == 0
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT os_label, os FROM virtual_machines ORDER BY id"))).all()
+    finally:
+        _alembic("upgrade", "head")
+        await engine.dispose()
+    assert [r.os for r in rows] == ["windows", "windows", "linux", "linux", None]

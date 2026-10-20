@@ -47,6 +47,8 @@ class VmOut(ORMModel):
     expected_return_at: date | None
     requested_return_at: date | None  # срок из заявки админу, пока она ждёт решения
     ip_address: str | None
+    connection_login: str
+    connection_method: str | None  # RDP для Windows, VNC для Linux; пусто, если ОС неизвестна
     power_state: str | None
     created_at: datetime
     ready_at: datetime | None

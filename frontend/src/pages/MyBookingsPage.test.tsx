@@ -55,6 +55,8 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   expected_return_at: null,
   requested_return_at: null,
   ip_address: '10.0.0.15',
+  connection_login: 'user',
+  connection_method: 'RDP',
   power_state: 'on',
   created_at: '2024-01-10T09:00:00Z',
   ready_at: '2024-01-10T09:10:00Z',

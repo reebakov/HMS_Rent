@@ -273,6 +273,8 @@ export interface Vm {
   expected_return_at: string | null
   requested_return_at: string | null // срок из заявки админу, пока она ждёт решения
   ip_address: string | null
+  connection_login: string
+  connection_method: 'RDP' | 'VNC' | null // способ подключения по ОС; пусто, если ОС неизвестна
   power_state: string | null
   created_at: string
   ready_at: string | null

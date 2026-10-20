@@ -91,7 +91,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
     vm = VirtualMachine(
         order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
-        status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label,
+        status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label, os=tmpl.os,
         requester_name=data.requester_name, requester_nick=data.requester_nick,
         purpose=data.purpose or None, expected_return_at=until, attrs={},
     )

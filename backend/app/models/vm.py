@@ -25,6 +25,10 @@ class AppSetting(Base):
                                                  onupdate=func.now())
 
 
+VM_LOGIN = "user"  # локальная учётная запись в шаблонах ВМ; пароль заказчику сообщают отдельно
+CONNECTION_METHODS = {"windows": "RDP", "linux": "VNC"}
+
+
 class VirtualMachine(Base, TimestampMixin):
     """Виртуалка из конструктора: клон шаблона в vSphere, закреплённый за сотрудником.
 
@@ -46,6 +50,7 @@ class VirtualMachine(Base, TimestampMixin):
     disk_gb: Mapped[int]
     template_key: Mapped[str | None] = mapped_column(String(32))  # ключ шаблона ОС из настроек (win10, ubuntu2204…)
     os_label: Mapped[str | None] = mapped_column(String(64))  # «Windows 10» — для отображения
+    os: Mapped[str | None] = mapped_column(String(16))  # windows / linux — от него зависит способ подключения
     status: Mapped[str] = mapped_column(String(16), index=True, default=VmStatus.queued.value)
     error: Mapped[str | None] = mapped_column(Text)
 
@@ -59,6 +64,7 @@ class VirtualMachine(Base, TimestampMixin):
     expected_return_at: Mapped[date | None] = mapped_column(Date)
 
     vsphere_moid: Mapped[str | None] = mapped_column(String(64))  # id ВМ в vCenter, например vm-1234
+    notes_return_at: Mapped[date | None] = mapped_column(Date)  # срок, записанный сейчас в Notes ВМ в vCenter
     ip_address: Mapped[str | None] = mapped_column(String(64))
     power_state: Mapped[str | None] = mapped_column(String(32))
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -74,6 +80,14 @@ class VirtualMachine(Base, TimestampMixin):
         primaryjoin="and_(VirtualMachine.id == TermRequest.vm_id, TermRequest.status == 'pending')",
         lazy="selectin", viewonly=True,
     )
+
+    @property
+    def connection_login(self) -> str:
+        return VM_LOGIN
+
+    @property
+    def connection_method(self) -> str | None:
+        return CONNECTION_METHODS.get(self.os or "")
 
     @property
     def requested_return_at(self) -> date | None:

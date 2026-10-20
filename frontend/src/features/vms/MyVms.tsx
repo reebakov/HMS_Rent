@@ -82,6 +82,11 @@ export function MyVms({
                   ) : vm.status === 'ready' ? (
                     <span className="text-muted-foreground">Windows загружается…</span>
                   ) : null}
+                  {vm.status === 'ready' && (
+                    <p className="text-xs text-muted-foreground">
+                      Логин {vm.connection_login}{vm.connection_method && ` · ${vm.connection_method}`}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     с {formatDateTime(vm.created_at)}
                     {vm.expected_return_at && ` · до ${formatDate(vm.expected_return_at)}`}

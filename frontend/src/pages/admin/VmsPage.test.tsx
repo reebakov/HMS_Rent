@@ -17,7 +17,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   id: 1, order_number: 200, name: 'rent-design-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
   status: 'ready', error: null, department: { id: 1, name: 'Разработка' },
   user: { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' }, requester_name: 'Иван Иванов', requester_nick: 'iivanov',
-  purpose: null, expected_return_at: null, requested_return_at: null, ip_address: '10.0.0.15', power_state: 'on', created_at: '2024-01-10T09:00:00Z',
+  purpose: null, expected_return_at: null, requested_return_at: null, ip_address: '10.0.0.15', connection_login: 'user', connection_method: 'RDP', power_state: 'on', created_at: '2024-01-10T09:00:00Z',
   ready_at: '2024-01-10T09:10:00Z', released_at: null, deleted_at: null, ...over,
 })
 

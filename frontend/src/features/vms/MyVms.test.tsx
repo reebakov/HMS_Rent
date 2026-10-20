@@ -35,6 +35,8 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   expected_return_at: null,
   requested_return_at: null,
   ip_address: '10.0.0.15',
+  connection_login: 'user',
+  connection_method: 'RDP',
   power_state: 'on',
   created_at: '2024-01-10T09:00:00Z',
   ready_at: '2024-01-10T09:10:00Z',
@@ -270,6 +272,22 @@ describe('MyVms', () => {
       await user.type(within(screen.getByRole('dialog')).getByLabelText(/Новый срок/), '3000-01-31')
       await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Продлить' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/2/extend', { expected_return_at: '3000-01-31' }))
+    })
+  })
+
+  describe('данные подключения', () => {
+    it.each([
+      ['RDP', 'Логин user · RDP'],
+      ['VNC', 'Логин user · VNC'],
+      [null, 'Логин user'],
+    ] as const)('готовая ВМ со способом %s показывает «%s»', async (connection_method, text) => {
+      await renderVms([makeVm({ connection_method })])
+      expect(screen.getByText(text)).toBeInTheDocument()
+    })
+
+    it.each(['queued', 'creating', 'failed'] as const)('ВМ в статусе %s логин не показывает', async (status) => {
+      await renderVms([makeVm({ status, ip_address: null })])
+      expect(screen.queryByText(/Логин user/)).not.toBeInTheDocument()
     })
   })
 

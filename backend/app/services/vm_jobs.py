@@ -22,12 +22,13 @@ async def _pause(seconds: float) -> None:
 
 
 def _annotation(vm: VirtualMachine) -> str:
+    created = vm.ready_at or datetime.now(timezone.utc)  # при обновлении срока «Создана» не должна меняться
     until = f"{vm.expected_return_at:%d.%m.%Y}" if vm.expected_return_at else "без срока"
     lines = [
         "HMS Rent — виртуалка выдана через портал",
         f"Арендатор: {vm.requester_name} ({vm.requester_nick}), {vm.user.email or vm.user.username}",
         f"Отдел: {vm.department.name}",
-        f"Создана: {datetime.now(timezone.utc):%d.%m.%Y %H:%M} UTC",
+        f"Создана: {created:%d.%m.%Y %H:%M} UTC",
         f"Вернуть до: {until}",
     ]
     if vm.purpose:
@@ -58,10 +59,12 @@ async def create_next(session: AsyncSession) -> bool:
             await session.commit()
             return True
         template, spec = tmpl.template, tmpl.customization_spec
+    annotated_until = vm.expected_return_at  # срок попадёт в Notes; если его продлят во время клона, upkeep обновит
+    annotation = _annotation(vm)
     for attempt in range(1, CREATE_ATTEMPTS + 1):
         try:
             info = await asyncio.to_thread(
-                vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm), template, spec,
+                vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, annotation, template, spec,
             )
         except Exception as exc:  # noqa: BLE001
             # недоделанный клон vSphere-клиент убирает сам; по имени здесь не удаляем — оно может быть чужим
@@ -71,6 +74,7 @@ async def create_next(session: AsyncSession) -> bool:
                 await _pause(CREATE_RETRY_DELAY_SEC)
             continue
         vm.status, vm.error = VmStatus.ready.value, None
+        vm.notes_return_at = annotated_until
         vm.vsphere_moid, vm.ip_address, vm.power_state = info.moid, info.ip_address, info.power_state
         vm.ready_at = datetime.now(timezone.utc)
         await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
@@ -129,9 +133,28 @@ async def create_pending(session: AsyncSession) -> None:
         pass
 
 
+async def refresh_annotations(session: AsyncSession, batch: int = 10) -> None:
+    """Продление меняет срок заказа, а в Notes ВМ в vCenter остаётся прежний: перезаписываем описание."""
+    vms = (await session.scalars(
+        select(VirtualMachine).where(
+            VirtualMachine.status == VmStatus.ready, VirtualMachine.vsphere_moid.is_not(None),
+            VirtualMachine.notes_return_at.is_distinct_from(VirtualMachine.expected_return_at),
+        ).order_by(VirtualMachine.id).limit(batch)
+    )).unique().all()
+    for vm in vms:
+        try:
+            await asyncio.to_thread(vsphere.set_annotation, vm.vsphere_moid, _annotation(vm))
+        except Exception:  # noqa: BLE001 — повторим на следующем круге
+            log.warning("Не удалось обновить описание ВМ %s в vCenter", vm.name, exc_info=True)
+            continue
+        vm.notes_return_at = vm.expected_return_at
+    await session.commit()
+
+
 async def upkeep(session: AsyncSession, deletions: int = 5) -> None:
-    """Удаление ВМ и подтягивание IP. Отдельно от создания: долгий клон не задерживает удаления."""
+    """Удаление ВМ, подтягивание IP и срока в Notes. Отдельно от создания: долгий клон не задерживает удаления."""
     for _ in range(deletions):  # удаления с ошибкой повторятся на следующем круге, а не в бесконечном цикле
         if not await delete_next(session):
             break
     await refresh_ips(session)
+    await refresh_annotations(session)
