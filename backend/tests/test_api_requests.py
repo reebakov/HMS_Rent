@@ -1,12 +1,16 @@
 """Маршруты /requests (заявки в Service Desk) и заявка «Возврат» при возврате ПК через /bookings/{id}/return."""
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
 
+from app.core import clock
 from app.core.config import settings
 from app.integrations import servicedesk as real_sd
 from app.models import UserRole, VirtualMachine
+from app.schemas.settings import default_pc_builds, default_pc_os
+from app.services import runtime
 
 from .sync_fakes import add_booking
 from .test_service_requests import FakeSd, add_req, boom, fresh, rows
@@ -289,3 +293,75 @@ async def test_failed_return_creates_no_request(client, login, api, env, sd):
     await client.post(api(f"/bookings/{env.booking.id}/return"), json={})
     assert (await client.post(api(f"/bookings/{env.booking.id}/return"), json={})).status_code == 409
     assert len(sd.created) == 1
+
+
+# ---------- заказ физического ПК: ОС и сборка по запросу ----------
+
+async def test_order_options_give_os_and_builds(client, login, api, env):
+    login(env.owner)
+    body = (await client.get(api("/catalog/order-options"))).json()
+    assert body == {"os": default_pc_os(), "builds": default_pc_builds()}
+
+
+async def test_order_options_follow_settings(client, login, api, env, session):
+    await runtime.update(session, {"pc_os_list": ["  Astra Linux  "], "pc_builds": []})
+    login(env.owner)
+    assert (await client.get(api("/catalog/order-options"))).json() == {"os": ["Astra Linux"], "builds": []}
+
+
+def _build_body(env, **kw) -> dict:
+    return {"build": default_pc_builds()[1], "os_label": "Ubuntu 24.04", "department_id": env.qa.id,
+            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "expected_return_at": (clock.today() + timedelta(days=20)).isoformat()} | kw
+
+
+async def test_create_build_201_and_team_sees_it(client, login, api, env, sd):
+    login(env.owner)
+    r = await client.post(api("/requests/build"), json=_build_body(env))
+    assert r.status_code == 201, r.text
+    assert (r.json()["kind"], r.json()["department_id"], r.json()["issue_key"]) == ("build", env.qa.id, "HMS-1")
+    assert "сборка ПК — тип B" in r.json()["summary"]
+    login(env.mate)
+    assert [x["id"] for x in (await client.get(api("/requests/my"))).json()] == [r.json()["id"]]
+    login(env.stranger)
+    assert (await client.get(api("/requests/my"))).json() == []
+
+
+@pytest.mark.parametrize("kw", [{"build": None}, {"os_label": ""}, {"expected_return_at": "2020-01-01"},
+                                {"wanted_by": "не дата"}], ids=["no-variant", "no-os", "past", "garbage"])
+async def test_create_build_validation_422(client, login, api, env, sd, kw):
+    login(env.owner)
+    assert (await client.post(api("/requests/build"), json=_build_body(env, **kw))).status_code == 422
+    assert await rows() == []
+
+
+async def test_create_build_unknown_os_400_and_inactive_department(client, login, api, env, sd, session):
+    login(env.owner)
+    assert (await client.post(api("/requests/build"), json=_build_body(env, os_label="MS-DOS"))).status_code == 400
+    assert (await client.post(api("/requests/build"), json=_build_body(env, department_id=999))).status_code in (400, 404)
+    assert await rows() == []
+
+
+async def test_booking_with_os_creates_prepare_request(client, login, api, env, sd, make_pool, make_computer):
+    comp = await make_computer("A002", await make_pool("Second"), insight_status="Свободен")
+    login(env.owner)
+    r = await client.post(api("/bookings"), json={
+        "computer_id": comp.id, "department_id": env.qa.id, "requester_name": "Иван Иванов", "requester_nick": "ivan",
+        "expected_return_at": (clock.today() + timedelta(days=10)).isoformat(), "os_label": "Windows Server 2025"})
+    assert r.status_code == 201, r.text
+    assert r.json()["os_label"] == "Windows Server 2025"
+    [req] = await rows()
+    assert (req.kind, req.booking_id, req.user_id) == ("prepare", r.json()["id"], env.owner.id)
+    _, summary, description, _ = sd.created[0]
+    assert summary == f"HMS Rent: подготовить ПК A002 (заказ №{r.json()['order_number']})"
+    assert "ОС: Windows Server 2025" in description
+
+
+async def test_booking_with_unknown_os_400(client, login, api, env, sd, make_pool, make_computer):
+    comp = await make_computer("A002", await make_pool("Second"), insight_status="Свободен")
+    login(env.owner)
+    r = await client.post(api("/bookings"), json={
+        "computer_id": comp.id, "department_id": env.qa.id, "requester_name": "Иван Иванов", "requester_nick": "ivan",
+        "expected_return_at": (clock.today() + timedelta(days=10)).isoformat(), "os_label": "MS-DOS"})
+    assert r.status_code == 400
+    assert await rows() == [] and sd.created == []

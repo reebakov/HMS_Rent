@@ -12,6 +12,7 @@ class BookingCreate(InputModel):
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
     expected_return_at: ReturnDate
+    os_label: str | None = Field(default=None, max_length=64)  # из списка ОС в «Настройках»
 
 
 class BookingReturn(InputModel):
@@ -33,6 +34,7 @@ class BookingOut(ORMModel):
     requester_name: str
     requester_nick: str
     purpose: str | None
+    os_label: str | None
     booked_at: datetime
     expected_return_at: date | None
     requested_return_at: date | None  # срок из заявки админу, пока она ждёт решения

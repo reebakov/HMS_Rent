@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     sd_request_type_return: int = 1252  # «Возврат ПК»: …/portal/54/create/1252
     sd_raise_on_behalf: bool = True  # создавать заявку от имени сотрудника (если он есть в Jira)
     sd_return_on_return: bool = True  # возврат ПК на сайте создаёт заявку «Возврат»
+    sd_request_type_order: int = 1252  # «Прочее»: подготовка ПК после брони и сборка по запросу
+    sd_prepare_on_booking: bool = True  # бронь ПК создаёт заявку «подготовить ПК» (ОС, первичная настройка)
 
     # --- Уведомления ---
     mattermost_webhook_url: str = ""

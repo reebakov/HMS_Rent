@@ -20,7 +20,8 @@ const makeSettings = (over: Partial<AppSettings> = {}): AppSettings => ({
   insight_sync_interval_min: 15, insight_writeback: true, vm_enabled: true,
   vm_min_cpu: 1, vm_max_cpu: 16, vm_min_ram_gb: 2, vm_max_ram_gb: 64, vm_max_per_user: 3,
   vm_min_disk_gb: 50, vm_max_disk_gb: 500, catalog_refresh_sec: 60,
-  vm_templates: [WIN, LIN], vm_sizes: [{ label: 'S', cpu: 2, ram_gb: 4, disk_gb: 50 }], vsphere_configured: true, vcenter_host: 'vc.example.com', ...over,
+  vm_templates: [WIN, LIN], vm_sizes: [{ label: 'S', cpu: 2, ram_gb: 4, disk_gb: 50 }],
+  pc_os_list: ['Ubuntu 24.04'], pc_builds: ['A — i5, 16 ГБ'], vsphere_configured: true, vcenter_host: 'vc.example.com', ...over,
 })
 
 let settings: AppSettings
@@ -236,5 +237,19 @@ describe('SettingsPage: готовые размеры ВМ', () => {
     await user.click(save())
     await waitFor(() => expect(api.patch).toHaveBeenCalled())
     expect(patchBody().vm_sizes).toEqual([{ label: 'S', cpu: 3, ram_gb: 4, disk_gb: 50 }])
+  })
+})
+
+describe('SettingsPage: заказ физического ПК', () => {
+  it('списки ОС и сборок правятся построчно; пустые строки и пробелы не сохраняются', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SettingsPage />)
+    const os = await screen.findByLabelText(/^Операционные системы/)
+    expect(os).toHaveValue('Ubuntu 24.04')
+    fireEvent.change(os, { target: { value: 'Ubuntu 24.04\n\n  Debian 12  \n' } })
+    await user.click(save())
+    await waitFor(() => expect(api.patch).toHaveBeenCalled())
+    expect(patchBody().pc_os_list).toEqual(['Ubuntu 24.04', 'Debian 12'])
+    expect(patchBody().pc_builds).toEqual(['A — i5, 16 ГБ'])
   })
 })

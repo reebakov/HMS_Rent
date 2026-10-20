@@ -5,7 +5,7 @@ import { api } from './api'
 import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
-  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut,
+  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
   ClusterCapacity, IdleServers,
 } from './types'
 
@@ -44,6 +44,10 @@ export const useComputer = (id: number | null) =>
 
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => api.get<Department[]>('/departments'), staleTime: 5 * 60_000 })
+
+/** ОС и типовые сборки для брони ПК и сборки по запросу */
+export const useOrderOptions = (enabled = true) =>
+  useQuery({ queryKey: ['order-options'], queryFn: () => api.get<OrderOptions>('/catalog/order-options'), enabled, staleTime: 5 * 60_000 })
 
 export const useMyBookings = () =>
   useQuery({ queryKey: ['my-bookings'], queryFn: () => api.get<Booking[]>('/bookings/my') })
@@ -296,6 +300,14 @@ export const useSdConfig = () =>
 
 export const useMyRequests = () =>
   useQuery({ queryKey: ['my-requests'], queryFn: () => api.get<ServiceRequest[]>('/requests/my'), refetchInterval: 30_000 })
+
+export function useCreateBuild() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: BuildCreate) => api.post<ServiceRequest>('/requests/build', data),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['my-requests'] }),
+  })
+}
 
 export const useRequestDetail = (id: number | null) =>
   useQuery({

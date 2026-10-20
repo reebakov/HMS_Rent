@@ -1,4 +1,4 @@
-"""Заявки в Jira Service Desk по ПК и виртуалкам: «Сообщить о проблеме» и заявка на возврат ПК."""
+"""Заявки в Jira Service Desk: «Сообщить о проблеме», возврат ПК, подготовка ПК после брони и сборка по запросу."""
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -10,8 +10,10 @@ from app.core.errors import DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
 from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
-from app.schemas.service_request import RequestOut
+from app.schemas.service_request import BuildCreate, RequestOut
+from app.services import departments, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
+from app.services.orders import next_order_number
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ def _booking_text(b: Booking) -> str:
         f"Компьютер: {c.name} ({c.insight_key or 'без ключа'})",
         f"Заказ №{b.order_number}",
         f"Характеристики: {specs or '—'}",
+        *([f"ОС: {b.os_label}"] if b.os_label else []),
         f"Команда-получатель: {b.department.name}",
         f"Арендатор: {b.requester_name} ({b.requester_nick}), {b.user.email or b.user.username}",
         f"Взят: {b.booked_at:%d.%m.%Y}" + (f", вернуть до {b.expected_return_at:%d.%m.%Y}" if b.expected_return_at else ""),
@@ -88,33 +91,94 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
     return req
 
 
-async def create_return(session: AsyncSession, booking_id: int, actor: User) -> None:
-    """Заявка «Возврат ПК» после возврата на сайте. Ошибка не мешает возврату — сохраняется в заявке."""
-    if not (settings.service_desk_configured and settings.sd_return_on_return):
-        return
-    b = await session.get(Booking, booking_id)
-    if b is None:
-        return
-    req = ServiceRequest(
-        kind=ServiceRequestKind.return_.value, user_id=actor.id, booking_id=b.id,
-        summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
-        description=_booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
-        + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
-    )
+async def _save_in_background(session: AsyncSession, req: ServiceRequest, request_type_id: int, actor: User) -> None:
+    """Заявка, которую сервис создаёт сам после операции: ошибка Jira операцию не отменяет и сохраняется в заявке."""
     try:
-        await _send(req, settings.sd_request_type_return, actor.username)
+        await _send(req, request_type_id, actor.username)
     except sd.ServiceDeskError as exc:
-        log.warning("Заявка на возврат %s не создана: %s", b.computer.name, exc)
+        log.warning("Заявка «%s» не создана: %s", req.summary, exc)
         req.error = exc.user_message  # поле видно сотруднику в карточке заявки; подробности — только в логе
     session.add(req)
     await session.commit()
 
 
+async def create_return(session: AsyncSession, booking_id: int, actor: User) -> None:
+    """Заявка «Возврат ПК» после возврата на сайте."""
+    if not (settings.service_desk_configured and settings.sd_return_on_return):
+        return
+    b = await session.get(Booking, booking_id)
+    if b is None:
+        return
+    await _save_in_background(session, ServiceRequest(
+        kind=ServiceRequestKind.return_.value, user_id=actor.id, booking_id=b.id,
+        summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
+        description=_booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
+        + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
+    ), settings.sd_request_type_return, actor)
+
+
+async def create_prepare(session: AsyncSession, booking_id: int, actor: User) -> None:
+    """Заявка «подготовить ПК» после брони: исполнитель ставит выбранную ОС и настраивает ПК (до задач DR-15072)."""
+    if not (settings.service_desk_configured and settings.sd_prepare_on_booking):
+        return
+    b = await session.get(Booking, booking_id)
+    if b is None:
+        return
+    await _save_in_background(session, ServiceRequest(
+        kind=ServiceRequestKind.prepare.value, user_id=actor.id, booking_id=b.id,
+        summary=f"HMS Rent: подготовить ПК {b.computer.name} (заказ №{b.order_number})",
+        description="Поставить выбранную ОС, выполнить первичную настройку и передать заказчику данные для подключения.\n\n"
+        + _booking_text(b) + (f"\nЦель: {b.purpose}" if b.purpose else ""),
+    ), settings.sd_request_type_order, actor)
+
+
+async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> ServiceRequest:
+    """Сборка по запросу: заявка исполнителям с номером заказа; собранный ПК выдаётся вне портала (до DR-15075)."""
+    if not settings.service_desk_configured:
+        raise DomainError("Заявки в Service Desk пока не подключены — напишите в HMS")
+    cfg = await runtime.load(session)
+    if data.build and data.build not in cfg.pc_builds:
+        raise DomainError("Такой типовой сборки нет в списке — обновите страницу")
+    if data.os_label not in cfg.pc_os_list:
+        raise DomainError("Такой ОС нет в списке — обновите страницу")
+    dept = await departments.get_active(session, data.department_id)
+    _, longer = term_limit.plan(user, data.expected_return_at)
+
+    order_number = await next_order_number(session)
+    variant = f"тип {data.build.split(' — ')[0]}" if data.build else "своя конфигурация"
+    lines = [
+        f"Сборка: {data.build}" if data.build else f"Своя конфигурация: {data.custom}",
+        f"ОС: {data.os_label}",
+        f"Заказ №{order_number}",
+        f"Команда-получатель: {dept.name}",
+        f"Арендатор: {data.requester_name} ({data.requester_nick}), {user.email or user.username}",
+        f"Срок аренды: до {data.expected_return_at:%d.%m.%Y}"
+        + (" — дольше 3 месяцев, нужно согласование администратора" if longer else ""),
+        *([f"Желаемый срок готовности: {data.wanted_by:%d.%m.%Y}"] if data.wanted_by else []),
+        *([f"Цель: {data.purpose}"] if data.purpose else []),
+    ]
+    req = ServiceRequest(
+        kind=ServiceRequestKind.build.value, user_id=user.id, department_id=dept.id,
+        summary=f"HMS Rent: сборка ПК — {variant} (заказ №{order_number})",
+        description="Проверить комплектующие, собрать и настроить ПК, завести его в Insight и выдать заказчику.\n\n"
+        + "\n".join(lines),
+    )
+    try:
+        await _send(req, settings.sd_request_type_order, user.username)
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка на сборку не создана: %s", exc)
+        raise DomainError(f"Не удалось создать заявку: {exc.user_message}") from exc
+    session.add(req)
+    await session.commit()
+    return req
+
+
 def _visible_to(user: User):
-    """Условие доступа к заявке: своя или заявка по ПК и виртуалкам пользователя и его команды."""
+    """Условие доступа к заявке: своя, сборка команды или заявка по ПК и виртуалкам пользователя и его команды."""
     bookings = select(Booking.id).where(mine_or_team(user, Booking.user_id, Booking.department_id))
     vms = select(VirtualMachine.id).where(mine_or_team(user, VirtualMachine.user_id, VirtualMachine.department_id))
-    return or_(ServiceRequest.user_id == user.id, ServiceRequest.booking_id.in_(bookings), ServiceRequest.vm_id.in_(vms))
+    return or_(mine_or_team(user, ServiceRequest.user_id, ServiceRequest.department_id),
+               ServiceRequest.booking_id.in_(bookings), ServiceRequest.vm_id.in_(vms))
 
 
 async def list_for_user(session: AsyncSession, user: User) -> list[ServiceRequest]:

@@ -30,6 +30,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   booked_at: '2024-01-10T09:00:00Z',
   expected_return_at: '2999-12-31',
   requested_return_at: null,
+  os_label: null,
   returned_at: null,
   returned_by: null,
   return_comment: null,
@@ -70,6 +71,7 @@ const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
   kind: 'problem',
   booking_id: 1,
   vm_id: null,
+  department_id: null,
   issue_key: 'HMS-101',
   summary: 'Не включается',
   status: 'В работе',
@@ -632,5 +634,31 @@ describe('MyBookingsPage: заявка на срок', () => {
     renderPage()
     await screen.findByText('PC-010')
     expect(screen.queryByText(/ждёт администратора/)).not.toBeInTheDocument()
+  })
+})
+
+describe('MyBookingsPage: сборки по запросу и ОС', () => {
+  it('сборки команды — отдельным блоком со статусом; клик открывает заявку', async () => {
+    requests = [makeRequest({ id: 21, kind: 'build', booking_id: null, department_id: 1, issue_key: 'HMS-700',
+                              summary: 'HMS Rent: сборка ПК — тип A (заказ №12)', status: 'Ожидает поддержки' })]
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByText('Сборки по запросу')).toBeInTheDocument()
+    expect(screen.getByText('сборка ПК — тип A (заказ №12)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Сборка HMS-700 · Ожидает поддержки' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('без сборок блока нет', async () => {
+    bookings = [makeBooking()]
+    renderPage()
+    await screen.findByText('PC-010')
+    expect(screen.queryByText('Сборки по запросу')).not.toBeInTheDocument()
+  })
+
+  it('ОС брони видна в карточке', async () => {
+    bookings = [makeBooking({ os_label: 'Debian 12' })]
+    renderPage()
+    expect(await screen.findByText('ОС: Debian 12')).toBeInTheDocument()
   })
 })

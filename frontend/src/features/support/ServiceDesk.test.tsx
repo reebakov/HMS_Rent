@@ -20,6 +20,7 @@ const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
   kind: 'problem',
   booking_id: 1,
   vm_id: null,
+  department_id: null,
   issue_key: 'HMS-101',
   summary: 'Не включается',
   status: 'В работе',
@@ -391,5 +392,15 @@ describe('RequestSheet', () => {
     await screen.findByText('Не включается')
     await user.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
+  })
+})
+
+describe('RequestBadges: вид заявки', () => {
+  it.each([
+    ['prepare', 'Подготовка'],
+    ['build', 'Сборка'],
+  ] as const)('%s подписан «%s»', (kind, label) => {
+    renderWithProviders(<RequestBadges requests={[makeRequest({ kind })]} onOpen={vi.fn()} />)
+    expect(screen.getByRole('button', { name: `${label} HMS-101 · В работе` })).toBeInTheDocument()
   })
 })

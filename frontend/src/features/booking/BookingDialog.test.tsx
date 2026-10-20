@@ -442,3 +442,46 @@ describe('ExtendDialog: лимит срока', () => {
     })
   })
 })
+
+describe('BookingDialog: операционная система', () => {
+  const OS = ['Ubuntu 24.04', 'Windows 11 26H2']
+
+  beforeEach(() => {
+    session = makeSession()
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.post).mockResolvedValue(bookingResponse)
+  })
+
+  const setupWithOs = (os: string[]) => {
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === '/departments') return departments
+      if (path === '/catalog/order-options') return { os, builds: [] }
+      throw new Error(`неожиданный GET ${path}`)
+    })
+    renderWithProviders(<BookingDialog computer={computer} onClose={vi.fn()} />)
+    return userEvent.setup()
+  }
+
+  it('со списком ОС выбор обязателен и уходит в бронь', async () => {
+    const user = setupWithOs(OS)
+    await waitForDepartments()
+    await screen.findByRole('option', { name: 'Ubuntu 24.04' })
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await fillReturnDate(user)
+    expect(submitButton()).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText(/Операционная система/), 'Windows 11 26H2')
+    expect(submitButton()).toBeEnabled()
+    await user.click(submitButton())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ os_label: 'Windows 11 26H2' })
+  })
+
+  it('пустой список ОС — поля нет, бронь без ОС', async () => {
+    const user = setupWithOs([])
+    await waitForDepartments()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await fillReturnDate(user)
+    expect(screen.queryByLabelText(/Операционная система/)).not.toBeInTheDocument()
+    expect(submitButton()).toBeEnabled()
+  })
+})

@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
-from app.schemas.service_request import CommentIn, CommentOut, RequestCreate, RequestDetail, RequestOut
+from app.schemas.service_request import BuildCreate, CommentIn, CommentOut, RequestCreate, RequestDetail, RequestOut
 from app.services import service_requests as service
 
 router = APIRouter(prefix="/requests", tags=["service-desk"])
@@ -23,6 +23,11 @@ async def create_request(data: RequestCreate, user: CurrentUser, session: DB) ->
     req = await service.create_problem(session, user, booking_id=data.booking_id, vm_id=data.vm_id,
                                        message=data.message)
     return service.request_out(req)
+
+
+@router.post("/build", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
+async def create_build(data: BuildCreate, user: CurrentUser, session: DB) -> RequestOut:
+    return service.request_out(await service.create_build(session, user, data))
 
 
 @router.get("/{request_id}", response_model=RequestDetail)

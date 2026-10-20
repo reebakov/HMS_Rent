@@ -24,6 +24,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   booked_at: '2024-01-10T09:00:00Z',
   expected_return_at: null,
   requested_return_at: null,
+  os_label: null,
   returned_at: null,
   returned_by: null,
   return_comment: null,

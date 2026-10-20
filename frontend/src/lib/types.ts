@@ -106,6 +106,7 @@ export interface Booking {
   requester_name: string
   requester_nick: string
   purpose: string | null
+  os_label: string | null // ОС, которую поставит исполнитель
   booked_at: string
   expected_return_at: string | null
   requested_return_at: string | null // срок из заявки админу, пока она ждёт решения
@@ -121,6 +122,26 @@ export interface BookingCreate {
   requester_nick: string
   purpose?: string
   expected_return_at: string
+  os_label?: string
+}
+
+/** Что можно выбрать при заказе физического ПК (Админка → «Настройки») */
+export interface OrderOptions {
+  os: string[]
+  builds: string[]
+}
+
+/** Сборка по запросу: типовая сборка или своя конфигурация — одно из двух */
+export interface BuildCreate {
+  build?: string
+  custom?: string
+  os_label: string
+  department_id: number
+  requester_name: string
+  requester_nick: string
+  expected_return_at: string
+  wanted_by?: string
+  purpose?: string
 }
 
 export interface BookingExtend {
@@ -376,6 +397,8 @@ export interface AppSettings {
   catalog_refresh_sec: number
   vm_templates: VmTemplate[]
   vm_sizes: VmSize[]
+  pc_os_list: string[]
+  pc_builds: string[]
   vsphere_configured: boolean
   vcenter_host: string
 }
@@ -396,9 +419,10 @@ export interface AdminUserRow {
 
 export interface ServiceRequest {
   id: number
-  kind: 'problem' | 'return'
+  kind: 'problem' | 'return' | 'prepare' | 'build'
   booking_id: number | null
   vm_id: number | null
+  department_id: number | null // команда сборки по запросу
   issue_key: string | null
   summary: string
   status: string | null

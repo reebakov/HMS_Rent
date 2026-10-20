@@ -7,13 +7,17 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
+from app.core import clock
 from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations import servicedesk as real_sd
 from app.models import ServiceRequest, UserRole, VirtualMachine
+from app.schemas.service_request import BuildCreate
+from app.schemas.settings import default_pc_builds
 from app.services import service_requests as svc
 
 from .sync_fakes import add_booking
@@ -458,3 +462,120 @@ async def test_refresh_open_not_configured(session, env, sd, monkeypatch):
     await svc.refresh_open(session)
     assert sd.status_calls == []
     assert await session.scalar(select(func.count()).select_from(ServiceRequest).where(ServiceRequest.last_checked_at.is_not(None))) == 0
+
+
+# ---------- create_prepare: «подготовить ПК» после брони ----------
+
+async def test_create_prepare_saves_request_with_os(session, env, sd, monkeypatch):
+    monkeypatch.setattr(settings, "sd_request_type_order", 4321)
+    env.booking.os_label, env.booking.purpose = "Ubuntu 24.04", "Тесты сборки"
+    await session.commit()
+    await svc.create_prepare(session, env.booking.id, env.mate)
+    type_id, summary, description, behalf = sd.created[0]
+    assert (type_id, behalf) == (4321, "mate")
+    assert summary == f"HMS Rent: подготовить ПК A001 (заказ №{env.booking.order_number})"
+    assert "ОС: Ubuntu 24.04" in description and "Цель: Тесты сборки" in description
+    assert "Компьютер: A001 (ITAM-1)" in description
+    [saved] = await rows()
+    assert (saved.kind, saved.user_id, saved.booking_id, saved.issue_key) == ("prepare", env.mate.id, env.booking.id, "HMS-1")
+
+
+@pytest.mark.parametrize("field, value", [("sd_token", ""), ("sd_prepare_on_booking", False)])
+async def test_create_prepare_disabled(session, env, sd, monkeypatch, field, value):
+    monkeypatch.setattr(settings, field, value)
+    await svc.create_prepare(session, env.booking.id, env.owner)
+    assert sd.created == [] and await rows() == []
+
+
+async def test_create_prepare_unknown_booking_is_silent(session, env, sd):
+    await svc.create_prepare(session, 999, env.owner)
+    assert sd.created == [] and await rows() == []
+
+
+async def test_create_prepare_jira_error_is_stored_not_raised(session, env, sd):
+    sd.create_error = boom()
+    await svc.create_prepare(session, env.booking.id, env.owner)  # не бросает: бронь уже сделана
+    [saved] = await rows()
+    assert saved.kind == "prepare" and saved.issue_key is None and saved.error == REJECTED
+
+
+# ---------- create_build: сборка по запросу ----------
+
+def build_data(env, **kw) -> BuildCreate:
+    data = {"build": default_pc_builds()[0], "os_label": "Debian 12", "department_id": env.qa.id,
+            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "expected_return_at": clock.today() + timedelta(days=30)}
+    return BuildCreate(**(data | kw))
+
+
+async def test_create_build_typical(session, env, sd, monkeypatch):
+    monkeypatch.setattr(settings, "sd_request_type_order", 4321)
+    wanted = clock.today() + timedelta(days=5)
+    req = await svc.create_build(session, env.owner, build_data(env, purpose="Нагрузочные тесты", wanted_by=wanted))
+    type_id, summary, description, behalf = sd.created[0]
+    assert (type_id, behalf) == (4321, "owner")
+    assert summary.startswith("HMS Rent: сборка ПК — тип A (заказ №") and summary.endswith(")")
+    for text in (f"Сборка: {default_pc_builds()[0]}", "ОС: Debian 12", "Команда-получатель: QA",
+                 "Арендатор: Иван Иванов (ivan), ivan@corp.test", f"Желаемый срок готовности: {wanted:%d.%m.%Y}",
+                 "Цель: Нагрузочные тесты"):
+        assert text in description
+    assert "согласование" not in description
+    assert (req.kind, req.user_id, req.department_id, req.booking_id, req.vm_id) == ("build", env.owner.id, env.qa.id,
+                                                                                      None, None)
+    assert req.issue_key == "HMS-1"
+
+
+async def test_create_build_custom_and_long_term(session, env, sd):
+    far = clock.today() + timedelta(days=200)
+    await svc.create_build(session, env.owner, build_data(env, build=None, custom="Ryzen 9, 64 ГБ, RTX 4090",
+                                                          expected_return_at=far))
+    _, summary, description, _ = sd.created[0]
+    assert "своя конфигурация" in summary and "Своя конфигурация: Ryzen 9, 64 ГБ, RTX 4090" in description
+    assert f"Срок аренды: до {far:%d.%m.%Y} — дольше 3 месяцев, нужно согласование администратора" in description
+
+
+async def test_create_build_order_numbers_are_shared_with_bookings(session, env, sd):
+    first = await svc.create_build(session, env.owner, build_data(env))
+    second = await svc.create_build(session, env.owner, build_data(env))
+    n1, n2 = (int(r.summary.rsplit("№", 1)[1].rstrip(")")) for r in (first, second))
+    assert n2 == n1 + 1
+
+
+@pytest.mark.parametrize("kw, error", [
+    ({"build": "Z — несуществующая"}, "сборки нет в списке"),
+    ({"os_label": "MS-DOS 6.22"}, "ОС нет в списке"),
+], ids=["build", "os"])
+async def test_create_build_rejects_values_outside_lists(session, env, sd, kw, error):
+    with pytest.raises(DomainError, match=error):
+        await svc.create_build(session, env.owner, build_data(env, **kw))
+    assert sd.created == [] and await rows() == []
+
+
+async def test_create_build_not_configured(session, env, sd, monkeypatch):
+    monkeypatch.setattr(settings, "sd_token", "")
+    with pytest.raises(DomainError, match="не подключены"):
+        await svc.create_build(session, env.owner, build_data(env))
+
+
+async def test_create_build_jira_error_not_saved(session, env, sd):
+    sd.create_error = boom()
+    with pytest.raises(DomainError, match="Не удалось создать заявку"):
+        await svc.create_build(session, env.owner, build_data(env))
+    assert await rows() == []
+
+
+@pytest.mark.parametrize("kw", [
+    {"build": None, "custom": None}, {"custom": "Ryzen 9, 64 ГБ"}, {"build": None, "custom": "abc"},
+    {"wanted_by": clock.today()}, {"expected_return_at": clock.today() - timedelta(days=1)}, {"os_label": " "},
+], ids=["none", "both", "short-custom", "wanted-today", "past", "blank-os"])
+def test_build_create_validation(env, kw):
+    with pytest.raises(ValidationError):
+        build_data(env, **kw)
+
+
+async def test_build_visible_to_team_not_to_strangers(session, env, sd):
+    req = await svc.create_build(session, env.owner, build_data(env))
+    assert [r.id for r in await svc.list_for_user(session, env.mate)] == [req.id]
+    assert await svc.list_for_user(session, env.stranger) == []
+    with pytest.raises(Forbidden):
+        await svc.get_with_comments(session, env.stranger, req.id)

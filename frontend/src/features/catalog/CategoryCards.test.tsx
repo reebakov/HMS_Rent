@@ -65,3 +65,14 @@ describe('CategoryCards', () => {
     expect(refetch).toHaveBeenCalledOnce()
   })
 })
+
+describe('CategoryCards: сборка по запросу', () => {
+  it('карточка сборки показывается только с onOrderBuild и вызывает его', async () => {
+    const onOrderBuild = vi.fn()
+    const { rerender } = render(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={() => undefined} />)
+    expect(screen.queryByText('Сборка по запросу')).not.toBeInTheDocument()
+    rerender(<CategoryCards query={stubQuery({ data: summary })} value="weak" onChange={() => undefined} onOrderBuild={onOrderBuild} />)
+    await userEvent.click(screen.getByRole('button', { name: /Сборка по запросу/ }))
+    expect(onOrderBuild).toHaveBeenCalledOnce()
+  })
+})

@@ -10,6 +10,8 @@ import { useAddComment, useCreateRequest, useRequestDetail, useSdConfig } from '
 import type { ServiceRequest } from '@/lib/types'
 import { errorMessage, formatDateTime } from '@/lib/utils'
 
+const KIND_LABEL: Record<ServiceRequest['kind'], string> = { problem: 'Заявка', return: 'Возврат', prepare: 'Подготовка', build: 'Сборка' }
+
 const tone = (r: ServiceRequest): Tone =>
   r.error ? 'danger' : r.status_category === 'done' ? 'success' : r.status_category === 'indeterminate' ? 'primary' : 'warning'
 
@@ -21,7 +23,7 @@ export function RequestBadges({ requests, onOpen }: { requests: ServiceRequest[]
       {requests.map((r) => (
         <button key={r.id} onClick={() => onOpen(r.id)} title={r.summary} className="transition-opacity hover:opacity-80">
           <Badge tone={tone(r)}>
-            {r.kind === 'return' ? 'Возврат' : 'Заявка'} {r.issue_key ?? '—'} · {r.error ? 'не создана' : r.status ?? '…'}
+            {KIND_LABEL[r.kind]} {r.issue_key ?? '—'} · {r.error ? 'не создана' : r.status ?? '…'}
           </Badge>
         </button>
       ))}

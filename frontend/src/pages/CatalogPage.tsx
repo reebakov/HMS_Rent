@@ -7,10 +7,11 @@ import { ComputerList } from '@/features/catalog/ComputerList'
 import { ComputerSheet } from '@/features/catalog/ComputerSheet'
 import { BookingDialog } from '@/features/booking/BookingDialog'
 import { VmBuilderDialog } from '@/features/vms/VmBuilderDialog'
+import { BuildOrderDialog } from '@/features/catalog/BuildOrderDialog'
 import { ViewToggle, useViewMode } from '@/components/ui/view-toggle'
 import { useSession } from '@/auth/AuthProvider'
 import { useDebouncedSearch } from '@/lib/hooks'
-import { useCatalogSummary, useComputers, type ComputerFilters } from '@/lib/queries'
+import { useCatalogSummary, useComputers, useSdConfig, type ComputerFilters } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { Computer, Tier } from '@/lib/types'
 import { cn, plural } from '@/lib/utils'
@@ -39,6 +40,8 @@ export function CatalogPage() {
   const computers = useComputers(filters, session.catalog_refresh_sec)
   const [view, setView] = useViewMode('catalog')
   const [vmOpen, setVmOpen] = useState(false)
+  const [buildOpen, setBuildOpen] = useState(false)
+  const sdEnabled = useSdConfig().data?.enabled // сборка уходит заявкой в Service Desk
   const [openedId, setOpenedId] = useState<number | null>(null)
   const [booking, setBooking] = useState<Computer | null>(null)
   const [search, setSearch] = useState(filters.q ?? '')
@@ -65,7 +68,13 @@ export function CatalogPage() {
         description="Выберите категорию мощности, затем подходящий компьютер или виртуальную машину"
       />
 
-      <CategoryCards query={summary} value={tier} onChange={(t) => update({ tier: t })} onBuildVm={() => setVmOpen(true)} />
+      <CategoryCards
+        query={summary}
+        value={tier}
+        onChange={(t) => update({ tier: t })}
+        onBuildVm={() => setVmOpen(true)}
+        onOrderBuild={sdEnabled ? () => setBuildOpen(true) : undefined}
+      />
 
       <div className="mb-4 mt-8 flex flex-wrap items-center gap-3">
         <div className="mr-auto">
@@ -131,6 +140,7 @@ export function CatalogPage() {
       />
       <BookingDialog computer={booking} onClose={() => setBooking(null)} />
       <VmBuilderDialog open={vmOpen} onClose={() => setVmOpen(false)} />
+      <BuildOrderDialog open={buildOpen} onClose={() => setBuildOpen(false)} />
     </>
   )
 }

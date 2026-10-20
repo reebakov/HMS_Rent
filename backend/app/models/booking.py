@@ -35,6 +35,7 @@ class Booking(Base, TimestampMixin):
     requester_name: Mapped[str] = mapped_column(String(255))
     requester_nick: Mapped[str] = mapped_column(String(128))
     purpose: Mapped[str | None] = mapped_column(Text)
+    os_label: Mapped[str | None] = mapped_column(String(64))  # ОС, которую поставит исполнитель (заявка «подготовить ПК»)
 
     status: Mapped[str] = mapped_column(String(16), index=True, default=BookingStatus.active.value)
     booked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

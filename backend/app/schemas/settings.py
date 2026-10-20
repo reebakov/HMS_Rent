@@ -1,5 +1,7 @@
 """Настройки с сайта: шаблоны ОС для конструктора ВМ и значения, которые админ меняет без перезапуска."""
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.core.config import settings
 from app.schemas.common import InputModel
@@ -45,6 +47,29 @@ def default_vm_sizes() -> list[VmSize]:
     ]
 
 
+# Строки списков в «Настройках»: пробелы по краям обрезаются, пустая строка не проходит
+OsName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=64)]
+BuildLine = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=300)]
+
+
+def default_pc_os() -> list[str]:
+    """ОС для физических серверов (DR-15064)."""
+    return ["Windows 10 22H2", "Windows 11 26H2", "Windows Server 2022", "Windows Server 2025", "Ubuntu 24.04",
+            "Ubuntu 26.04", "Debian 12", "Debian 13", "CentOS Stream 9", "CentOS Stream 10"]
+
+
+def default_pc_builds() -> list[str]:
+    """Типовые сборки из складского оборудования (DR-15062): «тип — состав»."""
+    return [
+        "A — Intel i5-12400F/13400F, 16 ГБ, SSD 480 ГБ, RTX 3050 LP",
+        "B — AMD Ryzen 7 3700X, 16 ГБ, SSD 480 ГБ, RTX 3050 LP",
+        "C — Intel i5-12400 (встроенная графика), 16 ГБ, SSD 240–256 ГБ",
+        "D — Intel i5-12400F/13400F, 16 ГБ, SSD 240–256 ГБ, GTX 1050/1050 Ti/1650",
+        "E — Intel 8–9 поколения, 16 ГБ, SSD 240 ГБ",
+        "F — Intel 6–7 поколения, 16 ГБ, SSD 120–240 ГБ",
+    ]
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")  # опечатка в ключе PATCH — ошибка, а не молча не сохранённая настройка
 
@@ -62,6 +87,9 @@ class RuntimeConfig(BaseModel):
     vm_max_disk_gb: int = Field(default=200, ge=10, le=4096)
     vm_templates: list[VmTemplate] = Field(default_factory=default_templates)
     vm_sizes: list[VmSize] = Field(default_factory=default_vm_sizes)
+    # Заказ физического ПК: ОС на выбор и типовые сборки
+    pc_os_list: list[OsName] = Field(default_factory=default_pc_os)
+    pc_builds: list[BuildLine] = Field(default_factory=default_pc_builds)
     # Каталог: как часто страница сама обновляет список ПК
     catalog_refresh_sec: int = Field(default=15, ge=5, le=600)
 

@@ -29,7 +29,7 @@ const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
     id: 20, order_number: 88, status: 'active', computer: makeComputer({ id: 2, name: 'PC-777' }),
     department: { id: 1, name: 'QA' }, user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
     requester_name: 'Иван Иванов', requester_nick: 'i.ivanov', purpose: null, booked_at: '2026-09-01T10:00:00Z',
-    expected_return_at: '2026-11-01', requested_return_at: null, returned_at: null, returned_by: null, return_comment: null,
+    expected_return_at: '2026-11-01', requested_return_at: null, os_label: null, returned_at: null, returned_by: null, return_comment: null,
   },
   user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
   old_return_at: '2026-10-20', new_return_at: '2026-11-01', comment: 'Тесты ещё идут',

@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, NotFound
+from app.core.errors import Conflict, DomainError, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightSource
@@ -76,6 +76,8 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         await session.commit()
         raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
     dept = await departments.get_active(session, data.department_id)
+    if data.os_label and data.os_label not in (await runtime.load(session)).pc_os_list:
+        raise DomainError("Такой ОС нет в списке — обновите страницу")
     until, longer = term_limit.plan(user, data.expected_return_at)
 
     order_number = await next_order_number(session)  # берём номер в последнюю очередь, чтобы не плодить пропуски
@@ -87,6 +89,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         requester_name=data.requester_name,
         requester_nick=data.requester_nick,
         purpose=data.purpose or None,
+        os_label=data.os_label or None,
         expected_return_at=until,
         status=BookingStatus.active.value,
     )
@@ -218,6 +221,14 @@ async def push_to_insight() -> None:
     """Сразу после брони/возврата отправляем статус в Insight, не дожидаясь круга воркера."""
     async with SessionLocal() as session:
         await push_pending(session)
+
+
+async def create_prepare_request(booking_id: int, user_id: int) -> None:
+    """Заявка «подготовить ПК» в Service Desk — в фоне, чтобы не задерживать бронь."""
+    async with SessionLocal() as session:
+        actor = await session.get(User, user_id)
+        if actor is not None:
+            await service_requests.create_prepare(session, booking_id, actor)
 
 
 async def create_return_request(booking_id: int, user_id: int) -> None:

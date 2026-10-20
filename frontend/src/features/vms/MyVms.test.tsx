@@ -50,6 +50,7 @@ const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
   kind: 'problem',
   booking_id: null,
   vm_id: 1,
+  department_id: null,
   issue_key: 'HMS-101',
   summary: 'Нет интернета',
   status: 'В работе',

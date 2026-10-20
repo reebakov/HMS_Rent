@@ -9,6 +9,7 @@ import { useAppSettings, useSaveSettings, useVsphereCheck } from '@/lib/queries'
 import type { AppSettings } from '@/lib/types'
 import { errorMessage } from '@/lib/utils'
 import { VmSizesEditor } from '@/features/admin/VmSizesEditor'
+import { LinesEditor, cleanLines } from '@/features/admin/LinesEditor'
 import { VmTemplatesEditor } from '@/features/admin/VmTemplatesEditor'
 
 type NumKey = { [K in keyof AppSettings]: AppSettings[K] extends number ? K : never }[keyof AppSettings]
@@ -57,7 +58,7 @@ function SettingsForm({ data }: { data: AppSettings }) {
   const submit = async () => {
     const { vsphere_configured: _a, vcenter_host: _b, ...changes } = form
     try {
-      await save.mutateAsync(changes)
+      await save.mutateAsync({ ...changes, pc_os_list: cleanLines(changes.pc_os_list), pc_builds: cleanLines(changes.pc_builds) })
       toast.success('Настройки сохранены и уже действуют')
     } catch (e) {
       toast.error(errorMessage(e))
@@ -145,6 +146,19 @@ function SettingsForm({ data }: { data: AppSettings }) {
       <Card className="mt-6">
         <CardHeader title="Готовые размеры виртуалок" description="Кнопки в конструкторе: ядра, память и диск одним нажатием" />
         <VmSizesEditor value={form.vm_sizes ?? []} onChange={(v) => setForm({ ...form, vm_sizes: v })} />
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader title="Заказ физического ПК" description="ОС на выбор при брони и типовые сборки для «Сборки по запросу»" />
+        <div className="grid gap-4 p-5 lg:grid-cols-2">
+          <LinesEditor label="Операционные системы" hint="По одной в строке" value={form.pc_os_list ?? []} onChange={(v) => setForm({ ...form, pc_os_list: v })} />
+          <LinesEditor
+            label="Типовые сборки"
+            hint="По одной в строке, «тип — состав»: тип попадает в название заявки"
+            value={form.pc_builds ?? []}
+            onChange={(v) => setForm({ ...form, pc_builds: v })}
+          />
+        </div>
       </Card>
     </>
   )

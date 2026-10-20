@@ -26,7 +26,10 @@ const computerCalls = () =>
   vi.mocked(api.get).mock.calls.filter(([path]) => path === '/computers').map(([, query]) => query)
 const lastComputerQuery = () => computerCalls()[computerCalls().length - 1]
 
+let sdEnabled = false // карточка «Сборка по запросу» — только с подключённым Service Desk
+
 beforeEach(() => {
+  sdEnabled = false
   computers = [makeComputer({ id: 1, name: 'PC-001' }), makeComputer({ id: 2, name: 'PC-002' }), makeComputer({ id: 3, name: 'PC-003' })]
   vi.mocked(api.get).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
@@ -34,6 +37,8 @@ beforeEach(() => {
     if (path === '/computers') return computers
     if (path === '/departments') return []
     if (path === '/vms/options') return { enabled: false, reason: null }
+    if (path === '/requests/config') return { enabled: sdEnabled }
+    if (path === '/catalog/order-options') return { os: ['Ubuntu 24.04'], builds: ['A — i5'] }
     throw new Error(`неожиданный GET ${path}`)
   })
 })
@@ -186,5 +191,21 @@ describe('CatalogPage', () => {
     await user.click(screen.getByTitle('Списком — только номера'))
     expect(localStorage.getItem('hmsrent:view:catalog')).toBe('compact')
     expect(screen.queryByRole('button', { name: 'Подробнее' })).not.toBeInTheDocument()
+  })
+})
+
+describe('CatalogPage: сборка по запросу', () => {
+  it('без Service Desk карточки нет; с ним — открывает форму сборки', async () => {
+    renderWithProviders(<CatalogPage />)
+    await screen.findByText('PC-001')
+    expect(screen.queryByRole('button', { name: /Сборка по запросу/ })).not.toBeInTheDocument()
+  })
+
+  it('с Service Desk карточка открывает форму', async () => {
+    sdEnabled = true
+    const user = userEvent.setup()
+    renderWithProviders(<CatalogPage />)
+    await user.click(await screen.findByRole('button', { name: /Сборка по запросу/ }))
+    expect(await screen.findByRole('dialog', { name: 'Сборка по запросу' })).toBeInTheDocument()
   })
 })

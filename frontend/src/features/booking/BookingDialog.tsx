@@ -8,7 +8,7 @@ import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { TermLimitNote, termLimit, toastTerm } from '@/features/booking/TermLimit'
 import { useSession } from '@/auth/AuthProvider'
-import { useCreateBooking, useDepartments, useExtendBooking, useExtendVm } from '@/lib/queries'
+import { useCreateBooking, useDepartments, useExtendBooking, useExtendVm, useOrderOptions } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
 import { addDays, formatDate, todayLocal } from '@/lib/utils'
@@ -18,12 +18,14 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   const navigate = useNavigate()
   const departments = useDepartments()
   const create = useCreateBooking()
+  const osList = useOrderOptions(!!computer).data?.os ?? []
 
   const [departmentId, setDepartmentId] = useState('')
   const [name, setName] = useState('')
   const [nick, setNick] = useState('')
   const [until, setUntil] = useState('')
   const [purpose, setPurpose] = useState('')
+  const [os, setOs] = useState('')
 
   // при каждом открытии — подставляем данные из рабочего аккаунта
   useEffect(() => {
@@ -33,13 +35,15 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
     setNick(session.user.username.split('@')[0])
     setUntil('')
     setPurpose('')
+    setOs('')
     create.reset()
   }, [computer?.id])
 
   const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
   // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
   const canBook =
-    !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment && until >= todayLocal()
+    !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment && until >= todayLocal() &&
+    (!osList.length || !!os) // ОС ставит исполнитель по заявке «подготовить ПК»
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -52,6 +56,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         requester_nick: nick,
         purpose: purpose || undefined,
         expected_return_at: until,
+        os_label: os || undefined,
       })
       safeStorage.set(LAST_DEPARTMENT_KEY, departmentId)
       toastTerm(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, booking, {
@@ -123,6 +128,21 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
           </div>
 
           <TermLimitNote until={until} base={todayLocal()} verb="оформится" />
+
+          {osList.length > 0 && (
+            <Field label="Операционная система" required hint="Её установит исполнитель — заявка уйдёт сразу после брони">
+              <Select value={os} onChange={(e) => setOs(e.target.value)}>
+                <option value="" disabled>
+                  Выберите ОС
+                </option>
+                {osList.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           {create.error && <FormError>{create.error.message}</FormError>}
         </div>

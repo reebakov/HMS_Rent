@@ -413,6 +413,24 @@ describe('просрочки и детали синхронизации', () => 
     await waitFor(() => expect(keys(spy)).toEqual([['admin', 'term-requests']]))
   })
 
+  it('useOrderOptions: GET /catalog/order-options; выключенный не запрашивает', async () => {
+    vi.mocked(api.get).mockResolvedValue({ os: [], builds: [] })
+    const off = hook(() => q.useOrderOptions(false))
+    expect(off.result.current.fetchStatus).toBe('idle')
+    hook(() => q.useOrderOptions())
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/catalog/order-options'))
+  })
+
+  it('useCreateBuild: POST /requests/build и обновление моих заявок', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useCreateBuild())
+    const body = { custom: 'Ryzen 9', os_label: 'Debian 12', department_id: 1, requester_name: 'Иван',
+                   requester_nick: 'ivan', expected_return_at: '2099-01-01' }
+    await act(() => result.current.mutateAsync(body))
+    expect(api.post).toHaveBeenCalledWith('/requests/build', body)
+    await waitFor(() => expect(keys(spy)).toEqual([['my-requests']]))
+  })
+
   it('useOverdue: ключ под префиксом admin — инвалидация admin обновляет и просрочки', async () => {
     const { result } = hook(() => q.useOverdue())
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

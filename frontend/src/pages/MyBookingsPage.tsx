@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CalendarClock, CalendarPlus, Inbox, Undo2 } from 'lucide-react'
+import { CalendarClock, CalendarPlus, Inbox, Undo2, Wrench } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
@@ -26,6 +26,7 @@ export function MyBookingsPage() {
   const [problem, setProblem] = useState<ProblemTarget>(null)
   const [openedRequest, setOpenedRequest] = useState<number | null>(null)
   const requestsFor = (bookingId: number) => requests.data?.filter((r) => r.booking_id === bookingId) ?? []
+  const builds = requests.data?.filter((r) => r.kind === 'build') ?? []
 
   const active = data?.filter((b) => b.status === 'active') ?? []
   const history = data?.filter((b) => b.status !== 'active') ?? []
@@ -50,6 +51,26 @@ export function MyBookingsPage() {
       />
 
       <QueryError query={requests} title="Не удалось загрузить заявки" cardClass="mb-8" />
+
+      {builds.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader title="Сборки по запросу" description="Заявки исполнителям: собранный компьютер выдадут после сборки" />
+          <div className="divide-y">
+            {builds.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{r.summary.replace(/^HMS Rent: /, '')}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(r.created_at)}</p>
+                  </div>
+                </div>
+                <RequestBadges requests={[r]} onOpen={setOpenedRequest} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <MyVms
         requestsFor={(vmId) => requests.data?.filter((r) => r.vm_id === vmId) ?? []}
@@ -101,6 +122,7 @@ export function MyBookingsPage() {
                       <p className="mt-0.5 text-[13px] text-muted-foreground">
                         {computerSpecs(b.computer)}
                       </p>
+                      {b.os_label && <p className="mt-0.5 text-[13px] text-muted-foreground">ОС: {b.os_label}</p>}
                     </div>
                     {overdue ? <Badge tone="danger">Срок вышел</Badge> : <Badge tone="primary" dot>Активна</Badge>}
                   </div>

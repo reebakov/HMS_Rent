@@ -4,7 +4,8 @@ from app.api.deps import DB, CurrentUser
 from app.models import Computer, Department, Tier
 from app.schemas.computer import ComputerDetail, ComputerOut, TierSummary
 from app.schemas.department import DepartmentOut
-from app.services import catalog, departments
+from app.schemas.service_request import OrderOptions
+from app.services import catalog, departments, runtime
 
 router = APIRouter(tags=["catalog"])
 
@@ -12,6 +13,13 @@ router = APIRouter(tags=["catalog"])
 @router.get("/catalog/summary", response_model=list[TierSummary])
 async def catalog_summary(user: CurrentUser, session: DB) -> list[TierSummary]:
     return await catalog.tier_summary(session, user)
+
+
+@router.get("/catalog/order-options", response_model=OrderOptions)
+async def order_options(_: CurrentUser, session: DB) -> OrderOptions:
+    """ОС и типовые сборки для брони ПК и сборки по запросу."""
+    cfg = await runtime.load(session)
+    return OrderOptions(os=cfg.pc_os_list, builds=cfg.pc_builds)
 
 
 @router.get("/computers", response_model=list[ComputerOut])

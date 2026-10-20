@@ -51,6 +51,8 @@ class SyncRunStatus(StrEnum):
 class ServiceRequestKind(StrEnum):
     problem = "problem"  # «Сообщить о проблеме» из «Моей аренды»
     return_ = "return"   # заявка на возврат ПК (return — зарезервированное слово)
+    prepare = "prepare"  # подготовить ПК после брони: поставить выбранную ОС
+    build = "build"      # сборка по запросу из каталога (без ПК и ВМ, привязана к команде)
 
 
 class EventType(StrEnum):

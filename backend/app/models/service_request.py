@@ -10,7 +10,8 @@ from app.models.user import User
 class ServiceRequest(Base, TimestampMixin):
     """Заявка в Jira Service Desk по компьютеру или виртуалке.
 
-    kind: problem — «Сообщить о проблеме» из «Моей аренды»; return — заявка на возврат ПК.
+    kind: problem — «Сообщить о проблеме» из «Моей аренды»; return — заявка на возврат ПК; prepare — подготовить ПК
+    после брони; build — сборка по запросу (без ПК и ВМ, привязана к команде department_id).
     Статус и комментарии админов берутся из Jira; статус обновляет worker, комментарии — по запросу.
     """
 
@@ -21,6 +22,7 @@ class ServiceRequest(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"), index=True)
     vm_id: Mapped[int | None] = mapped_column(ForeignKey("virtual_machines.id"), index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)  # команда сборки
     issue_key: Mapped[str | None] = mapped_column(String(32), index=True)  # например HMS-123
     summary: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)

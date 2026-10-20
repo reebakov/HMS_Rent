@@ -12,6 +12,7 @@ router = APIRouter(prefix="/bookings", tags=["bookings"])
 async def create_booking(data: BookingCreate, user: CurrentUser, session: DB, tasks: BackgroundTasks) -> Booking:
     booking = await service.create_booking(session, user, data)
     tasks.add_task(service.push_to_insight)
+    tasks.add_task(service.create_prepare_request, booking.id, user.id)
     return booking
 
 
