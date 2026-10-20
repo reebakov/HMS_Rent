@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { VmBuilderDialog } from './VmBuilderDialog'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
-import { todayLocal } from '@/lib/utils'
+import { addDays, todayLocal } from '@/lib/utils'
 import type { VmOptions, VmTemplateOption } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -65,10 +65,14 @@ const submit = () => screen.getByRole('button', { name: 'Создать' })
 const sliders = () => screen.getAllByRole('slider') as HTMLInputElement[] // ядра, память, диск
 const nameInput = () => screen.getByLabelText(/Имя виртуалки/)
 
-/** Заполняет минимум, чтобы форма стала валидной */
+const UNTIL = '2099-12-31'
+const untilInput = () => screen.getByLabelText(/Вернуть до/)
+
+/** Заполняет минимум, чтобы форма стала валидной (срок обязателен) */
 async function fillValid(user: ReturnType<typeof userEvent.setup>, name = 'design-01') {
   await user.type(nameInput(), name)
   await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+  await user.type(untilInput(), UNTIL)
 }
 
 beforeEach(() => {
@@ -211,6 +215,7 @@ describe('VmBuilderDialog', () => {
     it('пустое имя — без ошибки, но кнопка отключена', async () => {
       const { user } = await setup()
       await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+      await user.type(untilInput(), UNTIL)
       expect(screen.queryByText(/Только a–z, 0–9 и дефис/)).not.toBeInTheDocument()
       expect(submit()).toBeDisabled()
     })
@@ -220,6 +225,7 @@ describe('VmBuilderDialog', () => {
     it('без отдела отправить нельзя', async () => {
       const { user } = await setup()
       await user.type(nameInput(), 'design-01')
+      await user.type(untilInput(), UNTIL)
       expect(submit()).toBeDisabled()
       await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
       expect(submit()).toBeEnabled()
@@ -245,6 +251,37 @@ describe('VmBuilderDialog', () => {
       const min = (screen.getByLabelText(/Вернуть до/) as HTMLInputElement).min
       expect(min).toBe(todayLocal())
     })
+
+    it('срок обязателен: подпись с «*», без срока «Создать» неактивна, со сроком — доступна', async () => {
+      const { user } = await setup()
+      expect(screen.getByText('Вернуть до').closest('label')).toHaveTextContent('*')
+      expect(screen.queryByText('Необязательно')).not.toBeInTheDocument()
+      await user.type(nameInput(), 'design-01')
+      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+      expect(submit()).toBeDisabled()
+      await user.type(untilInput(), UNTIL)
+      expect(submit()).toBeEnabled()
+      await user.clear(untilInput())
+      expect(submit()).toBeDisabled()
+    })
+
+    it('прошедшую дату, впечатанную вручную в обход min, отправить нельзя', async () => {
+      const { user } = await setup()
+      await user.type(nameInput(), 'design-01')
+      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+      await user.type(untilInput(), addDays(todayLocal(), -1))
+      expect(submit()).toBeDisabled()
+      await user.type(nameInput(), '{Enter}')
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('сегодняшняя дата допустима', async () => {
+      const { user } = await setup()
+      await user.type(nameInput(), 'design-01')
+      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+      await user.type(untilInput(), todayLocal())
+      expect(submit()).toBeEnabled()
+    })
   })
 
   describe('отправка', () => {
@@ -254,7 +291,6 @@ describe('VmBuilderDialog', () => {
       fireEvent.change(sliders()[0], { target: { value: '6' } })
       fireEvent.change(sliders()[1], { target: { value: '12' } })
       fireEvent.change(sliders()[2], { target: { value: '120' } })
-      await user.type(screen.getByLabelText(/Вернуть до/), '2099-12-31')
       await user.click(submit())
 
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
@@ -287,12 +323,12 @@ describe('VmBuilderDialog', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
-    it('без даты возврата уходит null', async () => {
+    it('срок уходит в expected_return_at, ресурсы — минимальные', async () => {
       const { user } = await setup()
       await fillValid(user)
       await user.click(submit())
       await waitFor(() => expect(api.post).toHaveBeenCalled())
-      expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ expected_return_at: null, cpu: 2, ram_gb: 4, disk_gb: 50 })
+      expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ expected_return_at: UNTIL, cpu: 2, ram_gb: 4, disk_gb: 50 })
     })
 
     it('ошибка API показывается в окне; окно открыто, перехода нет', async () => {

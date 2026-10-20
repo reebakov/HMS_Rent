@@ -85,7 +85,9 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const nameOk = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(name)
   const tmpl = o?.templates.find((t) => t.key === templateKey)
   const minDisk = Math.max(o?.min_disk_gb ?? 0, tmpl?.min_disk_gb ?? 0)
-  const valid = o?.enabled && tmpl?.available && nameOk && departmentId && person.trim().length >= 2 && nick.trim()
+  // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
+  const valid =
+    o?.enabled && tmpl?.available && nameOk && departmentId && person.trim().length >= 2 && nick.trim() && until >= todayLocal()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -93,7 +95,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     try {
       const vm = await create.mutateAsync({
         name, cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
-        requester_name: person, requester_nick: nick, expected_return_at: until || null,
+        requester_name: person, requester_nick: nick, expected_return_at: until,
       })
       toast.success(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`)
       onClose()
@@ -186,7 +188,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                     <DepartmentOptions departments={departments.data} />
                   </Select>
                 </Field>
-                <Field label="Вернуть до" hint="Необязательно">
+                <Field label="Вернуть до" required>
                   <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
                 </Field>
                 <Field label="Имя и фамилия" required>
