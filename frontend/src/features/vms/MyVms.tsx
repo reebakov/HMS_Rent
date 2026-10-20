@@ -8,6 +8,7 @@ import { DataState } from '@/components/ui/data-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
 import type { ServiceRequest, Vm } from '@/lib/types'
+import { RequesterNote } from '@/features/booking/RequesterNote'
 import { ReportProblemButton, RequestBadges } from '@/features/support/ServiceDesk'
 import { canReleaseVm } from '@/lib/dictionaries'
 import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
@@ -63,6 +64,7 @@ export function MyVms({
                   <p className="text-[13px] text-muted-foreground">
                     {vm.os_label ? `${vm.os_label} · ` : ''}{vm.cpu} ядра · {vm.ram_gb} ГБ · {vm.disk_gb} ГБ · {vm.department.name}
                   </p>
+                  <RequesterNote order={vm} />
                 </div>
                 <div className="text-[13px]">
                   {vm.ip_address ? (

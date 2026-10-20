@@ -218,6 +218,69 @@ describe('MyBookingsPage', () => {
     expect(screen.getByRole('table')).toBeInTheDocument()
   })
 
+  describe('заказы команды', () => {
+    const teammate = { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' }
+    const PC_011 = { id: 11, name: 'PC-011', tier: 'weak', is_virtual: false, cpu: null, ram_gb: null, storage: null, gpu: null } as const
+    const teamBookings = () => [
+      makeBooking({ id: 1 }),
+      makeBooking({ id: 2, order_number: 101, computer: PC_011, user: teammate, requester_name: 'Пётр Петров', requester_nick: 'p.petrov' }),
+    ]
+
+    it('брони команды видны рядом со своими: у чужой — «Арендатор: Имя (ник)», у своей подписи нет', async () => {
+      bookings = teamBookings()
+      renderPage()
+      await screen.findByText('PC-011')
+      expect(screen.getByText('PC-010')).toBeInTheDocument()
+      expect(cardOf('PC-011').getByText('Арендатор: Пётр Петров (p.petrov)')).toBeInTheDocument()
+      expect(cardOf('PC-010').queryByText(/Арендатор:/)).not.toBeInTheDocument()
+    })
+
+    it('у чужой брони есть «Продлить», «Вернуть компьютер» и «Сообщить о проблеме»', async () => {
+      bookings = teamBookings()
+      sdEnabled = true
+      renderPage()
+      const other = await card('PC-011')
+      expect(other.getByRole('button', { name: 'Продлить' })).toBeInTheDocument()
+      expect(other.getByRole('button', { name: /Вернуть компьютер/ })).toBeInTheDocument()
+      expect(await other.findByRole('button', { name: 'Сообщить о проблеме' })).toBeInTheDocument()
+    })
+
+    it('чужую бронь можно вернуть: запрос уходит по её id', async () => {
+      bookings = teamBookings()
+      vi.mocked(api.post).mockResolvedValue(bookings[1])
+      const user = userEvent.setup()
+      renderPage()
+      await user.click((await card('PC-011')).getByRole('button', { name: /Вернуть компьютер/ }))
+      await user.click(within(screen.getByRole('dialog', { name: 'Вернуть PC-011?' })).getByRole('button', { name: 'Вернуть' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings/2/return', { comment: undefined }))
+      expect(toast.success).toHaveBeenCalledWith('PC-011 возвращён')
+    })
+
+    it('чужую бронь можно продлить: запрос уходит по её id', async () => {
+      bookings = teamBookings()
+      vi.mocked(api.post).mockResolvedValue(bookings[1])
+      const user = userEvent.setup()
+      renderPage()
+      await user.click((await card('PC-011')).getByRole('button', { name: 'Продлить' }))
+      const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду PC-011' }))
+      await user.type(dialog.getByLabelText(/Новый срок/), '3000-01-31')
+      await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings/2/extend', { expected_return_at: '3000-01-31' }))
+    })
+
+    it('отказ backend (403) показывается тостом, как и прочие ошибки', async () => {
+      bookings = teamBookings()
+      vi.mocked(api.post).mockRejectedValue(new ApiError(403, 'Вернуть ПК может тот, кто его бронировал, участник его команды или администратор'))
+      const user = userEvent.setup()
+      renderPage()
+      await user.click((await card('PC-011')).getByRole('button', { name: /Вернуть компьютер/ }))
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Вернуть' }))
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith('Вернуть ПК может тот, кто его бронировал, участник его команды или администратор'),
+      )
+    })
+  })
+
   describe('продление', () => {
     it('«Продлить» открывает окно с текущим сроком; новый срок уходит в API и список обновляется', async () => {
       bookings = [makeBooking()]

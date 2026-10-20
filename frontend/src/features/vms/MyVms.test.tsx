@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { MyVms } from './MyVms'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { renderWithProviders } from '@/test/helpers'
+import { makeSession, renderWithProviders } from '@/test/helpers'
 import type { ServiceRequest, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -13,6 +13,7 @@ vi.mock('@/lib/api', async (orig) => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/auth/AuthProvider', () => ({ useSession: () => makeSession() }))
 
 const makeVm = (over: Partial<Vm> = {}): Vm => ({
   id: 1,
@@ -170,6 +171,41 @@ describe('MyVms', () => {
     })
   })
 
+  describe('виртуалки команды', () => {
+    const teammate = { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' }
+    const team = () => [
+      makeVm({ id: 1 }),
+      makeVm({ id: 2, name: 'rent-qa-02', user: teammate, requester_name: 'Пётр Петров', requester_nick: 'p.petrov' }),
+    ]
+
+    it('у чужой ВМ — «Арендатор: Имя (ник)», у своей подписи нет', async () => {
+      await renderVms(team())
+      const row = (name: string) => within(screen.getByText(name).closest('.flex-wrap') as HTMLElement)
+      expect(row('rent-qa-02').getByText('Арендатор: Пётр Петров (p.petrov)')).toBeInTheDocument()
+      expect(row('rent-design-01').queryByText(/Арендатор:/)).not.toBeInTheDocument()
+    })
+
+    it('чужую ВМ можно удалить: запрос уходит по её id', async () => {
+      vi.mocked(api.post).mockResolvedValue(makeVm({ status: 'deleting' }))
+      const user = userEvent.setup()
+      await renderVms(team())
+      await user.click(within(screen.getByText('rent-qa-02').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
+      await user.click(screen.getByRole('button', { name: 'Удалить' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/2/release'))
+    })
+
+    it('отказ backend (403) показывается тостом', async () => {
+      vi.mocked(api.post).mockRejectedValue(new ApiError(403, 'Отказаться от ВМ может тот, кто её заказывал, участник его команды или администратор'))
+      const user = userEvent.setup()
+      await renderVms(team())
+      await user.click(within(screen.getByText('rent-qa-02').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
+      await user.click(screen.getByRole('button', { name: 'Удалить' }))
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith('Отказаться от ВМ может тот, кто её заказывал, участник его команды или администратор'),
+      )
+    })
+  })
+
   it('клик по IP копирует его в буфер и показывает toast', async () => {
     const user = userEvent.setup()
     const write = vi.spyOn(navigator.clipboard, 'writeText')
@@ -284,6 +320,12 @@ describe('MyVms: ОС и заявки Service Desk', () => {
 
     await user.click(first.getByRole('button', { name: 'Заявка HMS-102 · Выполнено' }))
     expect(onOpenRequest).toHaveBeenCalledWith(6)
+  })
+
+  it('«Сообщить о проблеме» есть и у ВМ коллеги по команде', async () => {
+    const teammate = { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' }
+    await renderVmsWithSd([makeVm({ user: teammate, requester_name: 'Пётр Петров', requester_nick: 'p.petrov' })], { onReport: vi.fn() })
+    expect(await screen.findByRole('button', { name: 'Сообщить о проблеме' })).toBeInTheDocument()
   })
 
   it('«Сообщить о проблеме» передаёт выбранную ВМ', async () => {

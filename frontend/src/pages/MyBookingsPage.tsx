@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
 import { DataState, QueryError } from '@/components/ui/data-state'
 import { ExtendDialog, ReturnDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
+import { RequesterNote } from '@/features/booking/RequesterNote'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
 import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
@@ -43,7 +44,7 @@ export function MyBookingsPage() {
     <>
       <PageHeader
         title="Моя аренда"
-        description="Компьютеры и виртуалки, которые вы взяли"
+        description="Компьютеры и виртуалки, которые взяли вы и ваша команда"
         action={<Button onClick={() => navigate('/')}>Забронировать ещё</Button>}
       />
 
@@ -94,6 +95,7 @@ export function MyBookingsPage() {
                         <TierBadge tier={b.computer.tier} />
                       </div>
                       <p className="mt-0.5 text-xs font-medium text-muted-foreground">Заказ №{b.order_number}</p>
+                      <RequesterNote order={b} />
                       <p className="mt-0.5 text-[13px] text-muted-foreground">
                         {computerSpecs(b.computer)}
                       </p>
