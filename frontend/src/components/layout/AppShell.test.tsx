@@ -43,8 +43,8 @@ const item = (id: number): OverdueItem => ({
   email: null, taken_at: null, due: '2026-10-01', days: 2,
 })
 let overdue: OverdueItem[]
-const extension = (id: number, acknowledged: boolean) =>
-  ({ id, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as ExtensionOut
+const extension = (id: number, acknowledged: boolean, kind: ExtensionOut['kind'] = 'pc') =>
+  ({ id, kind, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as ExtensionOut
 let extensions: ExtensionOut[]
 
 beforeEach(() => {
@@ -285,6 +285,12 @@ describe('AppShell: «Сроки аренды»', () => {
     mountShell()
     expect(await within(overdueLink()).findByText('5')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/admin/extensions')
+  })
+
+  it('непринятые продления ВМ считаются так же, как продления ПК', async () => {
+    extensions = [extension(1, false, 'vm'), extension(2, true, 'vm'), extension(3, false)]
+    mountShell()
+    expect(await within(overdueLink()).findByText('5')).toBeInTheDocument()
   })
 
   it('без просрочек счётчик показывает новые продления', async () => {
