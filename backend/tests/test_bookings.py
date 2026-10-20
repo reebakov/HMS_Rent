@@ -389,10 +389,20 @@ async def test_return_empty_comment_becomes_none(session, booked, comment):
     assert b.return_comment is None
 
 
-async def test_return_by_stranger_forbidden(session, booked, make_user, notify_mock):
-    stranger = await make_user("stranger", department=booked.dept)
+async def test_return_by_teammate(session, booked, make_user):
+    """Участник команды брони возвращает ПК так же, как арендатор; в журнале — тот, кто вернул на деле."""
+    mate = await make_user("mate", department=booked.dept)
+    b = await bookings.return_booking(session, mate, booked.booking.id, None)
+    assert b.status == BookingStatus.returned and b.returned_by_id == mate.id and b.user_id == booked.user.id
+    [ev] = await events_of(booked.comp.id, EventType.returned)
+    assert ev.actor_id == mate.id
+
+
+@pytest.mark.parametrize("team", ["other", "none"])
+async def test_return_by_stranger_forbidden(session, booked, make_user, make_department, notify_mock, team):
+    stranger = await make_user("stranger", department=await make_department("Ops") if team == "other" else None)
     notify_mock.reset_mock()
-    with pytest.raises(Forbidden):
+    with pytest.raises(Forbidden, match="участник его команды или администратор"):
         await bookings.return_booking(session, stranger, booked.booking.id, None)
     assert (await db_get(Booking, booked.booking.id)).status == BookingStatus.active
     assert (await db_get(Computer, booked.comp.id)).status == ComputerStatus.booked
@@ -511,11 +521,22 @@ async def test_extend_booking_without_date(session, booked):
     assert ev.message == f"Заказ №{b.order_number}: срок продлён до {clock.today():%d.%m.%Y}"
 
 
-async def test_extend_by_stranger_forbidden(session, booked, make_user):
-    stranger = await make_user("stranger", department=booked.dept)
-    with pytest.raises(Forbidden, match="Продлить аренду"):
+async def test_extend_by_teammate(session, booked, make_user):
+    """Продление командой: в журнал попадает продливший, ожидает «Принято» как продление арендатора."""
+    mate = await make_user("mate", department=booked.dept)
+    b = await bookings.extend_booking(session, mate, booked.booking.id, extend(2))
+    assert b.expected_return_at == clock.today() + timedelta(days=2) and b.user_id == booked.user.id
+    [ext] = await extensions_of(b.id)
+    assert ext.user_id == mate.id and ext.acknowledged_at is None
+
+
+@pytest.mark.parametrize("team", ["other", "none"])
+async def test_extend_by_stranger_forbidden(session, booked, make_user, make_department, team):
+    stranger = await make_user("stranger", department=await make_department("Ops") if team == "other" else None)
+    with pytest.raises(Forbidden, match="Продлить аренду может тот, кто бронировал ПК, участник его команды"):
         await bookings.extend_booking(session, stranger, booked.booking.id, extend(1))
     assert await extensions_of(booked.booking.id) == []
+    assert (await db_get(Booking, booked.booking.id)).expected_return_at == clock.today()
 
 
 async def test_extend_returned_booking_conflict(session, booked):
@@ -531,13 +552,31 @@ async def test_extend_missing_not_found(session, env):
 
 # ---------- list_user_bookings ----------
 
-async def test_list_user_bookings_own_only_newest_first(session, env, make_user, make_computer):
-    other = await make_user("petrov", department=env.dept)
-    comps = [env.comp] + [await make_computer(pool=env.pool) for _ in range(3)]
-    mine = [await bookings.create_booking(session, env.user, payload(c, env.dept)) for c in comps[:3]]
+async def test_list_user_bookings_own_only_newest_first(session, env, make_user, make_computer, make_department):
+    """Без отдела — только свои; чужая команда не видна."""
+    other = await make_user("petrov", department=await make_department("Ops"))
+    loner = await make_user("loner")
+    comps = [env.comp] + [await make_computer(pool=env.pool) for _ in range(4)]
+    mine = [await bookings.create_booking(session, loner, payload(c, env.dept)) for c in comps[:3]]
     await bookings.create_booking(session, other, payload(comps[3], env.dept))
 
-    rows = await bookings.list_user_bookings(session, env.user)
+    rows = await bookings.list_user_bookings(session, loner)
     assert [b.id for b in rows] == [b.id for b in reversed(mine)]
-    assert all(b.user_id == env.user.id for b in rows)
+    assert all(b.user_id == loner.id for b in rows)
     assert await bookings.list_user_bookings(session, await make_user("nobody")) == []
+
+
+async def test_list_user_bookings_includes_team_without_duplicates(session, env, make_user, make_computer,
+                                                                   make_department):
+    """Свои и брони команды (в том числе закрытые), по разу каждая; бронь чужой команды не видна."""
+    mate = await make_user("petrov", department=env.dept)
+    foreign = await make_user("sidorov", department=await make_department("Ops"))
+    comps = [env.comp] + [await make_computer(pool=env.pool) for _ in range(3)]
+    own = await bookings.create_booking(session, env.user, payload(comps[0], env.dept))
+    team = await bookings.create_booking(session, mate, payload(comps[1], env.dept))
+    closed = await bookings.create_booking(session, mate, payload(comps[2], env.dept))
+    await bookings.return_booking(session, mate, closed.id, None)
+    await bookings.create_booking(session, foreign, payload(comps[3], await make_department("Third")))
+
+    rows = await bookings.list_user_bookings(session, env.user)
+    assert [b.id for b in rows] == [closed.id, team.id, own.id]

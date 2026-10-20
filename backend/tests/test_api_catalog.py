@@ -278,18 +278,39 @@ async def test_admin_can_book_any_pool(client, login, make_user, shop, make_pool
 
 # ---------- Мои бронирования и возврат ----------
 
-async def test_my_bookings_only_own_newest_first(client, shop, login, make_user, make_computer, api):
+async def test_my_bookings_only_own_newest_first(client, shop, login, make_user, make_computer, make_department, api):
     c2 = await make_computer("A2", shop["pool"])
     c3 = await make_computer("A3", shop["pool"])
     await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))
     await client.post(api("/bookings"), json=_payload(c2, shop["dept"]))
     client.cookies.clear()
     login(await make_user("other"))
-    await client.post(api("/bookings"), json=_payload(c3, shop["dept"]))
+    await client.post(api("/bookings"), json=_payload(c3, await make_department("Ops")))
     assert [b["computer"]["name"] for b in (await client.get(api("/bookings/my"))).json()] == ["A3"]
     client.cookies.clear()
     login(shop["emp"])
     assert [b["computer"]["name"] for b in (await client.get(api("/bookings/my"))).json()] == ["A2", "A1"]
+
+
+async def test_team_sees_and_manages_booking_of_teammate(client, shop, login, make_user, make_department, api):
+    """Участник команды видит бронь коллеги в «моих», продлевает и возвращает её; чужая команда получает 403."""
+    booking = (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).json()
+    new_date = (clock.today() + timedelta(days=5)).isoformat()
+    client.cookies.clear()
+
+    login(await make_user("outsider", department=await make_department("Ops")))
+    assert (await client.get(api("/bookings/my"))).json() == []
+    assert (await client.post(api(f"/bookings/{booking['id']}/extend"), json={"expected_return_at": new_date})).status_code == 403
+    assert (await client.post(api(f"/bookings/{booking['id']}/return"), json={})).status_code == 403
+    client.cookies.clear()
+
+    login(await make_user("mate", department=shop["dept"]))
+    mine = (await client.get(api("/bookings/my"))).json()
+    assert [(b["id"], b["user"]["username"]) for b in mine] == [(booking["id"], "emp")]
+    r = await client.post(api(f"/bookings/{booking['id']}/extend"), json={"expected_return_at": new_date})
+    assert r.status_code == 200 and r.json()["expected_return_at"] == new_date
+    r = await client.post(api(f"/bookings/{booking['id']}/return"), json={})
+    assert r.status_code == 200 and r.json()["returned_by"]["username"] == "mate"
 
 
 async def test_my_bookings_empty(client, shop, api):

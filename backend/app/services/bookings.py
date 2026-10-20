@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, Forbidden, NotFound
+from app.core.errors import Conflict, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightSource
@@ -15,6 +15,7 @@ from app.integrations.notify import notify
 from app.models import Booking, BookingExtension, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate, BookingExtend
 from app.services import departments, runtime, service_requests
+from app.services.access import ensure_access, mine_or_team
 from app.services.events import add_event
 from app.services.orders import next_order_number
 from app.services.pools import pool_visible
@@ -113,14 +114,14 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
 
 
 async def _lock_active(session: AsyncSession, user: User, booking_id: int, action: str) -> tuple[Booking, Computer]:
-    """Активная бронь и её ПК под блокировкой; менять её может арендатор или администратор."""
+    """Активная бронь и её ПК под блокировкой; менять её может арендатор, участник его команды или администратор."""
     booking = await session.scalar(
         select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
     )
     if booking is None:
         raise NotFound("Бронирование не найдено")
-    if booking.user_id != user.id and not user.is_admin:
-        raise Forbidden(f"{action} может тот, кто бронировал ПК, или администратор")
+    ensure_access(user, booking.user_id, booking.department_id,
+                  f"{action} может тот, кто бронировал ПК, участник его команды или администратор")
     if booking.status != BookingStatus.active:
         raise Conflict("Бронирование уже закрыто")
     comp = await session.scalar(
@@ -189,7 +190,8 @@ async def extend_booking(session: AsyncSession, user: User, booking_id: int, dat
 
 async def list_user_bookings(session: AsyncSession, user: User) -> list[Booking]:
     rows = await session.scalars(
-        select(Booking).where(Booking.user_id == user.id).order_by(Booking.booked_at.desc()).limit(200)
+        select(Booking).where(mine_or_team(user, Booking.user_id, Booking.department_id))
+        .order_by(Booking.booked_at.desc()).limit(200)
     )
     return list(rows.unique().all())
 
