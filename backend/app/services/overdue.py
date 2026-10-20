@@ -1,14 +1,14 @@
 """Сроки аренды: просрочки ПК и виртуалок и продления ПК и ВМ.
 
 Видно в Админке → «Сроки аренды» (+ счётчик просрочек и непринятых продлений в меню). Раз в день worker шлёт
-сводку просрочек в Mattermost, если задан MATTERMOST_WEBHOOK_URL.
+в Mattermost (если задан MATTERMOST_WEBHOOK_URL) сводку просрочек и напоминания о скором конце срока.
 """
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import clock
+from app.core import clock, workdays
 from app.core.config import settings
 from app.core.errors import Conflict, NotFound
 from app.integrations.notify import notify
@@ -17,7 +17,10 @@ from app.schemas.admin import OverdueItem
 from app.services import runtime
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
-DIGEST_HOUR = 10  # во сколько слать сводку по местному времени
+REMINDERS_KEY = "term_reminders_last"  # дата последних напоминаний о сроке (в app_settings)
+DIGEST_HOUR = 10  # во сколько слать сводку и напоминания по местному времени
+REMIND_WORKDAYS = 5  # за сколько рабочих дней до конца срока напоминать (DR-15060)
+REMIND_HORIZON_DAYS = 31  # дальше этого конец срока заведомо не попадает в напоминание
 RECENT_EXTENSIONS_DAYS = 14  # сколько дней принятые продления остаются в списке
 
 
@@ -95,18 +98,31 @@ def days_overdue(due: date | None) -> int:
     return (clock.today() - due).days if due else 0
 
 
-async def daily_digest(session: AsyncSession) -> None:
+async def _unsent_today(session: AsyncSession, key: str) -> date | None:
+    """Сегодняшний день, если пора слать сообщение `key` (задан вебхук, уже DIGEST_HOUR, сегодня ещё не слали)."""
     if not settings.mattermost_webhook_url:
-        return
+        return None
     now = clock.now()
     if now.hour < DIGEST_HOUR:
-        return
-    row = await session.get(AppSetting, DIGEST_KEY)
+        return None
+    row = await session.get(AppSetting, key)
     if row is not None and row.value == now.date().isoformat():
+        return None
+    return now.date()
+
+
+async def _mark_sent(session: AsyncSession, key: str, day: date) -> None:
+    await runtime.put_setting(session, key, day.isoformat())
+    await session.commit()
+
+
+async def daily_digest(session: AsyncSession) -> None:
+    today = await _unsent_today(session, DIGEST_KEY)
+    if today is None:
         return
     bookings, vms = await list_overdue(session)
     if bookings or vms:
-        lines = [f"⏰ **Просрочки HMS Rent на {now:%d.%m.%Y}**: ПК — {len(bookings)}, виртуалок — {len(vms)}"]
+        lines = [f"⏰ **Просрочки HMS Rent на {today:%d.%m.%Y}**: ПК — {len(bookings)}, виртуалок — {len(vms)}"]
         for b in bookings[:30]:
             lines.append(f"- ПК **{b.computer.name}** (заказ №{b.order_number}) — {b.department.name}, "
                          f"{b.requester_name}, срок {b.expected_return_at:%d.%m}, +{days_overdue(b.expected_return_at)} дн.")
@@ -114,5 +130,41 @@ async def daily_digest(session: AsyncSession) -> None:
             lines.append(f"- ВМ **{vm.name}** (заказ №{vm.order_number}) — {vm.department.name}, "
                          f"{vm.requester_name}, срок {vm.expected_return_at:%d.%m}, +{days_overdue(vm.expected_return_at)} дн.")
         await notify("\n".join(lines))
-    await runtime.put_setting(session, DIGEST_KEY, now.date().isoformat())
-    await session.commit()
+    await _mark_sent(session, DIGEST_KEY, today)
+
+
+def _reminder_line(kind: str, name: str, order: Booking | VirtualMachine) -> str:
+    return (f"- {kind} **{name}** (заказ №{order.order_number}) — {order.department.name}, "
+            f"{order.requester_name} ({order.requester_nick}), срок {order.expected_return_at:%d.%m}")
+
+
+async def daily_reminders(session: AsyncSession) -> None:
+    """Раз в рабочий день: в канал Mattermost — чьи аренды кончаются через 5 рабочих дней и у кого сегодня последний
+    рабочий день срока (DR-15060, «Окончание срока»). В выходные ничего не шлётся. Позже — личные сообщения (нужен бот)."""
+    today = await _unsent_today(session, REMINDERS_KEY)
+    if today is None:
+        return
+    cal = workdays.load()
+    if cal.is_workday(today):
+        horizon = today + timedelta(days=REMIND_HORIZON_DAYS)
+        bookings = (await session.scalars(
+            select(Booking).where(Booking.status == BookingStatus.active,
+                                  Booking.expected_return_at.between(today, horizon))
+            .order_by(Booking.expected_return_at)
+        )).unique().all()
+        vms = (await session.scalars(
+            select(VirtualMachine).where(VirtualMachine.status.in_((VmStatus.ready, VmStatus.failed)),
+                                         VirtualMachine.expected_return_at.between(today, horizon))
+            .order_by(VirtualMachine.expected_return_at)
+        )).unique().all()
+        orders = [("ПК", b.computer.name, b) for b in bookings] + [("ВМ", v.name, v) for v in vms]
+        soon = [_reminder_line(*o) for o in orders if cal.workdays_before(o[2].expected_return_at, REMIND_WORKDAYS) == today]
+        last = [_reminder_line(*o) for o in orders if cal.last_workday(o[2].expected_return_at) == today]
+        if soon or last:
+            lines = [f"⏳ **Сроки аренды HMS Rent на {today:%d.%m.%Y}**"]
+            if soon:
+                lines += [f"Через {REMIND_WORKDAYS} рабочих дней заканчивается аренда:", *soon]
+            if last:
+                lines += ["Сегодня последний рабочий день аренды — верните или продлите:", *last]
+            await notify("\n".join(lines))
+    await _mark_sent(session, REMINDERS_KEY, today)

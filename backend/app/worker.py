@@ -41,6 +41,7 @@ async def _tick(next_sync: float, clock=time.monotonic) -> float:
     await _step("Запись ВМ в Insight", vm_insight.push_pending)
     await _step("Заявки Service Desk", service_requests.refresh_open)
     await _step("Сводка просрочек", overdue.daily_digest)
+    await _step("Напоминания о сроке", overdue.daily_reminders)
     return next_sync
 
 

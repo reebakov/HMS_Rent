@@ -125,8 +125,8 @@ sudo ./scripts/deploy.sh --redeploy # перезапустить текущий 
 Если сервис не поднялся, возвращает прежний коммит и его образы. `.env` и данные БД не трогает; миграции применяет
 backend при старте. Откат на конкретный коммит: `sudo ./scripts/deploy.sh --force-ref --ref <sha>`.
 
-Настройки, которые читаются с диска сервера без пересборки: `backend/config/admins.txt` и маппинг Insight
-(`backend/config/*.yaml`). Всё остальное в образе.
+Настройки, которые читаются с диска сервера без пересборки: `backend/config/admins.txt`, маппинг Insight
+(`backend/config/*.yaml`) и производственный календарь `backend/config/work_calendar.yaml`. Всё остальное в образе.
 
 Первый раз (один раз на сервере): образы публикуются в приватный пакет GHCR — сделайте пакеты публичными
 (GitHub → профиль → Packages → `hms-rent-backend` / `hms-rent-frontend` → Package settings → Change visibility → Public;

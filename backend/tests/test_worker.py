@@ -28,6 +28,7 @@ def calls(monkeypatch):
     monkeypatch.setattr(vm_jobs, "recover", fake("recover"))
     monkeypatch.setattr(service_requests, "refresh_open", fake("sd"))
     monkeypatch.setattr(overdue, "daily_digest", fake("digest"))
+    monkeypatch.setattr(overdue, "daily_reminders", fake("reminders"))
     return log
 
 
@@ -65,7 +66,7 @@ async def test_failed_step_does_not_stop_next_steps(calls, monkeypatch, caplog):
     monkeypatch.setattr(worker, "run_sync", boom)
     with caplog.at_level(logging.ERROR, logger="hmsrent.worker"):
         await worker._tick(0.0, clock=Clock())
-    assert calls == ["writeback", "sd", "digest"]  # остальные шаги выполнены
+    assert calls == ["writeback", "sd", "digest", "reminders"]  # остальные шаги выполнены
     assert "Синхронизация упал" in caplog.text
 
 

@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     bouncer_client_secret: str = ""
     bouncer_issuer: str = ""  # ожидаемый iss в id_token; пусто — не проверять
     admins_file: str = "config/admins.txt"
+    work_calendar_file: str = "config/work_calendar.yaml"  # праздники и рабочие выходные для расчёта рабочих дней
     auth_local_enabled: bool = True
     auth_dev_enabled: bool = False
     login_max_attempts: int = 5
