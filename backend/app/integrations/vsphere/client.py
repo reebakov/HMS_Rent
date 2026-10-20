@@ -151,22 +151,29 @@ def create_vm(name: str, cpu: int, ram_gb: int, disk_gb: int, annotation: str,
         log.info("vSphere: клонирую %s → %s (%s CPU, %s ГБ RAM, %s ГБ диск)",
                  template.name, name, cpu, ram_gb, disk_gb)
         vm = _wait(template.CloneVM_Task(folder=folder, name=name, spec=spec), "Клонирование", timeout=3600)
-
-        # диск (только увеличение) + сетевая карта подключается при включении
-        changes = []
-        for dev in vm.config.hardware.device:
-            if isinstance(dev, vim.vm.device.VirtualDisk) and disk_gb * 1024 * 1024 > dev.capacityInKB:
-                dev.capacityInKB = disk_gb * 1024 * 1024
-                changes.append(vim.vm.device.VirtualDeviceSpec(operation="edit", device=dev))
-            elif isinstance(dev, vim.vm.device.VirtualEthernetCard):
-                dev.connectable.startConnected = True
-                dev.connectable.connected = True
-                changes.append(vim.vm.device.VirtualDeviceSpec(operation="edit", device=dev))
-        if changes:
-            _wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(deviceChange=changes)), "Настройка диска и сети")
-
-        _wait(vm.PowerOnVM_Task(), "Включение")
+        try:
+            _finish_setup(vm, disk_gb)
+        except Exception:
+            # клон уже наш: убираем его по объекту, а не по имени, чтобы не задеть чужую ВМ
+            _destroy(vm)
+            raise
         return _info(vm)
+
+
+def _finish_setup(vm, disk_gb: int) -> None:
+    """Диск (только увеличение), сетевая карта подключается при включении, включение ВМ."""
+    changes = []
+    for dev in vm.config.hardware.device:
+        if isinstance(dev, vim.vm.device.VirtualDisk) and disk_gb * 1024 * 1024 > dev.capacityInKB:
+            dev.capacityInKB = disk_gb * 1024 * 1024
+            changes.append(vim.vm.device.VirtualDeviceSpec(operation="edit", device=dev))
+        elif isinstance(dev, vim.vm.device.VirtualEthernetCard):
+            dev.connectable.startConnected = True
+            dev.connectable.connected = True
+            changes.append(vim.vm.device.VirtualDeviceSpec(operation="edit", device=dev))
+    if changes:
+        _wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(deviceChange=changes)), "Настройка диска и сети")
+    _wait(vm.PowerOnVM_Task(), "Включение")
 
 
 def vm_status(moid: str) -> VmInfo | None:
@@ -178,15 +185,17 @@ def vm_status(moid: str) -> VmInfo | None:
             return None
 
 
-def delete_vm(moid: str | None, name: str) -> None:
+def _destroy(vm) -> None:
     """Выключает и удаляет ВМ с диска. Уже удалённая — не ошибка."""
+    try:
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+            _wait(vm.PowerOffVM_Task(), "Выключение")
+        _wait(vm.Destroy_Task(), "Удаление")
+    except vim.fault.ManagedObjectNotFound:
+        return
+
+
+def delete_vm(moid: str) -> None:
+    """Удаляет ВМ портала по id в vCenter. По имени не ищет: имя могло занять чужая ВМ."""
     with connect() as si:
-        vm = vim.VirtualMachine(moid, si._stub) if moid else _find(si, vim.VirtualMachine, name)  # noqa: SLF001
-        if vm is None:
-            return
-        try:
-            if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
-                _wait(vm.PowerOffVM_Task(), "Выключение")
-            _wait(vm.Destroy_Task(), "Удаление")
-        except vim.fault.ManagedObjectNotFound:
-            return
+        _destroy(vim.VirtualMachine(moid, si._stub))  # noqa: SLF001

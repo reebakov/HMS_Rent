@@ -40,14 +40,14 @@ class FakeVSphere:
 
     def __init__(self):
         self.created: list[dict] = []
-        self.deleted: list[tuple] = []
+        self.deleted: list[str] = []
 
     def create_vm(self, name, cpu, ram_gb, disk_gb, annotation, template_name=None, customization_spec=None):
         self.created.append({"name": name, "template": template_name, "spec": customization_spec})
         return VmInfo(moid=f"vm-{len(self.created)}", name=name, power_state="poweredOn", ip_address="10.0.0.5")
 
-    def delete_vm(self, moid, name):
-        self.deleted.append((moid, name))
+    def delete_vm(self, moid):
+        self.deleted.append(moid)
 
 
 @pytest.fixture
@@ -590,20 +590,18 @@ async def test_create_next_legacy_vm_without_template_key_uses_vcenter_defaults(
     assert (await session.get(VirtualMachine, vm_id)).status == "ready"
 
 
-@pytest.mark.xfail(strict=True, reason="vm_jobs.py:55: если шаблон ВМ пропал из настроек или у него стёрли имя, воркер "
-                                       "молча клонирует шаблон Windows по умолчанию (tmpl=None / template='' -> "
-                                       "vsphere берёт vcenter_template_windows): Ubuntu-заявка получит Windows")
 @pytest.mark.parametrize("change", [
     pytest.param(lambda: [tpl("win10", "T10")], id="removed-from-settings"),
     pytest.param(lambda: [tpl("win10", "T10"), tpl("ubuntu2204", "", os="linux")], id="name-cleared"),
 ])
 async def test_create_next_vanished_template_does_not_fall_back_to_windows(session, vm_on, ctx, vsphere, change):
     await set_templates(session, tpl("win10", "T10"), tpl("ubuntu2204", "TU", os="linux", min_disk_gb=25))
-    vm = await request(session, ctx, template_key="ubuntu2204")
+    vm_id = (await request(session, ctx, template_key="ubuntu2204")).id
     await set_templates(session, *change())
     await vm_jobs.create_next(session)
     session.expire_all()
-    assert (await session.get(VirtualMachine, vm.id)).status == "failed"
+    vm = await session.get(VirtualMachine, vm_id)
+    assert vm.status == "failed" and "больше не доступен" in vm.error
     assert vsphere.created == []  # Linux-ВМ не должна создаваться из Windows-шаблона
 
 

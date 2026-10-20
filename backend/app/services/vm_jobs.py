@@ -50,20 +50,24 @@ async def create_next(session: AsyncSession) -> bool:
         return False
     vm.status = VmStatus.creating.value
     await session.commit()
+    template, spec = None, None  # заявки до введения шаблонов (template_key пуст) идут по настройкам из .env
+    if vm.template_key:
+        tmpl = next((t for t in runtime.current().vm_templates if t.key == vm.template_key), None)
+        if tmpl is None or not tmpl.template:
+            # шаблон убрали из настроек после постановки в очередь: клон из шаблона по умолчанию дал бы не ту ОС
+            vm.status, vm.error = VmStatus.failed.value, f"Шаблон ОС «{vm.os_label or vm.template_key}» больше не доступен"
+            await session.commit()
+            return True
+        template, spec = tmpl.template, tmpl.customization_spec
     for attempt in range(1, CREATE_ATTEMPTS + 1):
         try:
-            tmpl = next((t for t in runtime.current().vm_templates if t.key == vm.template_key), None)
             info = await asyncio.to_thread(
-                vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm),
-                tmpl.template if tmpl else None, tmpl.customization_spec if tmpl else None,
+                vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, _annotation(vm), template, spec,
             )
         except Exception as exc:  # noqa: BLE001
+            # недоделанный клон vSphere-клиент убирает сам; по имени здесь не удаляем — оно может быть чужим
             log.exception("Не удалось создать ВМ %s (попытка %d из %d)", vm.name, attempt, CREATE_ATTEMPTS)
             vm.error = str(exc)[:1000]
-            try:  # убираем недоделанный клон, чтобы имя освободилось (и повторная попытка не упёрлась в него)
-                await asyncio.to_thread(vsphere.delete_vm, None, vm.name)
-            except Exception:  # noqa: BLE001
-                log.warning("Не удалось убрать недоделанную ВМ %s", vm.name)
             if attempt < CREATE_ATTEMPTS:
                 await _pause(CREATE_RETRY_DELAY_SEC)
             continue
@@ -83,7 +87,8 @@ async def delete_next(session: AsyncSession) -> bool:
     if vm is None:
         return False
     try:
-        await asyncio.to_thread(vsphere.delete_vm, vm.vsphere_moid, vm.name)
+        if vm.vsphere_moid:  # без moid в vCenter нечего удалять: ВМ не создавалась, а по имени искать нельзя
+            await asyncio.to_thread(vsphere.delete_vm, vm.vsphere_moid)
         vm.status, vm.deleted_at, vm.error = VmStatus.deleted.value, datetime.now(timezone.utc), None
     except Exception as exc:  # noqa: BLE001 — оставляем в deleting, повторим на следующем круге
         log.exception("Не удалось удалить ВМ %s", vm.name)

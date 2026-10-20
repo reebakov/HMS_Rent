@@ -131,7 +131,7 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
         raise Conflict("Виртуалка уже удаляется")
     if vm.status == VmStatus.creating:
         raise Conflict("Виртуалка ещё создаётся — подождите пару минут")
-    vm.status = (VmStatus.deleted if vm.status == VmStatus.queued else VmStatus.deleting).value  # из очереди — сразу
+    vm.status = (VmStatus.deleting if vm.vsphere_moid else VmStatus.deleted).value  # в vCenter не создавалась — сразу
     vm.released_at = datetime.now(timezone.utc)
     vm.released_by_id = user.id
     if vm.status == VmStatus.deleted:

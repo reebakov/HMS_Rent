@@ -11,7 +11,7 @@ from app.core import clock
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
-from app.integrations.vsphere.client import VmInfo
+from app.integrations.vsphere.client import VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
 from app.schemas.vm import VmCreate, VmExtend
 from app.services import runtime, vm_jobs, vms
@@ -26,7 +26,7 @@ class FakeVSphere:
         self.create_errors: list[Exception | None] = []  # по одному на вызов create_vm; None — успех
         self.delete_errors: list[Exception | None] = []
         self.created: list[tuple] = []
-        self.deleted: list[tuple] = []
+        self.deleted: list[str] = []  # moid удалённых ВМ
         self.existing: dict[str, VmInfo] = {}
         self.ip: str | None = "10.0.0.5"
 
@@ -36,8 +36,8 @@ class FakeVSphere:
             raise err
         return VmInfo(moid=f"vm-{len(self.created)}", name=name, power_state="poweredOn", ip_address=self.ip)
 
-    def delete_vm(self, moid, name):
-        self.deleted.append((moid, name))
+    def delete_vm(self, moid):
+        self.deleted.append(moid)
         if self.delete_errors and (err := self.delete_errors.pop(0)):
             raise err
 
@@ -246,22 +246,25 @@ async def test_create_next_empty_queue(session, vm_on, vsphere, notify):
     assert vsphere.created == []
 
 
-async def test_create_failure_marks_failed_and_cleans_up(session, vm_on, ctx, vsphere, notify):
+async def test_create_failure_marks_failed_and_never_deletes_by_name(session, vm_on, ctx, vsphere, notify):
     vsphere.create_errors = [RuntimeError("datastore full")] * 2
     vm = await request(session, ctx)
     assert await vm_jobs.create_next(session) is True  # задача обработана, воркер не падает
     vm = await status_of(session, vm)
     assert vm.status == "failed" and "datastore full" in vm.error and vm.ready_at is None
-    assert vsphere.deleted == [(None, "rent-dev-box")] * 2  # недоделанный клон убран по имени после каждой попытки
+    assert vsphere.deleted == []  # недоделанный клон убирает vSphere-клиент, а по имени воркер не удаляет ничего
     notify.assert_not_awaited()  # об успехе — уведомление, об ошибке — нет (см. xfail ниже)
 
 
-async def test_cleanup_error_is_swallowed(session, vm_on, ctx, vsphere, notify):
-    vsphere.create_errors = [RuntimeError("clone failed")] * 2
-    vsphere.delete_errors = [RuntimeError("vCenter недоступен")] * 2
+async def test_create_failure_name_taken_by_foreign_vm_deletes_nothing(session, vm_on, ctx, vsphere, notify):
+    """Имя уже занято чужой ВМ в vCenter: заявка падает, чужая ВМ остаётся нетронутой."""
+    vsphere.create_errors = [VSphereError("ВМ с именем «rent-dev-box» уже есть в vCenter")] * 2
+    vsphere.existing["rent-dev-box"] = VmInfo("vm-foreign", "rent-dev-box", "poweredOn", None)
     vm = await request(session, ctx)
     await vm_jobs.create_next(session)
-    assert (await status_of(session, vm)).status == "failed"
+    vm = await status_of(session, vm)
+    assert vm.status == "failed" and "уже есть" in vm.error and vm.vsphere_moid is None
+    assert vsphere.deleted == []
 
 
 async def test_create_failure_retries_exactly_once(session, vm_on, ctx, vsphere, notify, pauses):
@@ -272,7 +275,7 @@ async def test_create_failure_retries_exactly_once(session, vm_on, ctx, vsphere,
     vm = await status_of(session, vm)
     assert len(vsphere.created) == 2
     assert vm.status == "failed" and "снова сбой" in vm.error and vm.ready_at is None
-    assert vsphere.deleted == [(None, "rent-dev-box")] * 2  # после каждой неудачи клон убирается
+    assert vsphere.deleted == []
     assert pauses == [10]  # пауза только перед повтором, после последней неудачи не ждём
 
 
@@ -283,7 +286,7 @@ async def test_create_retry_succeeds_after_one_failure(session, vm_on, ctx, vsph
     vm = await status_of(session, vm)
     assert len(vsphere.created) == 2
     assert vm.status == "ready" and vm.error is None and vm.vsphere_moid == "vm-2"
-    assert vsphere.deleted == [(None, "rent-dev-box")]  # перед повтором убран недоделанный клон
+    assert vsphere.deleted == []
     assert pauses == [10]
     notify.assert_awaited_once()
 
@@ -351,6 +354,25 @@ async def test_release_queued_is_immediate(session, vm_on, ctx):
     assert vm.status == "deleted" and vm.deleted_at and vm.released_by_id == ctx.user.id
 
 
+async def test_release_failed_without_moid_is_immediate(session, vm_on, ctx, vsphere, notify):
+    """Упавшая заявка в vCenter не создана: удалять нечего, и имя могла занять чужая ВМ — vSphere не трогаем."""
+    vsphere.create_errors = [RuntimeError("нет места")] * 2
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    vm = await vms.release(session, ctx.user, vm.id)
+    assert vm.status == "deleted" and vm.deleted_at
+    assert await vm_jobs.delete_next(session) is False and vsphere.deleted == []
+
+
+async def test_delete_next_without_moid_does_not_touch_vcenter(session, vm_on, ctx, vsphere):
+    """Строки «deleting» без moid остались от прежней версии (failed -> deleting): закрываем без обращения к vCenter."""
+    vm = await request(session, ctx)
+    vm.status = "deleting"
+    await session.commit()
+    assert await vm_jobs.delete_next(session) is True
+    assert (await status_of(session, vm)).status == "deleted" and vsphere.deleted == []
+
+
 async def test_release_ready_goes_through_worker(session, vm_on, ctx, vsphere, notify):
     vm = await request(session, ctx)
     await vm_jobs.create_next(session)
@@ -359,7 +381,7 @@ async def test_release_ready_goes_through_worker(session, vm_on, ctx, vsphere, n
     assert await vm_jobs.delete_next(session) is True
     vm = await status_of(session, vm)
     assert vm.status == "deleted" and vm.deleted_at and vm.error is None
-    assert vsphere.deleted == [("vm-1", "rent-dev-box")]
+    assert vsphere.deleted == ["vm-1"]
     assert await vm_jobs.delete_next(session) is False
 
 
