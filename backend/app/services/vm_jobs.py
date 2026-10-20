@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import VirtualMachine, VmStatus
@@ -124,13 +123,15 @@ async def recover(session: AsyncSession) -> None:
     await session.commit()
 
 
-async def run_once(session: AsyncSession) -> None:
-    if not settings.vsphere_configured:
-        return
-    for _ in range(2):  # за один круг — не больше двух клонов, чтобы не забить vCenter
-        if not await create_next(session):
-            break
-    for _ in range(5):  # удаления с ошибкой повторятся на следующем круге, а не в бесконечном цикле
+async def create_pending(session: AsyncSession) -> None:
+    """Создаёт ВМ из очереди по одной, пока она не опустеет. Клон идёт до часа, поэтому у очереди свой цикл воркера."""
+    while await create_next(session):
+        pass
+
+
+async def upkeep(session: AsyncSession, deletions: int = 5) -> None:
+    """Удаление ВМ и подтягивание IP. Отдельно от создания: долгий клон не задерживает удаления."""
+    for _ in range(deletions):  # удаления с ошибкой повторятся на следующем круге, а не в бесконечном цикле
         if not await delete_next(session):
             break
     await refresh_ips(session)

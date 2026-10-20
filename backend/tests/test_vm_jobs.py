@@ -306,24 +306,42 @@ async def test_create_failure_notifies(session, vm_on, ctx, vsphere, notify):
     notify.assert_awaited_once()
 
 
-async def test_run_once_noop_without_vcenter(session, ctx, vsphere, notify):
-    session.add(VirtualMachine(name="rent-x", cpu=2, ram_gb=4, disk_gb=50, status="queued", order_number=1,
-                               user_id=ctx.user.id, department_id=ctx.dept.id, requester_name="a",
-                               requester_nick="b", attrs={}))
-    await session.commit()
-    await vm_jobs.run_once(session)  # vcenter_host пуст
-    assert vsphere.created == []
-
-
-async def test_run_once_creates_at_most_two(session, vm_on, ctx, vsphere, notify):
+async def test_create_pending_drains_queue_one_by_one(session, vm_on, ctx, vsphere, notify):
     await runtime.update(session, {"vm_max_per_user": 5})
     for i in range(3):
         await request(session, ctx, name=f"vm-{i}")
-    await vm_jobs.run_once(session)
-    assert len(vsphere.created) == 2
+    await vm_jobs.create_pending(session)
+    assert len(vsphere.created) == 3
     rows = (await session.scalars(select(VirtualMachine).order_by(VirtualMachine.id)
                                   .execution_options(populate_existing=True))).unique().all()
-    assert [v.status for v in rows] == ["ready", "ready", "queued"]
+    assert [v.status for v in rows] == ["ready"] * 3
+    await vm_jobs.create_pending(session)  # пустая очередь — ничего не делает
+    assert len(vsphere.created) == 3
+
+
+async def test_create_pending_failed_vm_does_not_loop_forever(session, vm_on, ctx, vsphere, notify):
+    await runtime.update(session, {"vm_max_per_user": 5})
+    vsphere.create_errors = [RuntimeError("нет места")] * 2  # первая ВМ падает обеими попытками, вторая создаётся
+    await request(session, ctx, name="vm-bad")
+    await request(session, ctx, name="vm-ok")
+    await vm_jobs.create_pending(session)
+    rows = (await session.scalars(select(VirtualMachine).order_by(VirtualMachine.id)
+                                  .execution_options(populate_existing=True))).unique().all()
+    assert [v.status for v in rows] == ["failed", "ready"]
+
+
+async def test_upkeep_deletes_at_most_batch_and_fills_ip(session, vm_on, ctx, vsphere, notify):
+    await runtime.update(session, {"vm_max_per_user": 5})
+    vsphere.ip = None
+    made = [await request(session, ctx, name=f"vm-{i}") for i in range(3)]
+    await vm_jobs.create_pending(session)
+    for vm in made:
+        await vms.release(session, ctx.user, vm.id)
+    vsphere.ip = "10.1.1.1"
+    await vm_jobs.upkeep(session, deletions=2)
+    assert len(vsphere.deleted) == 2  # третья дождётся следующего круга
+    await vm_jobs.upkeep(session, deletions=2)
+    assert len(vsphere.deleted) == 3
 
 
 async def test_refresh_ips_fills_missing_ip(session, vm_on, ctx, vsphere, notify):
