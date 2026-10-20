@@ -211,3 +211,29 @@ class ComputerHistoryOut(BaseModel):
 class EventPage(BaseModel):
     items: list[EventOut]
     total: int    
+
+
+class IdleServer(BaseModel):
+    id: int
+    name: str
+    idle_days: int
+    idle_since: date  # возврат последней брони или появление ПК в учёте
+
+
+class IdleServers(BaseModel):
+    """ПК опубликованных пулов, которые сейчас свободны, и сколько они стоят невыданными."""
+    count: int
+    average_days: int
+    items: list[IdleServer]  # самые долго простаивающие, не больше IDLE_TOP
+
+
+class ClusterCapacity(BaseModel):
+    """Мощности кластера для ВМ; без vCenter или при сбое — ok=False и причина."""
+    ok: bool
+    error: str | None = None
+    cpu_total_ghz: float = 0
+    cpu_free_ghz: float = 0
+    ram_total_gb: float = 0
+    ram_free_gb: float = 0
+    storage_total_gb: float = 0
+    storage_free_gb: float = 0

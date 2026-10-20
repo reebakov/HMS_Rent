@@ -3,6 +3,8 @@ import { CheckCircle2, CircleAlert, RefreshCw } from 'lucide-react'
 import { Card, CardHeader, PageHeader, Skeleton } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { DataState } from '@/components/ui/data-state'
+import { ClusterCapacityCard } from '@/features/admin/ClusterCapacityCard'
+import { IdleServersCard } from '@/features/admin/IdleServersCard'
 import { BarList, EventTimeline, StatCard } from '@/features/admin/widgets'
 import { useDepartmentUsage, useEvents, useStats } from '@/lib/queries'
 import { TIERS } from '@/lib/dictionaries'
@@ -150,6 +152,11 @@ export function AdminOverviewPage() {
             </DataState>
           </div>
         </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <IdleServersCard />
+        <ClusterCapacityCard />
       </div>
 
       <Card className="mt-6">

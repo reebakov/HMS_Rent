@@ -21,6 +21,17 @@ class VSphereError(Exception):
 
 
 @dataclass
+class ClusterUsage:
+    """Сводка использования кластера из vCenter: CPU в МГц, память и хранилище в МБ."""
+    cpu_total_mhz: int
+    cpu_used_mhz: int
+    ram_total_mb: int
+    ram_used_mb: int
+    storage_total_mb: int
+    storage_used_mb: int
+
+
+@dataclass
 class VmInfo:
     moid: str
     name: str
@@ -67,13 +78,18 @@ def _wait(task, what: str, timeout: int = 1800):
     return task.info.result
 
 
-def _placement(si, template_name: str | None = None):
+def _cluster(si):
     dc = _find(si, vim.Datacenter, settings.vcenter_datacenter)
     if dc is None:
         raise VSphereError(f"Не найден датацентр «{settings.vcenter_datacenter}»")
     cluster = _find(si, vim.ClusterComputeResource, settings.vcenter_cluster, dc.hostFolder)
     if cluster is None:
         raise VSphereError(f"Не найден кластер «{settings.vcenter_cluster}»")
+    return dc, cluster
+
+
+def _placement(si, template_name: str | None = None):
+    dc, cluster = _cluster(si)
     # vApp — тоже ResourcePool, поэтому ищем среди пулов кластера
     pool = _find(si, vim.ResourcePool, settings.vcenter_resource_pool, cluster)
     if pool is None:
@@ -107,6 +123,18 @@ def check(template_names: list[str] | None = None) -> dict:
             # все шаблоны ОС из настроек: найдены ли они в vCenter
             "templates": {n: _find(si, vim.VirtualMachine, n, dc.vmFolder) is not None for n in (template_names or [])},
         }
+
+
+def cluster_usage() -> ClusterUsage:
+    """Занятые и свободные мощности кластера, в котором создаются ВМ."""
+    with connect() as si:
+        _, cluster = _cluster(si)
+        usage = cluster.GetResourceUsage()
+        return ClusterUsage(
+            cpu_total_mhz=usage.cpuCapacityMHz, cpu_used_mhz=usage.cpuUsedMHz,
+            ram_total_mb=usage.memCapacityMB, ram_used_mb=usage.memUsedMB,
+            storage_total_mb=usage.storageCapacityMB, storage_used_mb=usage.storageUsedMB,
+        )
 
 
 def find_vm(name: str) -> VmInfo | None:

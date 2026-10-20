@@ -162,6 +162,30 @@ export interface Stats {
   last_sync: SyncRun | null
 }
 
+export interface IdleServer {
+  id: number
+  name: string
+  idle_days: number
+  idle_since: string
+}
+
+export interface IdleServers {
+  count: number
+  average_days: number
+  items: IdleServer[]
+}
+
+export interface ClusterCapacity {
+  ok: boolean
+  error: string | null
+  cpu_total_ghz: number
+  cpu_free_ghz: number
+  ram_total_gb: number
+  ram_free_gb: number
+  storage_total_gb: number
+  storage_free_gb: number
+}
+
 export interface InventoryRow extends Computer {
   serial_number: string | null
   is_archived: boolean

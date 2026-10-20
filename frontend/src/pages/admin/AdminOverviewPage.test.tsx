@@ -29,11 +29,20 @@ beforeEach(() => {
     if (path === '/admin/stats') return stats
     if (path === '/admin/departments') return []
     if (path === '/admin/events') return { items: [], total: 0 }
+    if (path === '/admin/idle') return { count: 0, average_days: 0, items: [] }
+    if (path === '/admin/cluster') return { ok: false, error: 'vCenter не подключён', cpu_total_ghz: 0, cpu_free_ghz: 0, ram_total_gb: 0, ram_free_gb: 0, storage_total_gb: 0, storage_free_gb: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
 })
 
 describe('AdminOverviewPage', () => {
+  it('под сводкой — простой серверов и мощности кластера', async () => {
+    renderWithProviders(<AdminOverviewPage />)
+    expect(await screen.findByText('Простой серверов')).toBeInTheDocument()
+    expect(await screen.findByText('Мощности кластера')).toBeInTheDocument()
+    expect(await screen.findByText('vCenter не подключён')).toBeInTheDocument()
+  })
+
   it('показывает сводку по парку', async () => {
     renderWithProviders(<AdminOverviewPage />)
     expect(await screen.findByText('Всего в учёте')).toBeInTheDocument()

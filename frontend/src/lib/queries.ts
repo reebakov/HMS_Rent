@@ -6,6 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut,
+  ClusterCapacity, IdleServers,
 } from './types'
 
 export interface ComputerFilters {
@@ -115,6 +116,13 @@ export interface EventFilters {
 }
 
 export const useStats = () => useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api.get<Stats>('/admin/stats') })
+
+export const useIdleServers = () =>
+  useQuery({ queryKey: ['admin', 'idle'], queryFn: () => api.get<IdleServers>('/admin/idle') })
+
+// vCenter опрашивается на каждый запрос, поэтому обновляем редко
+export const useClusterCapacity = () =>
+  useQuery({ queryKey: ['admin', 'cluster'], queryFn: () => api.get<ClusterCapacity>('/admin/cluster'), refetchInterval: 300_000 })
 
 export const useInventory = (filters: InventoryFilters) =>
   useQuery({

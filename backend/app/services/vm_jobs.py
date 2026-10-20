@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import VirtualMachine, VmStatus
-from app.services import runtime
+from app.services import capacity, runtime
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,23 @@ async def _notify_failed(vm: VirtualMachine) -> None:
     await notify(f"⚠️ ВМ **{vm.name}** не создана для {vm.requester_name} ({vm.department.name}): {(vm.error or '')[:300]}")
 
 
+async def _fail(session: AsyncSession, vm: VirtualMachine, error: str) -> bool:
+    vm.status, vm.error = VmStatus.failed.value, error
+    await session.commit()
+    await _notify_failed(vm)
+    return True
+
+
+async def _cluster_shortage(vm: VirtualMachine) -> str | None:
+    """Не хватает ли в кластере памяти или диска под ВМ. Если vCenter не отвечает, создаём как обычно: ошибку даст клон."""
+    try:
+        usage = await asyncio.to_thread(vsphere.cluster_usage)
+    except Exception:  # noqa: BLE001
+        log.warning("Не удалось проверить мощности кластера перед созданием ВМ %s", vm.name, exc_info=True)
+        return None
+    return capacity.shortage(usage, vm.ram_gb, vm.disk_gb)
+
+
 async def _take(session: AsyncSession, status: VmStatus) -> VirtualMachine | None:
     """Одна задача из очереди; SKIP LOCKED — два worker'а не возьмут одну ВМ."""
     return await session.scalar(
@@ -60,11 +77,10 @@ async def create_next(session: AsyncSession) -> bool:
         tmpl = next((t for t in runtime.current().vm_templates if t.key == vm.template_key), None)
         if tmpl is None or not tmpl.template:
             # шаблон убрали из настроек после постановки в очередь: клон из шаблона по умолчанию дал бы не ту ОС
-            vm.status, vm.error = VmStatus.failed.value, f"Шаблон ОС «{vm.os_label or vm.template_key}» больше не доступен"
-            await session.commit()
-            await _notify_failed(vm)
-            return True
+            return await _fail(session, vm, f"Шаблон ОС «{vm.os_label or vm.template_key}» больше не доступен")
         template, spec = tmpl.template, tmpl.customization_spec
+    if problem := await _cluster_shortage(vm):
+        return await _fail(session, vm, problem)
     annotated_until = vm.expected_return_at  # срок попадёт в Notes; если его продлят во время клона, upkeep обновит
     annotation = _annotation(vm)
     for attempt in range(1, CREATE_ATTEMPTS + 1):
@@ -86,10 +102,7 @@ async def create_next(session: AsyncSession) -> bool:
         await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
         break
     else:
-        vm.status = VmStatus.failed.value  # в error осталась ошибка последней попытки
-        await session.commit()
-        await _notify_failed(vm)
-        return True
+        return await _fail(session, vm, vm.error or "Не удалось создать ВМ")  # error — ошибка последней попытки
     await session.commit()
     return True
 

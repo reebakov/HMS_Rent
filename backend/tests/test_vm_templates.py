@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.errors import Conflict, DomainError
 from app.db.session import SessionLocal
 from app.integrations.vsphere import client as vsphere_client
-from app.integrations.vsphere.client import VmInfo, VSphereError
+from app.integrations.vsphere.client import ClusterUsage, VmInfo, VSphereError
 from app.models import AppSetting, VirtualMachine
 from app.schemas.settings import VmTemplate, default_templates
 from app.schemas.vm import VmCreate, VmOut
@@ -49,6 +49,10 @@ class FakeVSphere:
 
     def delete_vm(self, moid):
         self.deleted.append(moid)
+
+    def cluster_usage(self):
+        return ClusterUsage(cpu_total_mhz=1, cpu_used_mhz=0, ram_total_mb=10**7, ram_used_mb=0,
+                            storage_total_mb=10**8, storage_used_mb=0)
 
 
 @pytest.fixture

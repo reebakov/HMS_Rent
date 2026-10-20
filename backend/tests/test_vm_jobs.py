@@ -11,7 +11,7 @@ from app.core import clock
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
-from app.integrations.vsphere.client import VmInfo, VSphereError
+from app.integrations.vsphere.client import ClusterUsage, VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
 from app.schemas.vm import VmCreate, VmExtend, VmOut
 from app.services import runtime, vm_jobs, vms
@@ -29,6 +29,9 @@ class FakeVSphere:
         self.deleted: list[str] = []  # moid удалённых ВМ
         self.annotations: list[tuple[str, str]] = []  # (moid, текст) каждой записи Notes
         self.annotation_errors: list[Exception | None] = []
+        self.usage_error: Exception | None = None
+        self.free_ram_gb = 500  # свободно в кластере; по умолчанию хватает на любую ВМ из тестов
+        self.free_disk_gb = 5000
         self.existing: dict[str, VmInfo] = {}
         self.ip: str | None = "10.0.0.5"
 
@@ -42,6 +45,13 @@ class FakeVSphere:
         self.deleted.append(moid)
         if self.delete_errors and (err := self.delete_errors.pop(0)):
             raise err
+
+    def cluster_usage(self):
+        if self.usage_error:
+            raise self.usage_error
+        return ClusterUsage(cpu_total_mhz=100_000, cpu_used_mhz=10_000, ram_total_mb=1000 * 1024,
+                            ram_used_mb=(1000 - self.free_ram_gb) * 1024, storage_total_mb=10_000 * 1024,
+                            storage_used_mb=(10_000 - self.free_disk_gb) * 1024)
 
     def set_annotation(self, moid, annotation):
         if self.annotation_errors and (err := self.annotation_errors.pop(0)):
@@ -365,6 +375,33 @@ async def test_upkeep_deletes_at_most_batch_and_fills_ip(session, vm_on, ctx, vs
     assert len(vsphere.deleted) == 2  # третья дождётся следующего круга
     await vm_jobs.upkeep(session, deletions=2)
     assert len(vsphere.deleted) == 3
+
+
+# ---------- мощности кластера ----------
+
+@pytest.mark.parametrize("ram, disk, lacking", [(4, 5000, "памяти"), (500, 50, "диска")])
+async def test_create_fails_without_cluster_capacity(session, vm_on, ctx, vsphere, notify, ram, disk, lacking):
+    vsphere.free_ram_gb, vsphere.free_disk_gb = ram, disk  # заказ — 8 ГБ памяти и 100 ГБ диска
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    vm = await status_of(session, vm)
+    assert vm.status == "failed" and "Недостаточно мощностей кластера" in vm.error and lacking in vm.error
+    assert vsphere.created == [] and vsphere.deleted == []  # клон не запускался, никто не удалялся
+    notify.assert_awaited_once()  # исполнители увидят и эту причину
+
+
+async def test_capacity_failure_is_not_retried_or_paused(session, vm_on, ctx, vsphere, notify, pauses):
+    vsphere.free_ram_gb = 1
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    assert pauses == []  # нехватку мощностей повтор не исправит
+
+
+async def test_create_proceeds_when_capacity_check_itself_fails(session, vm_on, ctx, vsphere, notify):
+    vsphere.usage_error = RuntimeError("vCenter не отвечает")
+    vm = await request(session, ctx)
+    await vm_jobs.create_next(session)
+    assert (await status_of(session, vm)).status == "ready"  # проверка не удалась — создаём, ошибку даст сам клон
 
 
 # ---------- срок в Notes ВМ ----------
