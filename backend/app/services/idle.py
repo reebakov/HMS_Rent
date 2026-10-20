@@ -8,8 +8,6 @@ from app.core import clock
 from app.models import Booking, Computer, ComputerStatus, Pool
 from app.schemas.admin import IdleServer, IdleServers
 
-IDLE_TOP = 10  # сколько самых долго простаивающих показывать
-
 
 def _local_date(moment: datetime):
     return moment.astimezone(clock.display_tz()).date()
@@ -34,4 +32,4 @@ async def list_idle(session: AsyncSession) -> IdleServers:
         key=lambda s: (-s.idle_days, s.name),
     )
     average = round(sum(s.idle_days for s in servers) / len(servers)) if servers else 0
-    return IdleServers(count=len(servers), average_days=average, items=servers[:IDLE_TOP])
+    return IdleServers(count=len(servers), average_days=average, items=servers)

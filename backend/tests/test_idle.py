@@ -50,15 +50,21 @@ async def test_idle_takes_only_free_computers_of_published_pools(session, ctx, m
     assert [s.name for s in result.items] == ["free"]
 
 
-async def test_idle_top_limit_and_sorting(session, ctx, make_computer):
+async def test_idle_returns_all_servers_longest_first(session, ctx, make_computer):
     _, _, pool = ctx
-    for i in range(idle.IDLE_TOP + 3):
+    for i in range(15):
         await make_computer(f"A{i:02d}", pool, created_at=ago(i + 1))
     result = await idle.list_idle(session)
-    assert result.count == idle.IDLE_TOP + 3  # счётчик по всем, список — только самые долгие
-    assert len(result.items) == idle.IDLE_TOP
+    assert result.count == 15 and len(result.items) == 15  # обрезать список — дело интерфейса
     days = [s.idle_days for s in result.items]
-    assert days == sorted(days, reverse=True) and days[0] == idle.IDLE_TOP + 3
+    assert days == sorted(days, reverse=True) and days[0] == 15
+
+
+async def test_idle_same_days_sorted_by_name(session, ctx, make_computer):
+    _, _, pool = ctx
+    for name in ("B", "A", "C"):
+        await make_computer(name, pool, created_at=ago(4))
+    assert [s.name for s in (await idle.list_idle(session)).items] == ["A", "B", "C"]
 
 
 async def test_idle_empty(session):

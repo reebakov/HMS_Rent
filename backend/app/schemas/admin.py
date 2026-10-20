@@ -224,7 +224,7 @@ class IdleServers(BaseModel):
     """ПК опубликованных пулов, которые сейчас свободны, и сколько они стоят невыданными."""
     count: int
     average_days: int
-    items: list[IdleServer]  # самые долго простаивающие, не больше IDLE_TOP
+    items: list[IdleServer]  # все, самые долго простаивающие первыми; сколько показывать, решает интерфейс
 
 
 class ClusterCapacity(BaseModel):

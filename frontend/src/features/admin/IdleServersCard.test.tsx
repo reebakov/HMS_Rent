@@ -21,6 +21,12 @@ const idle = (over: Partial<IdleServers> = {}): IdleServers => ({
   ...over,
 })
 
+const many = (n: number): IdleServers => ({
+  count: n,
+  average_days: 5,
+  items: Array.from({ length: n }, (_, i) => ({ id: i + 1, name: `PC-${i + 1}`, idle_days: n - i, idle_since: '2026-10-01' })),
+})
+
 beforeEach(() => vi.mocked(api.get).mockReset())
 
 describe('IdleServersCard', () => {
@@ -32,6 +38,29 @@ describe('IdleServersCard', () => {
     expect(screen.getByText('30 дней')).toBeInTheDocument()
     expect(screen.getByText('1 день')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/admin/idle')
+  })
+
+  it('показывает 10 самых долгих, остальные раскрываются кнопкой «Показать все N» и сворачиваются обратно', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.get).mockResolvedValue(many(25))
+    renderWithProviders(<IdleServersCard />)
+    expect(await screen.findByText('Свободно: 25 · в среднем без выдачи 5 дней')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(10)
+    expect(screen.queryByText('PC-25')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Показать все 25' }))
+    expect(screen.getAllByRole('listitem')).toHaveLength(25)
+    expect(screen.getByText('PC-25')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Свернуть' }))
+    expect(screen.getAllByRole('listitem')).toHaveLength(10)
+  })
+
+  it.each([5, 10])('при %i серверах кнопки нет: список и так показан целиком', async (n) => {
+    vi.mocked(api.get).mockResolvedValue(many(n))
+    renderWithProviders(<IdleServersCard />)
+    expect(await screen.findAllByRole('listitem')).toHaveLength(n)
+    expect(screen.queryByRole('button', { name: /Показать все/ })).not.toBeInTheDocument()
   })
 
   it('нет свободных серверов — пояснение вместо пустого списка', async () => {
