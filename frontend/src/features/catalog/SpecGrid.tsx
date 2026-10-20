@@ -11,12 +11,12 @@ export function SpecGrid({ computer, className }: { computer: Computer; classNam
     { icon: Monitor, label: 'Видеокарта', value: computer.gpu ?? (computer.is_virtual ? 'Виртуальный адаптер' : null) },
   ]
   return (
-    // В строку колонки по ширине содержимого, а свободное место делится поровну между ними: при долях (fr)
-    // пустота оставалась внутри колонок с короткими значениями, и промежутки выглядели разными
+    // В строку колонки делят ширину в одинаковых долях у всех карточек, поэтому подписи стоят ровно друг под другом;
+    // при ширине по содержимому (auto) у каждой карточки сетка получалась своей, и колонки «скакали»
     <div
       className={cn(
         'grid gap-x-4 gap-y-2 sm:grid-cols-2',
-        'xl:grid-cols-[repeat(4,auto)] xl:justify-between',
+        'xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)_minmax(0,1.1fr)_minmax(0,1.4fr)]',
         className,
       )}
     >

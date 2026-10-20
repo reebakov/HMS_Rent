@@ -58,7 +58,7 @@ function CardRows({ computers, onOpen, onBook }: RowsProps) {
           key={c.id}
           className="group flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-card transition-colors hover:border-primary/40 md:flex-row md:items-center md:gap-6 md:px-5"
         >
-          <button onClick={() => onOpen(c.id)} className="min-w-[150px] text-left">
+          <button onClick={() => onOpen(c.id)} className="min-w-[150px] text-left md:w-40 md:shrink-0">
             <p className="flex items-center gap-1.5 text-base font-semibold tracking-tight group-hover:text-primary">
               {c.name}
             </p>
@@ -70,7 +70,7 @@ function CardRows({ computers, onOpen, onBook }: RowsProps) {
 
           <SpecGrid computer={c} className="flex-1" />
 
-          <div className="flex items-center gap-2 md:justify-end">
+          <div className="flex shrink-0 items-center gap-2 md:justify-end">
             <Button variant="ghost" size="sm" onClick={() => onOpen(c.id)}>
               Подробнее
             </Button>
