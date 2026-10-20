@@ -27,7 +27,7 @@ async def ctx(make_user, make_department, make_pool):
 
 async def test_idle_counts_from_last_return_or_registration(session, ctx, make_computer):
     dept, user, pool = ctx
-    never = await make_computer("A-never", pool, created_at=ago(30))
+    await make_computer("A-never", pool, created_at=ago(30))
     returned = await make_computer("A-returned", pool, created_at=ago(90))
     await add_booking(session, returned, user, dept, status="returned", returned_at=ago(5))
     await add_booking(session, returned, user, dept, status="returned", returned_at=ago(12))  # берётся самая поздняя
