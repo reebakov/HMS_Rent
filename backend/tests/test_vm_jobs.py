@@ -370,6 +370,38 @@ async def test_release_permissions_and_states(session, vm_on, ctx, make_user, vs
         await vms.release(session, ctx.user, creating.id)
 
 
+@pytest.mark.parametrize("team", ["other", "none"])
+async def test_release_by_other_team_forbidden(session, vm_on, ctx, make_user, make_department, team):
+    stranger = await make_user("petrov", department=await make_department("Ops") if team == "other" else None)
+    vm = await request(session, ctx)
+    with pytest.raises(Forbidden, match="участник его команды или администратор"):
+        await vms.release(session, stranger, vm.id)
+    assert (await status_of(session, vm)).status == "queued"
+
+
+async def test_release_by_teammate(session, vm_on, ctx, make_user):
+    """Участник команды отказывается от ВМ коллеги: заказ отменяется, в журнале — тот, кто отменил."""
+    mate = await make_user("petrov", department=ctx.dept)
+    vm = await request(session, ctx)
+    vm = await vms.release(session, mate, vm.id)
+    assert vm.status == "deleted" and vm.released_by_id == mate.id and vm.user_id == ctx.user.id
+
+
+async def test_list_vms_mine_and_team(session, vm_on, ctx, make_user, make_department):
+    mate = await make_user("petrov", department=ctx.dept)
+    ops = await make_department("Ops")
+    foreign = await make_user("sidorov", department=ops)
+    loner = await make_user("loner")
+    own = await request(session, ctx, name="own-box")
+    by_mate = await vms.create_request(session, mate, payload(ctx.dept.id, name="mate-box"))
+    by_loner = await vms.create_request(session, loner, payload(ctx.dept.id, name="loner-box"))  # на команду QA
+    await vms.create_request(session, foreign, payload(ops.id, name="foreign-box"))
+
+    assert [v.id for v in await vms.list_vms(session, ctx.user)] == [by_loner.id, by_mate.id, own.id]
+    assert [v.id for v in await vms.list_vms(session, loner)] == [by_loner.id]  # без отдела — только свои
+    assert len(await vms.list_vms(session)) == 4  # без пользователя — все (админка)
+
+
 async def test_release_api_and_my_list(client, login, api, vm_on, ctx, session):
     vm = await request(session, ctx)
     login(ctx.user)
@@ -423,3 +455,13 @@ async def test_limit_lock_does_not_block_other_users(session, vm_on, ctx, make_u
     results = await asyncio.gather(
         _create_in_own_session(ctx.user, ctx.dept.id, "vm-first"), _create_in_own_session(other, ctx.dept.id, "vm-second"))
     assert all(isinstance(r, VirtualMachine) for r in results)
+
+
+async def test_my_vms_api_includes_team(client, login, api, vm_on, ctx, session, make_user, make_department):
+    vm = await request(session, ctx)
+    login(await make_user("outsider", department=await make_department("Ops")))
+    assert (await client.get(api("/vms/my"))).json() == []
+    assert (await client.post(api(f"/vms/{vm.id}/release"))).status_code == 403
+    login(await make_user("mate", department=ctx.dept))
+    assert [v["id"] for v in (await client.get(api("/vms/my"))).json()] == [vm.id]
+    assert (await client.post(api(f"/vms/{vm.id}/release"))).status_code == 200

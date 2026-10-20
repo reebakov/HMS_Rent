@@ -6,13 +6,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.errors import Conflict, DomainError, Forbidden, NotFound
+from app.core.errors import Conflict, DomainError, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
 from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmOptions, VmTemplateOption
 from app.services import departments, runtime
+from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number
 
 ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
@@ -118,8 +119,8 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
     )
     if vm is None:
         raise NotFound("Виртуалка не найдена")
-    if vm.user_id != user.id and not user.is_admin:
-        raise Forbidden("Удалить ВМ может её владелец или администратор")
+    ensure_access(user, vm.user_id, vm.department_id,
+                  "Удалить ВМ может тот, кто её заказывал, участник его команды или администратор")
     if vm.status in (VmStatus.deleting, VmStatus.deleted):
         raise Conflict("Виртуалка уже удаляется")
     if vm.status == VmStatus.creating:
@@ -136,7 +137,7 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
 async def list_vms(session: AsyncSession, user: User | None = None, include_deleted: bool = True) -> list[VirtualMachine]:
     stmt = select(VirtualMachine).order_by(VirtualMachine.created_at.desc()).limit(500)
     if user is not None:
-        stmt = stmt.where(VirtualMachine.user_id == user.id)
+        stmt = stmt.where(mine_or_team(user, VirtualMachine.user_id, VirtualMachine.department_id))
     if not include_deleted:
         stmt = stmt.where(VirtualMachine.status != VmStatus.deleted)
     return list((await session.scalars(stmt)).unique().all())
