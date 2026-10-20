@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canReleaseVm, VM_STATUS } from './dictionaries'
+import { canExtendVm, canReleaseVm, VM_STATUS } from './dictionaries'
 import type { VmStatus } from './types'
 
 describe('VM_STATUS', () => {
@@ -18,5 +18,18 @@ describe('canReleaseVm', () => {
     ['deleted', false],
   ] as [VmStatus, boolean][])('%s -> %s', (status, expected) => {
     expect(canReleaseVm(status)).toBe(expected)
+  })
+})
+
+describe('canExtendVm', () => {
+  it.each([
+    ['queued', true],
+    ['creating', true],
+    ['ready', true],
+    ['failed', true],
+    ['deleting', false],
+    ['deleted', false],
+  ] as [VmStatus, boolean][])('%s -> %s', (status, expected) => {
+    expect(canExtendVm(status)).toBe(expected)
   })
 })

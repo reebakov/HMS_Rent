@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Cloud, Copy, Trash2 } from 'lucide-react'
+import { CalendarPlus, Cloud, Copy, Trash2 } from 'lucide-react'
 import { VmStatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
 import { DataState } from '@/components/ui/data-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ExtendDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
 import { useMyVms, useReleaseVm } from '@/lib/queries'
 import type { ServiceRequest, Vm } from '@/lib/types'
 import { RequesterNote } from '@/features/booking/RequesterNote'
 import { ReportProblemButton, RequestBadges } from '@/features/support/ServiceDesk'
-import { canReleaseVm } from '@/lib/dictionaries'
+import { canExtendVm, canReleaseVm } from '@/lib/dictionaries'
 import { errorMessage, formatDate, formatDateTime } from '@/lib/utils'
 
 /** Виртуалки в «Моей аренде». Заявки Service Desk по ВМ — через пропсы от страницы */
@@ -26,6 +27,7 @@ export function MyVms({
   const vms = useMyVms()
   const release = useReleaseVm()
   const [confirm, setConfirm] = useState<Vm | null>(null)
+  const [extending, setExtending] = useState<ExtendTarget | null>(null)
   const alive = vms.data?.filter((v) => v.status !== 'deleted') ?? []
 
   const doRelease = async () => {
@@ -86,6 +88,16 @@ export function MyVms({
                 <VmStatusBadge status={vm.status} />
                 <RequestBadges requests={requestsFor(vm.id)} onOpen={onOpenRequest} />
                 {onReport && vm.status !== 'deleting' && <ReportProblemButton onClick={() => onReport(vm)} />}
+                {canExtendVm(vm.status) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExtending({ kind: 'vm', id: vm.id, name: vm.name, due: vm.expected_return_at })}
+                  >
+                    <CalendarPlus className="h-3.5 w-3.5" />
+                    Продлить
+                  </Button>
+                )}
                 {canReleaseVm(vm.status) && (
                   <Button variant="outline" size="sm" onClick={() => setConfirm(vm)}>
                     <Trash2 className="h-3.5 w-3.5" />
@@ -99,6 +111,7 @@ export function MyVms({
             ))}
           </div>
 
+          <ExtendDialog target={extending} onClose={() => setExtending(null)} />
           <ConfirmDialog
             open={!!confirm}
             onClose={() => setConfirm(null)}

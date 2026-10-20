@@ -58,6 +58,9 @@ export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boo
 /** Отказаться от ВМ (или отменить заявку) можно, пока она не создаётся и не удаляется */
 export const canReleaseVm = (status: VmStatus) => status === 'ready' || status === 'failed' || status === 'queued'
 
+/** Продлить срок ВМ можно, пока она не удаляется и не удалена */
+export const canExtendVm = (status: VmStatus) => status !== 'deleting' && status !== 'deleted'
+
 export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',
   returned: 'Возврат',

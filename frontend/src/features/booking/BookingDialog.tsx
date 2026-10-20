@@ -8,7 +8,7 @@ import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { useSession } from '@/auth/AuthProvider'
-import { useCreateBooking, useDepartments, useExtendBooking } from '@/lib/queries'
+import { useCreateBooking, useDepartments, useExtendBooking, useExtendVm } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import type { Computer } from '@/lib/types'
 import { addDays, formatDate, todayLocal } from '@/lib/utils'
@@ -168,16 +168,19 @@ export function ReturnDialog({
   )
 }
 
-/** Что продлеваем: бронь из «Моей аренды» или строка просрочки у админа */
+/** Что продлеваем: бронь ПК или ВМ — из «Моей аренды» или из просрочек у админа */
 export interface ExtendTarget {
+  kind: 'pc' | 'vm'
   id: number
   name: string
   due: string | null
 }
 
-/** Продление аренды: новый срок позже текущего (и не в прошлом) и необязательная причина */
+/** Продление аренды ПК или ВМ: новый срок позже текущего (и не в прошлом) и необязательная причина */
 export function ExtendDialog({ target, onClose }: { target: ExtendTarget | null; onClose: () => void }) {
-  const extend = useExtendBooking()
+  const extendPc = useExtendBooking()
+  const extendVm = useExtendVm()
+  const extend = target?.kind === 'vm' ? extendVm : extendPc
   const [until, setUntil] = useState('')
   const [comment, setComment] = useState('')
 
@@ -185,8 +188,9 @@ export function ExtendDialog({ target, onClose }: { target: ExtendTarget | null;
     if (!target) return
     setUntil('')
     setComment('')
-    extend.reset()
-  }, [target?.id])
+    extendPc.reset()
+    extendVm.reset()
+  }, [target?.kind, target?.id])
 
   const today = todayLocal()
   const min = target?.due && target.due >= today ? addDays(target.due, 1) : today

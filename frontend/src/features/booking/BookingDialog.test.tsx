@@ -226,7 +226,7 @@ describe('BookingDialog', () => {
 
 describe('ExtendDialog', () => {
   const today = todayLocal()
-  const setupExtend = (target: ExtendTarget = { id: 7, name: 'PC-042', due: addDays(today, 3) }, onClose = vi.fn()) => {
+  const setupExtend = (target: ExtendTarget = { kind: 'pc', id: 7, name: 'PC-042', due: addDays(today, 3) }, onClose = vi.fn()) => {
     renderWithProviders(<ExtendDialog target={target} onClose={onClose} />)
     return { onClose, user: userEvent.setup() }
   }
@@ -256,7 +256,7 @@ describe('ExtendDialog', () => {
     ['просрочена', addDays(today, -5)],
     ['без срока', null],
   ])('бронь %s — продлить можно с сегодняшнего дня', async (_, due) => {
-    const { user } = setupExtend({ id: 7, name: 'PC-042', due })
+    const { user } = setupExtend({ kind: 'pc', id: 7, name: 'PC-042', due })
     expect(dateInput()).toHaveAttribute('min', today)
     await user.type(dateInput(), today)
     expect(extendButton()).toBeEnabled()
@@ -270,6 +270,41 @@ describe('ExtendDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(api.post).toHaveBeenCalledWith('/bookings/7/extend', { expected_return_at: '2099-12-31', comment: 'Тесты ещё идут' })
     expect(toast.success).toHaveBeenCalledWith(`Аренда PC-042 продлена до ${formatDate('2099-12-31')}`)
+  })
+
+  it('продление ВМ уходит в POST /vms/{id}/extend с тем же диалогом', async () => {
+    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'rent-qa-02', due: addDays(today, 3) })
+    expect(screen.getByRole('dialog', { name: 'Продлить аренду rent-qa-02' })).toBeInTheDocument()
+    expect(dateInput()).toHaveAttribute('min', addDays(today, 4))
+    await user.type(dateInput(), '2099-12-31')
+    await user.type(screen.getByLabelText(/Причина/), 'Нужна до релиза')
+    await user.click(extendButton())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledOnce()
+    expect(api.post).toHaveBeenCalledWith('/vms/4/extend', { expected_return_at: '2099-12-31', comment: 'Нужна до релиза' })
+    expect(toast.success).toHaveBeenCalledWith(`Аренда rent-qa-02 продлена до ${formatDate('2099-12-31')}`)
+  })
+
+  it('ошибка продления ВМ (409) показывается в форме, окно остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Виртуалка удаляется или уже удалена — продлить срок нельзя'))
+    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'rent-qa-02', due: null })
+    await user.type(dateInput(), '2099-12-31')
+    await user.click(extendButton())
+    expect(await screen.findByText('Виртуалка удаляется или уже удалена — продлить срок нельзя')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('Enter в поле срока отправляет форму', async () => {
+    const { user } = setupExtend()
+    await user.type(dateInput(), '2099-12-31{Enter}')
+    await waitFor(() => expect(api.post).toHaveBeenCalledOnce())
+  })
+
+  it('Esc закрывает окно без запроса', async () => {
+    const { onClose, user } = setupExtend()
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(api.post).not.toHaveBeenCalled()
   })
 
   it('пустая причина не отправляется', async () => {

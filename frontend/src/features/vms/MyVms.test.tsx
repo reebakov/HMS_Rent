@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { MyVms } from './MyVms'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
+import { formatDate } from '@/lib/utils'
 import { makeSession, renderWithProviders } from '@/test/helpers'
 import type { ServiceRequest, Vm } from '@/lib/types'
 
@@ -203,6 +204,71 @@ describe('MyVms', () => {
       await waitFor(() =>
         expect(toast.error).toHaveBeenCalledWith('Отказаться от ВМ может тот, кто её заказывал, участник его команды или администратор'),
       )
+    })
+  })
+
+  describe('продление', () => {
+    it.each(['queued', 'creating', 'ready', 'failed'] as const)('для %s кнопка «Продлить» есть', async (status) => {
+      await renderVms([makeVm({ status, ip_address: null })])
+      expect(screen.getByRole('button', { name: 'Продлить' })).toBeInTheDocument()
+    })
+
+    it.each(['deleting', 'deleted'] as const)('для %s кнопки нет', async (status) => {
+      await renderVms([makeVm({ status: 'ready' }), makeVm({ id: 2, name: 'rent-old', status })])
+      // кнопка только у «готовой» ВМ: у удаляемой и удалённой её нет
+      expect(screen.getAllByRole('button', { name: 'Продлить' })).toHaveLength(1)
+    })
+
+    it('окно показывает текущий срок; новый срок и причина уходят в POST /vms/{id}/extend, список обновляется', async () => {
+      vi.mocked(api.post).mockImplementation(async () => {
+        vms = [makeVm({ id: 9, expected_return_at: '3000-01-31' })]
+        return vms[0]
+      })
+      const user = userEvent.setup()
+      await renderVms([makeVm({ id: 9, expected_return_at: '2999-12-31' })])
+      await user.click(screen.getByRole('button', { name: 'Продлить' }))
+      const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду rent-design-01' }))
+      expect(dialog.getByText(/Текущий срок — /)).toBeInTheDocument()
+      expect(dialog.getByLabelText(/Новый срок/)).toHaveAttribute('min', '3000-01-01')
+      await user.type(dialog.getByLabelText(/Новый срок/), '3000-01-31')
+      await user.type(dialog.getByLabelText(/Причина/), 'Тесты ещё идут')
+      await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(api.post).toHaveBeenCalledWith('/vms/9/extend', { expected_return_at: '3000-01-31', comment: 'Тесты ещё идут' })
+      expect(toast.success).toHaveBeenCalledWith(`Аренда rent-design-01 продлена до ${formatDate('3000-01-31')}`)
+      expect(await screen.findByText(new RegExp(`до ${formatDate('3000-01-31')}`))).toBeInTheDocument()
+    })
+
+    it('срок не позже текущего отправить нельзя', async () => {
+      const user = userEvent.setup()
+      await renderVms([makeVm({ expected_return_at: '2999-12-31' })])
+      await user.click(screen.getByRole('button', { name: 'Продлить' }))
+      const dialog = within(screen.getByRole('dialog'))
+      await user.type(dialog.getByLabelText(/Новый срок/), '2999-12-31')
+      expect(dialog.getByRole('button', { name: 'Продлить' })).toBeDisabled()
+    })
+
+    it('ответ 409 показывается в окне, окно остаётся открытым', async () => {
+      vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Виртуалка удаляется или уже удалена — продлить срок нельзя'))
+      const user = userEvent.setup()
+      await renderVms([makeVm()])
+      await user.click(screen.getByRole('button', { name: 'Продлить' }))
+      const dialog = within(screen.getByRole('dialog'))
+      await user.type(dialog.getByLabelText(/Новый срок/), '3000-01-31')
+      await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+      expect(await dialog.findByText('Виртуалка удаляется или уже удалена — продлить срок нельзя')).toBeInTheDocument()
+      expect(toast.success).not.toHaveBeenCalled()
+    })
+
+    it('ВМ коллеги по команде продлевается так же: запрос по её id', async () => {
+      vi.mocked(api.post).mockResolvedValue(makeVm())
+      const user = userEvent.setup()
+      await renderVms([makeVm({ id: 2, user: { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' } })])
+      await user.click(screen.getByRole('button', { name: 'Продлить' }))
+      await user.type(within(screen.getByRole('dialog')).getByLabelText(/Новый срок/), '3000-01-31')
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Продлить' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/2/extend', { expected_return_at: '3000-01-31' }))
     })
   })
 

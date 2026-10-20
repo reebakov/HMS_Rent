@@ -136,7 +136,7 @@ export function MyBookingsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setExtending({ id: b.id, name: b.computer.name, due: b.expected_return_at })}
+                      onClick={() => setExtending({ kind: 'pc', id: b.id, name: b.computer.name, due: b.expected_return_at })}
                     >
                       <CalendarPlus className="h-3.5 w-3.5" />
                       Продлить

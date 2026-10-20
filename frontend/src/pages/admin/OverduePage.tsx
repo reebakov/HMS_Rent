@@ -98,7 +98,7 @@ export function OverduePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setExtending({ id: item.id, name: item.name, due: item.due })}
+                            onClick={() => setExtending({ kind: item.kind, id: item.id, name: item.name, due: item.due })}
                           >
                             <CalendarPlus className="h-3.5 w-3.5" />
                             Продлить
