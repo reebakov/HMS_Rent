@@ -9,7 +9,7 @@ import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { ExtendDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
 import { useAckExtension, useExtensions, useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
-import type { BookingExtension, OverdueItem } from '@/lib/types'
+import type { ExtensionOut, OverdueItem } from '@/lib/types'
 import { cn, errorMessage, formatDate, formatDateTime, plural } from '@/lib/utils'
 
 /** Сроки аренды: просрочки (связаться, продлить или забрать) и продления, которые админ отмечает «Принято» */
@@ -143,7 +143,7 @@ function Extensions() {
   const extensions = useExtensions()
   const ack = useAckExtension()
 
-  const accept = async (ext: BookingExtension) => {
+  const accept = async (ext: ExtensionOut) => {
     try {
       await ack.mutateAsync(ext.id)
     } catch (e) {
@@ -175,13 +175,13 @@ function Extensions() {
             }
           >
             {data.map((ext) => {
-              const b = ext.booking
+              const b = (ext.booking ?? ext.vm)! // у продления ПК есть booking, у ВМ — vm
               const isNew = !ext.acknowledged_at
               return (
                 <tr key={ext.id} className={cn('hover:bg-muted/40', isNew && 'bg-primary/5')}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold">{b.computer.name}</span>
+                      <span className="font-semibold">{ext.name}</span>
                       {isNew && <Badge tone="primary">Новое</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">заказ №{b.order_number}</p>

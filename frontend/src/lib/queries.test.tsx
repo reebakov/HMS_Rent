@@ -326,6 +326,14 @@ describe('виртуалки и vSphere', () => {
     await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'my-vms', 'vm-options']))
   })
 
+  it('useExtendVm: POST /vms/{id}/extend со сроком и причиной, обновляет my-vms и admin', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useExtendVm())
+    await act(() => result.current.mutateAsync({ id: 12, expected_return_at: '2099-12-31', comment: 'тесты' }))
+    expect(api.post).toHaveBeenCalledWith('/vms/12/extend', { expected_return_at: '2099-12-31', comment: 'тесты' })
+    await waitFor(() => expect(invalidated(spy)).toEqual(['admin', 'my-vms']))
+  })
+
   it('useVsphereCheck: POST /admin/vsphere/check без инвалидации', async () => {
     vi.mocked(api.post).mockResolvedValue({ ok: true })
     const spy = vi.spyOn(client, 'invalidateQueries')

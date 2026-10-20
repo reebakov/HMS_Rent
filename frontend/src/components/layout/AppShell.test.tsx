@@ -6,7 +6,7 @@ import { AppShell } from './AppShell'
 import { ThemeToggle } from './ThemeToggle'
 import { api } from '@/lib/api'
 import { makeSession, renderWithProviders } from '@/test/helpers'
-import type { BookingExtension, OverdueItem, Session } from '@/lib/types'
+import type { ExtensionOut, OverdueItem, Session } from '@/lib/types'
 
 let session: Session
 const logout = vi.fn()
@@ -44,8 +44,8 @@ const item = (id: number): OverdueItem => ({
 })
 let overdue: OverdueItem[]
 const extension = (id: number, acknowledged: boolean) =>
-  ({ id, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as BookingExtension
-let extensions: BookingExtension[]
+  ({ id, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as ExtensionOut
+let extensions: ExtensionOut[]
 
 beforeEach(() => {
   session = makeSession()

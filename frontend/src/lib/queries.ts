@@ -3,9 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
-  Booking, BookingCreate, BookingExtend, BookingExtension, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
+  Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
-  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, RequestDetail, VsphereCheck,
+  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck,
 } from './types'
 
 export interface ComputerFilters {
@@ -237,6 +237,15 @@ export function useReleaseVm() {
   })
 }
 
+export function useExtendVm() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: BookingExtend & { id: number }) => api.post<Vm>(`/vms/${id}/extend`, data),
+    // 'admin' — просрочки, продления и список ВМ в админке
+    onSettled: () => Promise.all(['my-vms', 'admin'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  })
+}
+
 export const useAdminVms = (includeDeleted = false) =>
   useQuery({
     queryKey: ['admin', 'vms', includeDeleted],
@@ -312,7 +321,7 @@ export const useOverdue = (enabled = true) =>
 export const useExtensions = (enabled = true) =>
   useQuery({
     queryKey: ['admin', 'extensions'],
-    queryFn: () => api.get<BookingExtension[]>('/admin/extensions'),
+    queryFn: () => api.get<ExtensionOut[]>('/admin/extensions'),
     enabled,
     refetchInterval: 60_000,
   })
@@ -320,7 +329,7 @@ export const useExtensions = (enabled = true) =>
 export function useAckExtension() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => api.post<BookingExtension>(`/admin/extensions/${id}/ack`),
+    mutationFn: (id: number) => api.post<ExtensionOut>(`/admin/extensions/${id}/ack`),
     onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'extensions'] }),
   })
 }

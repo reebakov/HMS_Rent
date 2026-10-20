@@ -386,9 +386,13 @@ export interface RequestDetail {
 
 // ---------- Сроки аренды и детали синхронизации ----------
 
-export interface BookingExtension {
+/** Продление срока аренды: у ПК заполнен booking, у ВМ — vm */
+export interface ExtensionOut {
   id: number
-  booking: Booking
+  kind: 'pc' | 'vm'
+  name: string
+  booking: Booking | null
+  vm: Vm | null
   user: UserShort
   old_return_at: string | null
   new_return_at: string

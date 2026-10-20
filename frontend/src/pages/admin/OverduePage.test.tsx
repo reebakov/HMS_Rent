@@ -6,7 +6,7 @@ import { OverduePage } from './OverduePage'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
-import type { BookingExtension, OverdueItem } from '@/lib/types'
+import type { ExtensionOut, OverdueItem } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -20,8 +20,11 @@ const makeItem = (over: Partial<OverdueItem> = {}): OverdueItem => ({
   taken_at: '2026-09-01', due: '2026-10-01', days: 3, ...over,
 })
 
-const makeExtension = (over: Partial<BookingExtension> = {}): BookingExtension => ({
+const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
   id: 3,
+  kind: 'pc',
+  name: 'PC-777',
+  vm: null,
   booking: {
     id: 20, order_number: 88, status: 'active', computer: makeComputer({ id: 2, name: 'PC-777' }),
     department: { id: 1, name: 'QA' }, user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
@@ -35,7 +38,7 @@ const makeExtension = (over: Partial<BookingExtension> = {}): BookingExtension =
 })
 
 let items: OverdueItem[]
-let extensions: BookingExtension[]
+let extensions: ExtensionOut[]
 const row = (name: string) => screen.getByText(name).closest('tr') as HTMLElement
 
 beforeEach(() => {
