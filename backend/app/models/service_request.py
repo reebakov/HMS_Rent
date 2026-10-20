@@ -26,7 +26,7 @@ class ServiceRequest(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(128))  # как в Jira: «Ожидает поддержки», «Решено»…
     status_category: Mapped[str | None] = mapped_column(String(32))  # new / indeterminate / done
-    error: Mapped[str | None] = mapped_column(Text)  # если Jira не приняла заявку
+    error: Mapped[str | None] = mapped_column(Text)  # короткая причина для сотрудника, если Jira не приняла заявку (подробности — в логе)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(lazy="joined")

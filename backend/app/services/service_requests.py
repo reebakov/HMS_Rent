@@ -110,7 +110,7 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
         await _send(req, settings.sd_request_type_return, actor.username)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка на возврат %s не создана: %s", b.computer.name, exc)
-        req.error = str(exc)[:1000]
+        req.error = exc.user_message  # поле видно сотруднику в карточке заявки; подробности — только в логе
     session.add(req)
     await session.commit()
 

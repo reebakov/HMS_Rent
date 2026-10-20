@@ -270,7 +270,7 @@ async def test_return_survives_jira_error(client, login, api, env, sd):
     r = await client.post(api(f"/bookings/{env.booking.id}/return"), json={})
     assert r.status_code == 200 and r.json()["status"] == "returned"
     [req] = await rows()
-    assert req.issue_key is None and "503" in req.error
+    assert req.issue_key is None and req.error == "Service Desk отклонил запрос, попробуйте позже" and "503" not in req.error
 
 
 @pytest.mark.parametrize("field, value", [("sd_token", ""), ("sd_return_on_return", False)])

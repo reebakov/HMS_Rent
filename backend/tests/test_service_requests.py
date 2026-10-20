@@ -234,8 +234,8 @@ async def test_create_return_jira_error_is_stored_not_raised(session, env, sd, c
     await svc.create_return(session, env.booking.id, env.owner)  # не бросает: возврат уже сделан
     [saved] = await rows()
     assert saved.kind == "return" and saved.issue_key is None and saved.status is None
-    assert saved.error.startswith("Service Desk 503: ") and len(saved.error) == 1000
-    assert "A001" in caplog.text
+    assert saved.error == "Service Desk отклонил запрос, попробуйте позже"  # сотруднику — без подробностей Jira
+    assert "Service Desk 503: " in caplog.text and "A001" in caplog.text  # подробности — в логе
     assert not saved.is_open  # без ключа заявка не «открытая»
 
 

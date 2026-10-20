@@ -100,8 +100,10 @@ async def test_get_with_comments_jira_error_body_not_exposed(session, env, jira)
     assert str(e.value) == "Service Desk отклонил запрос, попробуйте позже" and SECRET_BODY not in str(e.value)
 
 
-async def test_return_request_jira_error_keeps_details_in_error_field(session, env, jira):  # noqa: F811
+async def test_return_request_jira_error_hides_details_from_user(session, env, jira, caplog):  # noqa: F811
     jira.post(f"{API}/request").respond(400, json={"errorMessage": SECRET_BODY})
     await svc.create_return(session, env.booking.id, env.owner)
     (req,) = await rows()
-    assert SECRET_BODY in req.error  # для фоновой заявки подробности хранятся в ServiceRequest.error, как и раньше
+    # error показывается сотруднику в карточке заявки: тело ответа Jira туда не попадает, остаётся в логе
+    assert req.error == "Service Desk отклонил запрос, попробуйте позже" and SECRET_BODY not in req.error
+    assert SECRET_BODY in caplog.text
