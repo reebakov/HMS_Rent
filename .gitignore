@@ -15,6 +15,12 @@ certs/
 *.zip
 *.pem
 *.key
+*.crt
+*.csr
+*.cer
+*.p12
+*.pfx
+*.jks
 *.sql
 *.sql.gz
 # рабочие заметки и разборы, не часть проекта
