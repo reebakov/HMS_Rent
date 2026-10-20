@@ -60,6 +60,11 @@ async def options(session: AsyncSession, user: User) -> VmOptions:
                              available=bool(t.enabled and t.template))
             for t in cfg.vm_templates if t.enabled  # включён, но без шаблона — в конструкторе «скоро»
         ],
+        sizes=[
+            s for s in cfg.vm_sizes  # размер вне лимитов конструктора нельзя заказать — не показываем
+            if cfg.vm_min_cpu <= s.cpu <= cfg.vm_max_cpu and cfg.vm_min_ram_gb <= s.ram_gb <= cfg.vm_max_ram_gb
+            and cfg.vm_min_disk_gb <= s.disk_gb <= cfg.vm_max_disk_gb
+        ],
     )
 
 

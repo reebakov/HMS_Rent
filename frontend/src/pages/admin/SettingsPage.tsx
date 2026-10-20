@@ -8,6 +8,7 @@ import { Field, Input } from '@/components/ui/input'
 import { useAppSettings, useSaveSettings, useVsphereCheck } from '@/lib/queries'
 import type { AppSettings } from '@/lib/types'
 import { errorMessage } from '@/lib/utils'
+import { VmSizesEditor } from '@/features/admin/VmSizesEditor'
 import { VmTemplatesEditor } from '@/features/admin/VmTemplatesEditor'
 
 type NumKey = { [K in keyof AppSettings]: AppSettings[K] extends number ? K : never }[keyof AppSettings]
@@ -139,6 +140,11 @@ function SettingsForm({ data }: { data: AppSettings }) {
       <Card className="mt-6">
         <CardHeader title="Шаблоны ОС для виртуалок" description="Какие ОС можно выбрать в конструкторе и из каких шаблонов vCenter их клонировать" />
         <VmTemplatesEditor value={form.vm_templates ?? []} onChange={(v) => setForm({ ...form, vm_templates: v })} />
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader title="Готовые размеры виртуалок" description="Кнопки в конструкторе: ядра, память и диск одним нажатием" />
+        <VmSizesEditor value={form.vm_sizes ?? []} onChange={(v) => setForm({ ...form, vm_sizes: v })} />
       </Card>
     </>
   )

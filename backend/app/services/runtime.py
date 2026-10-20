@@ -68,6 +68,9 @@ async def update(session: AsyncSession, changes: dict) -> RuntimeConfig:
     keys = [t.key for t in config.vm_templates]
     if "vm_templates" in changes and len(keys) != len(set(keys)):
         raise ValueError("ключи шаблонов ОС должны быть уникальными")
+    labels = [s.label for s in config.vm_sizes]
+    if "vm_sizes" in changes and len(labels) != len(set(labels)):
+        raise ValueError("названия размеров ВМ должны быть уникальными")
     dumped = config.model_dump()  # JSON-совместимые значения (шаблоны ОС — список словарей)
     for key in changes:
         await put_setting(session, key, dumped[key])

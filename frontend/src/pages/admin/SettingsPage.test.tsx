@@ -20,7 +20,7 @@ const makeSettings = (over: Partial<AppSettings> = {}): AppSettings => ({
   insight_sync_interval_min: 15, insight_writeback: true, vm_enabled: true,
   vm_min_cpu: 1, vm_max_cpu: 16, vm_min_ram_gb: 2, vm_max_ram_gb: 64, vm_max_per_user: 3,
   vm_min_disk_gb: 50, vm_max_disk_gb: 500, catalog_refresh_sec: 60,
-  vm_templates: [WIN, LIN], vsphere_configured: true, vcenter_host: 'vc.example.com', ...over,
+  vm_templates: [WIN, LIN], vm_sizes: [{ label: 'S', cpu: 2, ram_gb: 4, disk_gb: 50 }], vsphere_configured: true, vcenter_host: 'vc.example.com', ...over,
 })
 
 let settings: AppSettings
@@ -223,5 +223,18 @@ describe('SettingsPage: проверка vCenter', () => {
     await screen.findByText('x')
     expect(api.patch).not.toHaveBeenCalled()
     expect(save()).toBeDisabled()
+  })
+})
+
+describe('SettingsPage: готовые размеры ВМ', () => {
+  it('размер правится и уходит в PATCH вместе с остальными изменениями', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SettingsPage />)
+    const cpu = await screen.findByLabelText('Ядра, строка 1')
+    expect(cpu).toHaveValue(2)
+    fireEvent.change(cpu, { target: { value: '3' } })
+    await user.click(save())
+    await waitFor(() => expect(api.patch).toHaveBeenCalled())
+    expect(patchBody().vm_sizes).toEqual([{ label: 'S', cpu: 3, ram_gb: 4, disk_gb: 50 }])
   })
 })

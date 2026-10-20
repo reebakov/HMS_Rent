@@ -319,6 +319,15 @@ export interface VmOptions {
   max_per_user: number
   used_by_me: number
   templates: VmTemplateOption[]
+  sizes: VmSize[] // готовые размеры, которые укладываются в лимиты
+}
+
+/** Готовый размер ВМ: ядра, память и диск разом */
+export interface VmSize {
+  label: string
+  cpu: number
+  ram_gb: number
+  disk_gb: number
 }
 
 export interface VmTemplateOption {
@@ -366,6 +375,7 @@ export interface AppSettings {
   vm_max_disk_gb: number
   catalog_refresh_sec: number
   vm_templates: VmTemplate[]
+  vm_sizes: VmSize[]
   vsphere_configured: boolean
   vcenter_host: string
 }

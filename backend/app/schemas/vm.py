@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.booking import BookingExtend
 from app.schemas.common import DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
+from app.schemas.settings import VmSize
 
 
 class VmCreate(InputModel):
@@ -71,3 +72,4 @@ class VmOptions(BaseModel):
     max_per_user: int
     used_by_me: int
     templates: list[VmTemplateOption] = []
+    sizes: list[VmSize] = []  # готовые размеры, которые укладываются в лимиты

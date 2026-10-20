@@ -37,6 +37,7 @@ const makeOptions = (over: Partial<VmOptions> = {}): VmOptions => ({
   max_per_user: 3,
   used_by_me: 1,
   templates: [{ key: 'win10-tpl', label: 'Windows 10', os: 'windows', min_disk_gb: 50, available: true }],
+  sizes: [],
   ...over,
 })
 
@@ -410,5 +411,46 @@ describe('VmBuilderDialog: лимит срока', () => {
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Заказ №77'), {
       description: `Срок ограничен ${formatDate(limit)} — заявка на ${formatDate(beyond)} отправлена администратору`,
     })
+  })
+})
+
+describe('VmBuilderDialog: готовые размеры', () => {
+  const SIZES = [
+    { label: 'S', cpu: 2, ram_gb: 4, disk_gb: 50 },
+    { label: 'M', cpu: 4, ram_gb: 8, disk_gb: 100 },
+  ]
+
+  it('без размеров блока нет', async () => {
+    await setup()
+    expect(screen.queryByText('Размер')).not.toBeInTheDocument()
+  })
+
+  it('кнопка размера ставит ядра, память и диск; они уходят в заказ', async () => {
+    options = makeOptions({ sizes: SIZES })
+    const { user } = await setup()
+    await user.click(screen.getByRole('button', { name: /^M/ }))
+    expect(sliders().map((s) => Number(s.value))).toEqual([4, 8, 100])
+
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await user.type(untilInput(), UNTIL)
+    await user.click(submit())
+    await waitFor(() => expect(api.post).toHaveBeenCalled())
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ cpu: 4, ram_gb: 8, disk_gb: 100 })
+  })
+
+  it('диск размера меньше минимума шаблона показывается и заказывается по минимуму', async () => {
+    options = makeOptions({ sizes: SIZES, templates: [{ key: 'win11', label: 'Windows 11', os: 'windows', min_disk_gb: 80, available: true }] })
+    const { user } = await setup()
+    expect(screen.getByRole('button', { name: /^S/ })).toHaveTextContent('2 ядра · 4 ГБ · 80 ГБ')
+    await user.click(screen.getByRole('button', { name: /^S/ }))
+    expect(Number(sliders()[2].value)).toBe(80)
+  })
+
+  it('ползунки после размера остаются: своя конфигурация', async () => {
+    options = makeOptions({ sizes: SIZES })
+    const { user } = await setup()
+    await user.click(screen.getByRole('button', { name: /^M/ }))
+    fireEvent.change(sliders()[0], { target: { value: '6' } })
+    expect(Number(sliders()[0].value)).toBe(6)
   })
 })

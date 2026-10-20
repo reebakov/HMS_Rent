@@ -27,6 +27,24 @@ def default_templates() -> list[VmTemplate]:
     ]
 
 
+class VmSize(InputModel):
+    """Готовый размер ВМ: кнопка в конструкторе ставит ядра, память и диск разом."""
+
+    label: str = Field(min_length=1, max_length=32)  # как видит пользователь: «S», «M», «L»
+    cpu: int = Field(ge=1, le=64)
+    ram_gb: int = Field(ge=1, le=512)
+    disk_gb: int = Field(ge=10, le=4096)
+
+
+def default_vm_sizes() -> list[VmSize]:
+    """Базовая ВМ из расчёта мощностей кластера (DR-15063) — 2 ядра, 4 ГБ, 50 ГБ; остальные кратны ей."""
+    return [
+        VmSize(label="S", cpu=2, ram_gb=4, disk_gb=50),
+        VmSize(label="M", cpu=4, ram_gb=8, disk_gb=100),
+        VmSize(label="L", cpu=8, ram_gb=16, disk_gb=200),
+    ]
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")  # опечатка в ключе PATCH — ошибка, а не молча не сохранённая настройка
 
@@ -43,6 +61,7 @@ class RuntimeConfig(BaseModel):
     vm_min_disk_gb: int = Field(default=50, ge=10, le=4096)  # не меньше диска шаблона
     vm_max_disk_gb: int = Field(default=200, ge=10, le=4096)
     vm_templates: list[VmTemplate] = Field(default_factory=default_templates)
+    vm_sizes: list[VmSize] = Field(default_factory=default_vm_sizes)
     # Каталог: как часто страница сама обновляет список ПК
     catalog_refresh_sec: int = Field(default=15, ge=5, le=600)
 

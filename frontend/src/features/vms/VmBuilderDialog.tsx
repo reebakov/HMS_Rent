@@ -165,6 +165,38 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                 </div>
               </div>
 
+              {o.sizes.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[13px] font-medium">Размер</p>
+                  <div className="flex flex-wrap gap-2">
+                    {o.sizes.map((s) => {
+                      const active = cpu === s.cpu && ram === s.ram_gb && Math.max(disk, minDisk) === Math.max(s.disk_gb, minDisk)
+                      return (
+                        <button
+                          key={s.label}
+                          type="button"
+                          onClick={() => {
+                            setCpu(s.cpu)
+                            setRam(s.ram_gb)
+                            setDisk(s.disk_gb)
+                          }}
+                          className={cn(
+                            'rounded-xl border px-3 py-2 text-left text-[13px] transition-colors',
+                            active ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted/50',
+                          )}
+                        >
+                          <span className="block font-medium">{s.label}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {s.cpu} ядра · {s.ram_gb} ГБ · {Math.max(s.disk_gb, minDisk)} ГБ
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">Или настройте ресурсы ползунками ниже</p>
+                </div>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-3">
                 <Amount icon={Cpu} label="Ядра" unit="шт" value={cpu} range={{ min: o.min_cpu, max: o.max_cpu, step: 1 }} onChange={setCpu} />
                 <Amount icon={MemoryStick} label="Память" unit="ГБ" value={ram} range={{ min: o.min_ram_gb, max: o.max_ram_gb, step: 2 }} onChange={setRam} />
