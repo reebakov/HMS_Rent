@@ -82,7 +82,7 @@ export function AdminOverviewPage() {
             title="Отделы"
             description="Сколько компьютеров закреплено"
             action={
-              <Link to="/admin/departments" className="text-[13px] font-medium text-primary hover:underline">
+              <Link to="/admin/people?tab=departments" className="text-[13px] font-medium text-primary hover:underline">
                 Все
               </Link>
             }

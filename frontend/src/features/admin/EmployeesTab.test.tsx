@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { UsersPage } from './UsersPage'
+import { EmployeesTab } from './EmployeesTab'
 import { api } from '@/lib/api'
 import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { AdminUserRow } from '@/lib/types'
@@ -44,9 +44,9 @@ beforeEach(() => {
 
 const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement
 
-describe('UsersPage', () => {
+describe('EmployeesTab', () => {
   it('рисует сотрудников: источник входа, роль, отдел; заранее заведённый (microsoft) — «Bouncer»', async () => {
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     expect(within(rowOf('Иван Иванов')).getByText('Bouncer')).toBeInTheDocument()
     expect(within(rowOf('Админ')).getByText('админ')).toBeInTheDocument()
@@ -55,16 +55,43 @@ describe('UsersPage', () => {
     expect(within(rowOf('new')).getByRole('button', { name: 'Разблокировать' })).toBeInTheDocument()
   })
 
+  it.each([
+    ['имени без учёта регистра', 'иВАН'],
+    ['нику (логину)', 'i.ivan'],
+    ['почте', 'IVANOV@example'],
+  ])('поиск по %s оставляет только подходящего сотрудника', async (_, query) => {
+    const user = userEvent.setup()
+    renderWithProviders(<EmployeesTab />)
+    await screen.findByText('Админ')
+    await user.type(screen.getByRole('textbox', { name: 'Поиск сотрудника' }), query)
+    expect(screen.getByText('Иван Иванов')).toBeInTheDocument()
+    expect(screen.queryByText('Админ')).not.toBeInTheDocument()
+    expect(screen.queryByText('new')).not.toBeInTheDocument()
+  })
+
+  it('поиск без совпадений — «Никого не найдено», очистка возвращает всех', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<EmployeesTab />)
+    await screen.findByText('Админ')
+    const search = screen.getByRole('textbox', { name: 'Поиск сотрудника' })
+    await user.type(search, 'нет такого')
+    expect(screen.getByText('Никого не найдено')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    await user.clear(search)
+    expect(screen.getByText('Админ')).toBeInTheDocument()
+    expect(screen.getByText('Иван Иванов')).toBeInTheDocument()
+  })
+
   it('пока грузится — скелетоны, таблицы нет', () => {
     vi.mocked(api.get).mockReturnValue(new Promise(() => undefined))
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
   it('ошибка загрузки: текст ошибки и «Повторить» вместо пустой таблицы; повтор перезапрашивает', async () => {
     const user = userEvent.setup()
     failGetOnce(vi.mocked(api.get), '/admin/users')
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     expect(await screen.findByText('Не удалось загрузить сотрудников')).toBeInTheDocument()
     expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
@@ -77,7 +104,7 @@ describe('UsersPage', () => {
   it('ошибка загрузки отделов: сообщение и «Повторить», чтобы пустой выбор отдела не выглядел как «без отдела»', async () => {
     const user = userEvent.setup()
     failGetOnce(vi.mocked(api.get), '/departments')
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     expect(await screen.findByText('Не удалось загрузить отделы')).toBeInTheDocument()
     expect(screen.getByText('Иван Иванов')).toBeInTheDocument()
 
@@ -87,7 +114,7 @@ describe('UsersPage', () => {
   })
 
   it('выбор отдела в строке подписан именем сотрудника', async () => {
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     expect(screen.getByRole('combobox', { name: 'Отдел: Иван Иванов' })).toHaveValue('5')
     expect(screen.getByRole('combobox', { name: 'Отдел: Админ' })).toHaveValue('')
@@ -95,7 +122,7 @@ describe('UsersPage', () => {
 
   it('смена отдела отправляет PATCH с department_id', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     await within(rowOf('Иван Иванов')).findByRole('option', { name: 'Аналитика' })
     await user.selectOptions(within(rowOf('Иван Иванов')).getByRole('combobox'), 'Аналитика')
@@ -104,7 +131,7 @@ describe('UsersPage', () => {
 
   it('блокировка отправляет is_active=false', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     await user.click(within(rowOf('Иван Иванов')).getByRole('button', { name: 'Заблокировать' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/users/1', { is_active: false }))
@@ -112,7 +139,7 @@ describe('UsersPage', () => {
 
   it('добавление заранее: без «@» в почте кнопка неактивна, затем POST с почтой и отделом', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     await user.click(screen.getByRole('button', { name: 'Добавить заранее' }))
     const dialog = await screen.findByRole('dialog')
@@ -130,7 +157,7 @@ describe('UsersPage', () => {
 
   it('Enter в поле почты добавляет сотрудника, пока почта без «@» — нет', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<UsersPage />)
+    renderWithProviders(<EmployeesTab />)
     await screen.findByText('Иван Иванов')
     await user.click(screen.getByRole('button', { name: 'Добавить заранее' }))
     const email = await screen.findByLabelText(/Рабочая почта/)

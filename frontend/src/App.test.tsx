@@ -17,12 +17,11 @@ vi.mock('@/pages/MyBookingsPage', () => ({ MyBookingsPage: () => <h1>stub:my</h1
 vi.mock('@/pages/admin/AdminOverviewPage', () => ({ AdminOverviewPage: () => <h1>stub:admin-overview</h1> }))
 vi.mock('@/pages/admin/InventoryPage', () => ({ InventoryPage: () => <h1>stub:admin-inventory</h1> }))
 vi.mock('@/pages/admin/JournalPage', () => ({ JournalPage: () => <h1>stub:admin-journal</h1> }))
-vi.mock('@/pages/admin/DepartmentsPage', () => ({ DepartmentsPage: () => <h1>stub:admin-departments</h1> }))
 vi.mock('@/pages/admin/SyncPage', () => ({ SyncPage: () => <h1>stub:admin-sync</h1> }))
 vi.mock('@/pages/admin/PoolsPage', () => ({ PoolsPage: () => <h1>stub:admin-pools</h1> }))
 vi.mock('@/pages/admin/EventsPage', () => ({ EventsPage: () => <h1>stub:admin-events</h1> }))
 vi.mock('@/pages/admin/SettingsPage', () => ({ SettingsPage: () => <h1>stub:admin-settings</h1> }))
-vi.mock('@/pages/admin/UsersPage', () => ({ UsersPage: () => <h1>stub:admin-users</h1> }))
+vi.mock('@/pages/admin/PeoplePage', () => ({ PeoplePage: () => <h1>stub:admin-people</h1> }))
 vi.mock('@/pages/admin/VmsPage', () => ({ VmsPage: () => <h1>stub:admin-vms</h1> }))
 vi.mock('@/pages/admin/OverduePage', () => ({ OverduePage: () => <h1>stub:admin-overdue</h1> }))
 
@@ -66,7 +65,7 @@ describe('App: загрузка', () => {
 })
 
 describe('App: аноним', () => {
-  it.each(['/', '/my', '/admin', '/admin/users'])('%s -> редирект на логин', async (route) => {
+  it.each(['/', '/my', '/admin', '/admin/people'])('%s -> редирект на логин', async (route) => {
     mount(route, null)
     expect(await screen.findByText('stub:login')).toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
@@ -96,8 +95,8 @@ describe('App: сотрудник', () => {
   })
 
   it.each([
-    '/admin', '/admin/inventory', '/admin/pools', '/admin/journal', '/admin/departments',
-    '/admin/events', '/admin/sync', '/admin/vms', '/admin/users', '/admin/settings',
+    '/admin', '/admin/inventory', '/admin/pools', '/admin/journal', '/admin/people',
+    '/admin/events', '/admin/sync', '/admin/vms', '/admin/settings',
   ])('%s не пускает: редирект в каталог', async (route) => {
     mount(route, employee())
     expect(await screen.findByText('stub:catalog')).toBeInTheDocument()
@@ -122,11 +121,10 @@ describe('App: администратор', () => {
     ['/admin/inventory', 'stub:admin-inventory'],
     ['/admin/pools', 'stub:admin-pools'],
     ['/admin/journal', 'stub:admin-journal'],
-    ['/admin/departments', 'stub:admin-departments'],
     ['/admin/events', 'stub:admin-events'],
     ['/admin/sync', 'stub:admin-sync'],
     ['/admin/vms', 'stub:admin-vms'],
-    ['/admin/users', 'stub:admin-users'],
+    ['/admin/people', 'stub:admin-people'],
     ['/admin/settings', 'stub:admin-settings'],
   ])('%s -> %s', async (route, stub) => {
     mount(route, admin())

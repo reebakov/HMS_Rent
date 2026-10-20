@@ -21,7 +21,7 @@ vi.mock('@/lib/api', async (orig) => ({
 
 const ADMIN_LINKS = [
   'Обзор', 'Инвентаризация', 'Пулы выдачи', 'Журнал выдачи', 'Виртуалки',
-  'Отделы', 'Сотрудники', 'Логи системы', 'Синхронизация', 'Настройки',
+  'Сотрудники и отделы', 'Логи системы', 'Синхронизация', 'Настройки',
 ]
 
 const mountShell = (route = '/') =>
@@ -31,7 +31,7 @@ const mountShell = (route = '/') =>
         <Route index element={<p>страница-каталог</p>} />
         <Route path="my" element={<p>страница-аренда</p>} />
         <Route path="admin" element={<p>страница-обзор</p>} />
-        <Route path="admin/users" element={<p>страница-сотрудники</p>} />
+        <Route path="admin/people" element={<p>страница-сотрудники</p>} />
         <Route path="admin/overdue" element={<p>страница-просрочки</p>} />
       </Route>
     </Routes>,
@@ -84,8 +84,8 @@ describe('AppShell: меню по роли', () => {
 
   it('подсвечивается только активный пункт: /admin не активирует вложенные и «Каталог»', () => {
     session = makeSession({ role: 'admin' })
-    mountShell('/admin/users')
-    expect(screen.getByRole('link', { name: 'Сотрудники' })).toHaveAttribute('aria-current', 'page')
+    mountShell('/admin/people')
+    expect(screen.getByRole('link', { name: 'Сотрудники и отделы' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'Обзор' })).not.toHaveAttribute('aria-current')
     expect(screen.getByRole('link', { name: 'Каталог' })).not.toHaveAttribute('aria-current')
   })

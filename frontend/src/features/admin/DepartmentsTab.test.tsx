@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { DepartmentsPage } from './DepartmentsPage'
+import { DepartmentsTab } from './DepartmentsTab'
 import { api } from '@/lib/api'
 import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { DepartmentUsage } from '@/lib/types'
@@ -32,9 +32,9 @@ beforeEach(() => {
   vi.mocked(api.patch).mockResolvedValue({})
 })
 
-describe('DepartmentsPage', () => {
+describe('DepartmentsTab', () => {
   it('рисует отделы: код, руководителя, число ПК; скрытый помечен', async () => {
-    renderWithProviders(<DepartmentsPage />)
+    renderWithProviders(<DepartmentsTab />)
     const row = (await screen.findByText('Разработка')).closest('tr')!
     expect(within(row).getByText('DEV')).toBeInTheDocument()
     expect(within(row).getByText('Пётр Петров')).toBeInTheDocument()
@@ -44,14 +44,14 @@ describe('DepartmentsPage', () => {
 
   it('пустой справочник — «Отделов пока нет»', async () => {
     usage = []
-    renderWithProviders(<DepartmentsPage />)
+    renderWithProviders(<DepartmentsTab />)
     expect(await screen.findByText('Отделов пока нет')).toBeInTheDocument()
   })
 
   it('ошибка загрузки: текст ошибки и «Повторить» вместо «Отделов пока нет»; повтор перезапрашивает', async () => {
     const user = userEvent.setup()
     failGetOnce(vi.mocked(api.get), '/admin/departments')
-    renderWithProviders(<DepartmentsPage />)
+    renderWithProviders(<DepartmentsTab />)
     expect(await screen.findByText('Не удалось загрузить отделы')).toBeInTheDocument()
     expect(screen.getByText('Сервер недоступен')).toBeInTheDocument()
     expect(screen.queryByText('Отделов пока нет')).not.toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('DepartmentsPage', () => {
 
   it('«Скрыть» отправляет is_active=false', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<DepartmentsPage />)
+    renderWithProviders(<DepartmentsTab />)
     const row = (await screen.findByText('Разработка')).closest('tr')!
     await user.click(within(row).getByRole('button', { name: 'Скрыть' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/departments/1', { is_active: false }))
@@ -72,7 +72,7 @@ describe('DepartmentsPage', () => {
 
   it('новый отдел: название короче двух символов не сохраняется, затем POST', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<DepartmentsPage />)
+    renderWithProviders(<DepartmentsTab />)
     await screen.findByText('Разработка')
     await user.click(screen.getByRole('button', { name: 'Добавить отдел' }))
     const dialog = await screen.findByRole('dialog')

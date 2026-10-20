@@ -9,12 +9,11 @@ import { MyBookingsPage } from '@/pages/MyBookingsPage'
 import { AdminOverviewPage } from '@/pages/admin/AdminOverviewPage'
 import { InventoryPage } from '@/pages/admin/InventoryPage'
 import { JournalPage } from '@/pages/admin/JournalPage'
-import { DepartmentsPage } from '@/pages/admin/DepartmentsPage'
 import { SyncPage } from '@/pages/admin/SyncPage'
 import { PoolsPage } from '@/pages/admin/PoolsPage'
 import { EventsPage } from '@/pages/admin/EventsPage'
 import { SettingsPage } from '@/pages/admin/SettingsPage'
-import { UsersPage } from '@/pages/admin/UsersPage'
+import { PeoplePage } from '@/pages/admin/PeoplePage'
 import { VmsPage } from '@/pages/admin/VmsPage'
 import { OverduePage } from '@/pages/admin/OverduePage'
 
@@ -55,12 +54,11 @@ export default function App() {
         <Route path="admin/inventory" element={<RequireAdmin><InventoryPage /></RequireAdmin>} />
         <Route path="admin/pools" element={<RequireAdmin><PoolsPage /></RequireAdmin>} />
         <Route path="admin/journal" element={<RequireAdmin><JournalPage /></RequireAdmin>} />
-        <Route path="admin/departments" element={<RequireAdmin><DepartmentsPage /></RequireAdmin>} />
         <Route path="admin/events" element={<RequireAdmin><EventsPage /></RequireAdmin>} />
         <Route path="admin/sync" element={<RequireAdmin><SyncPage /></RequireAdmin>} />
         <Route path="admin/vms" element={<RequireAdmin><VmsPage /></RequireAdmin>} />
         <Route path="admin/overdue" element={<RequireAdmin><OverduePage /></RequireAdmin>} />
-        <Route path="admin/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
+        <Route path="admin/people" element={<RequireAdmin><PeoplePage /></RequireAdmin>} />
         <Route path="admin/settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

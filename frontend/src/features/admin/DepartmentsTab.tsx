@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Building2, Plus } from 'lucide-react'
-import { Card, EmptyState, PageHeader } from '@/components/ui/card'
+import { Card, EmptyState } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,7 @@ import { errorMessage, formatDate } from '@/lib/utils'
 
 type Editing = { id?: number; name: string; code: string; head_name: string }
 
-export function DepartmentsPage() {
+export function DepartmentsTab() {
   const usage = useDepartmentUsage()
   const save = useSaveDepartment()
   const [editing, setEditing] = useState<Editing | null>(null)
@@ -48,16 +48,13 @@ export function DepartmentsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Отделы"
-        description="Справочник для формы бронирования и сводка: сколько и каких компьютеров у каждого отдела"
-        action={
-          <Button onClick={() => open()}>
-            <Plus className="h-4 w-4" />
-            Добавить отдел
-          </Button>
-        }
-      />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground">Справочник для формы бронирования и сводка: сколько и каких компьютеров у каждого отдела</p>
+        <Button onClick={() => open()}>
+          <Plus className="h-4 w-4" />
+          Добавить отдел
+        </Button>
+      </div>
 
       <Card>
         <DataState

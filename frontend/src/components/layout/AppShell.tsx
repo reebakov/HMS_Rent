@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
+import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
 import { useExtensions, useOverdue } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ShortcutsButton } from './Shortcuts'
@@ -26,8 +26,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/journal', label: 'Журнал выдачи', icon: ArrowLeftRight },
   { to: '/admin/overdue', label: 'Сроки аренды', icon: AlarmClock },
   { to: '/admin/vms', label: 'Виртуалки', icon: Cloud },
-  { to: '/admin/departments', label: 'Отделы', icon: Building2 },
-  { to: '/admin/users', label: 'Сотрудники', icon: Users },
+  { to: '/admin/people', label: 'Сотрудники и отделы', icon: Users },
   { to: '/admin/events', label: 'Логи системы', icon: Activity },
   { to: '/admin/sync', label: 'Синхронизация', icon: RefreshCw },
   { to: '/admin/settings', label: 'Настройки', icon: Settings },
