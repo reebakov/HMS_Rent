@@ -244,3 +244,24 @@ def test_load_mapping_requires_query(tmp_path):
 def test_real_mapping_files_load(name):
     m = load_mapping(CONFIG_DIR / name)
     assert m.query and m.attributes and m.status_map
+
+
+def test_load_mapping_vm_settings(tmp_path):
+    m = load_mapping(_yaml(tmp_path, """
+query: q
+vm_free_query: 'objectType = "Automat" AND Type IN ("Virtual")'
+writeback: {vm_status_values: {free: "Склад"}}
+"""))
+    assert m.vm_free_query == 'objectType = "Automat" AND Type IN ("Virtual")'
+    assert m.writeback.vm_status_values == {"taken": "Используется", "free": "Склад"}  # не заданное — по умолчанию
+
+
+def test_load_mapping_vm_defaults(tmp_path):
+    m = load_mapping(_yaml(tmp_path, "query: q\n"))
+    assert m.vm_free_query is None
+    assert m.writeback.vm_status_values == {"taken": "Используется", "free": "На складе"}
+
+
+def test_prod_mapping_has_free_vm_query():
+    m = load_mapping(CONFIG_DIR / "insight_mapping.yaml")
+    assert m.vm_free_query == 'objectType = "Automat" AND "Status" IN ("На складе") AND "Type" IN ("Virtual")'

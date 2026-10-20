@@ -624,3 +624,18 @@ async def test_update_network_error_does_not_leak_token(api, cl):
     with pytest.raises(InsightError, match="недоступен") as ei:
         await cl.update_object(5, TYPE_ID, {"Номер заказа": "1"})
     assert TOKEN not in str(ei.value)
+
+
+# ---------- свободные номера ВМ ----------
+
+async def test_fetch_free_vm_objects_uses_vm_free_query(api, make_client):
+    route = api.get(f"{API}/iql/objects").respond(200, json=page([entry(7, "A1001"), entry(8, "A1002")]))
+    mapping = InsightMapping(query='objectType = "Automat"', schema_id=1, vm_free_query='Type IN ("Virtual")')
+    objects = await make_client(mapping).fetch_free_vm_objects()
+    assert [o.label for o in objects] == ["A1001", "A1002"]
+    assert params(route)["iql"] == 'Type IN ("Virtual")'  # а не запрос ПК из маппинга
+
+
+async def test_fetch_free_vm_objects_without_query_raises(make_client):
+    with pytest.raises(InsightError, match="vm_free_query"):
+        await make_client().fetch_free_vm_objects()

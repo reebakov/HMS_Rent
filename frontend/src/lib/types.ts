@@ -309,7 +309,6 @@ export interface Vm {
 export interface VmOptions {
   enabled: boolean
   reason: string | null
-  name_prefix: string
   template: string
   min_cpu: number
   max_cpu: number
@@ -341,7 +340,6 @@ export interface VmTemplate {
 }
 
 export interface VmCreate {
-  name: string
   cpu: number
   ram_gb: number
   disk_gb: number

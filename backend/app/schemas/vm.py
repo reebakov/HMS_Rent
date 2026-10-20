@@ -1,13 +1,12 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.schemas.booking import BookingExtend
 from app.schemas.common import DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
 
 
 class VmCreate(InputModel):
-    name: str = Field(min_length=3, max_length=20, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     cpu: int = Field(ge=1, le=64)
     ram_gb: int = Field(ge=1, le=512)
     disk_gb: int = Field(ge=10, le=4096)
@@ -17,11 +16,6 @@ class VmCreate(InputModel):
     purpose: str | None = Field(default=None, max_length=2000)
     expected_return_at: ReturnDate
     template_key: str | None = None  # шаблон ОС; пусто — первый доступный
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def lower(cls, value: str) -> str:
-        return value.lower() if isinstance(value, str) else value
 
 
 class VmExtend(BookingExtend):
@@ -67,7 +61,6 @@ class VmTemplateOption(BaseModel):
 class VmOptions(BaseModel):
     enabled: bool
     reason: str | None  # почему конструктор недоступен
-    name_prefix: str
     template: str
     min_cpu: int
     max_cpu: int

@@ -6,11 +6,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core import clock
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
+from app.integrations.insight.base import InsightError, InsightObject
+from app.integrations.insight.mock import MOCK_VM_ID_BASE
 from app.integrations.vsphere.client import ClusterUsage, VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
 from app.schemas.vm import VmCreate, VmExtend, VmOut
@@ -100,7 +103,7 @@ async def vm_on(session, monkeypatch):
 
 
 def payload(dept_id: int, **kw) -> VmCreate:
-    data = {"name": "Dev-Box", "cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
+    data = {"cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
             "requester_name": "Иван Иванов", "requester_nick": "ivan", "purpose": "тесты",
             "expected_return_at": clock.today() + timedelta(days=30)}
     return VmCreate(**(data | kw))
@@ -125,14 +128,10 @@ async def status_of(session, vm) -> VirtualMachine:
 async def test_create_request_ok(session, vm_on, ctx):
     vm = await request(session, ctx)
     assert vm.status == "queued"
-    assert vm.name == f"{settings.vm_name_prefix}dev-box"  # префикс + имя пользователя (в нижнем регистре)
+    assert vm.name == "A1001"  # имя ВМ — номер свободного объекта из Insight
+    assert vm.insight_object_id == MOCK_VM_ID_BASE + 1001 and vm.insight_pending is True
     assert (vm.cpu, vm.ram_gb, vm.disk_gb, vm.order_number) == (4, 8, 100, 1)
     assert vm.user_id == ctx.user.id and vm.department_id == ctx.dept.id
-
-
-async def test_custom_prefix(session, vm_on, ctx, monkeypatch):
-    monkeypatch.setattr(settings, "vm_name_prefix", "hms-")
-    assert (await request(session, ctx)).name == "hms-dev-box"
 
 
 async def test_disabled_by_admin_rejected(session, vm_on, ctx):
@@ -151,10 +150,10 @@ async def test_vcenter_not_configured_rejected(session, ctx):
 async def test_limits_from_runtime_config(session, vm_on, ctx, field, key, lo, hi):
     await runtime.update(session, {"vm_max_per_user": 10})
     for ok in (lo, hi):  # границы включены
-        await request(session, ctx, name=f"vm-{field.split('_')[0]}-{ok}", **{field: ok})
+        await request(session, ctx, **{field: ok})
     for bad in (lo - 1, hi + 1):
         with pytest.raises(DomainError, match=f"от {lo} до {hi}"):
-            await request(session, ctx, name="vm-bad", **{field: bad})
+            await request(session, ctx, **{field: bad})
 
 
 async def test_limits_follow_runtime_update(session, vm_on, ctx):
@@ -164,30 +163,114 @@ async def test_limits_follow_runtime_update(session, vm_on, ctx):
 
 async def test_per_user_limit(session, vm_on, ctx, make_user):
     await runtime.update(session, {"vm_max_per_user": 2})
-    first = await request(session, ctx, name="vm-one")
-    await request(session, ctx, name="vm-two")
+    first = await request(session, ctx)
+    await request(session, ctx)
     with pytest.raises(Conflict, match="2 из 2"):
-        await request(session, ctx, name="vm-three")
+        await request(session, ctx)
     other = await make_user("petrov")  # лимит — на пользователя
-    await vms.create_request(session, other, payload(ctx.dept.id, name="vm-other"))
+    await vms.create_request(session, other, payload(ctx.dept.id))
     # удалённая ВМ освобождает место
     await vms.release(session, ctx.user, first.id)  # из очереди -> сразу deleted
-    assert (await request(session, ctx, name="vm-three")).status == "queued"
+    assert (await request(session, ctx)).status == "queued"
 
 
 async def test_failed_vm_does_not_count_and_name_is_reusable(session, vm_on, ctx, vsphere, notify):
     await runtime.update(session, {"vm_max_per_user": 1})
     vsphere.create_errors = [RuntimeError("нет места")] * 2
-    await request(session, ctx, name="vm-one")
+    await request(session, ctx)
     await vm_jobs.create_next(session)
-    again = await request(session, ctx, name="vm-one")  # partial unique index не учитывает failed
+    again = await request(session, ctx)  # partial unique index не учитывает failed
     assert again.status == "queued"
 
 
-async def test_duplicate_name_conflict(session, vm_on, ctx):
-    await request(session, ctx, name="vm-one")
-    with pytest.raises(Conflict, match="занято"):
-        await request(session, ctx, name="VM-ONE")
+# ---------- номера ВМ из Insight ----------
+
+class FakeInsight:
+    """Источник Insight с заданным списком свободных объектов ВМ (или ошибкой)."""
+
+    def __init__(self, labels: list[str] | None = None, error: Exception | None = None):
+        self.objects = [InsightObject(id=100 + i, key=f"V-{i}", label=label, object_type="Automat", object_type_id=7)
+                        for i, label in enumerate(labels or [])]
+        self.error = error
+        self.closed = False
+
+    async def fetch_free_vm_objects(self):
+        if self.error:
+            raise self.error
+        return self.objects
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def insight(monkeypatch):
+    def use(labels=None, error=None) -> FakeInsight:
+        fake = FakeInsight(labels, error)
+        monkeypatch.setattr(vms, "create_insight_source", lambda: fake)
+        return fake
+    return use
+
+
+async def test_numbers_go_in_ascending_numeric_order(session, vm_on, ctx, insight):
+    insight(["A1000", "A999", "A1001"])  # по строке «A1000» меньше «A999», по номеру — наоборот
+    await runtime.update(session, {"vm_max_per_user": 5})
+    names = [(await request(session, ctx)).name for _ in range(3)]
+    assert names == ["A999", "A1000", "A1001"]
+
+
+async def test_order_stores_insight_object_and_closes_source(session, vm_on, ctx, insight):
+    fake = insight(["A2001"])
+    vm = await request(session, ctx)
+    assert (vm.name, vm.insight_object_id, vm.insight_object_type_id, vm.insight_pending) == ("A2001", 100, 7, True)
+    assert fake.closed
+
+
+async def test_no_free_numbers_rejects_order(session, vm_on, ctx, insight):
+    insight([])
+    with pytest.raises(Conflict, match="Нет свободных номеров ВМ"):
+        await request(session, ctx)
+    assert await vms.list_vms(session) == []
+
+
+async def test_busy_number_is_skipped_and_exhaustion_rejects(session, vm_on, ctx, insight):
+    insight(["A3001"])
+    await request(session, ctx)  # единственный номер занят
+    with pytest.raises(Conflict, match="Нет свободных номеров ВМ"):
+        await request(session, ctx)
+
+
+@pytest.mark.parametrize("how", ["failed", "released"])
+async def test_number_returns_to_pool_when_vm_failed_or_deleted(session, vm_on, ctx, vsphere, notify, insight, how):
+    insight(["A3001"])
+    vm = await request(session, ctx)
+    if how == "failed":
+        vsphere.create_errors = [RuntimeError("нет места")] * 2
+        await vm_jobs.create_next(session)
+    else:
+        await vms.release(session, ctx.user, vm.id)  # из очереди — сразу «Удалена»
+    again = await request(session, ctx)
+    assert again.name == "A3001" and again.id != vm.id
+
+
+async def test_insight_unavailable_rejects_order_without_leaking_details(session, vm_on, ctx, insight):
+    insight(error=InsightError("Insight недоступен (GET /iql): секретная деталь"))
+    with pytest.raises(Conflict, match="Insight сейчас недоступен") as exc:
+        await request(session, ctx)
+    assert "секретная деталь" not in str(exc.value)
+    assert await vms.list_vms(session) == []
+
+
+async def test_object_cannot_belong_to_two_live_vms(session, vm_on, ctx):
+    """Уникальный индекс в БД: даже при гонке один объект Insight не достанется двум живым ВМ."""
+    first = await request(session, ctx)
+    dup = VirtualMachine(name="A9999", cpu=2, ram_gb=4, disk_gb=50, status="queued", order_number=900,
+                         user_id=ctx.user.id, department_id=ctx.dept.id, requester_name="a", requester_nick="b",
+                         attrs={}, insight_object_id=first.insight_object_id)
+    session.add(dup)
+    with pytest.raises(IntegrityError, match="uq_virtual_machines_alive_insight_object"):
+        await session.commit()
+    await session.rollback()
 
 
 async def test_unknown_department(session, vm_on, ctx):
@@ -197,27 +280,27 @@ async def test_unknown_department(session, vm_on, ctx):
 
 def test_payload_validation():
     with pytest.raises(ValueError):
-        payload(1, name="Bad Name!")
-    with pytest.raises(ValueError):
         payload(1, expected_return_at=clock.today() - timedelta(days=1))
 
 
 async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
     login(ctx.user)
     opts = (await client.get(api("/vms/options"))).json()
-    assert opts["enabled"] and opts["name_prefix"] == "rent-" and opts["used_by_me"] == 0
-    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+    assert opts["enabled"] and "name_prefix" not in opts and opts["used_by_me"] == 0
+    body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
             "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body)
-    assert r.status_code == 201 and r.json()["name"] == "rent-api-box" and r.json()["status"] == "queued"
-    assert (await client.post(api("/vms"), json=body)).status_code == 409
-    assert (await client.post(api("/vms"), json=body | {"name": "big", "cpu": 64})).status_code == 400
+    assert r.status_code == 201 and r.json()["name"] == "A1001" and r.json()["status"] == "queued"
+    assert (await client.post(api("/vms"), json=body | {"cpu": 64})).status_code == 400
+    r2 = await client.post(api("/vms"), json=body)
+    assert r2.status_code == 201 and r2.json()["name"] == "A1002"
+    assert (await client.post(api("/vms"), json=body)).status_code == 409  # лимит ВМ на человека (2)
 
 
 @pytest.mark.parametrize("patch", [{"requester_name": "     "}, {"requester_nick": "   "}], ids=["name", "nick"])
 async def test_create_api_whitespace_only_requester_is_422(client, login, api, vm_on, ctx, patch):
     login(ctx.user)
-    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+    body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
             "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW} | patch
     assert (await client.post(api("/vms"), json=body)).status_code == 422
 
@@ -226,7 +309,7 @@ async def test_create_api_whitespace_only_requester_is_422(client, login, api, v
 async def test_create_api_return_date_is_required_422(client, login, api, vm_on, ctx, session, value):
     """Срок использования обязателен для ВМ, как и для ПК: без него, пустой или в прошлом — 422, заказ не создаётся."""
     login(ctx.user)
-    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+    body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
             "requester_name": "Иван", "requester_nick": "iv"}
     if value != "missing":
         body["expected_return_at"] = value
@@ -236,7 +319,7 @@ async def test_create_api_return_date_is_required_422(client, login, api, vm_on,
 
 async def test_create_api_saves_return_date(client, login, api, vm_on, ctx):
     login(ctx.user)
-    body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
+    body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
             "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body)
     assert r.status_code == 201 and r.json()["expected_return_at"] == TOMORROW
@@ -252,10 +335,10 @@ async def test_create_next_success(session, vm_on, ctx, vsphere, notify):
         "ready", None, "vm-1", "10.0.0.5", "poweredOn")
     assert vm.ready_at is not None
     (name, cpu, ram, disk, annotation), = vsphere.created
-    assert (name, cpu, ram, disk) == ("rent-dev-box", 4, 8, 100)
+    assert (name, cpu, ram, disk) == ("A1001", 4, 8, 100)
     assert "Иван Иванов" in annotation and "QA" in annotation and "проверка" in annotation
     notify.assert_awaited_once()
-    assert "rent-dev-box" in notify.await_args.args[0]
+    assert "A1001" in notify.await_args.args[0]
 
 
 async def test_create_next_empty_queue(session, vm_on, vsphere, notify):
@@ -275,8 +358,8 @@ async def test_create_failure_marks_failed_and_never_deletes_by_name(session, vm
 
 async def test_create_failure_name_taken_by_foreign_vm_deletes_nothing(session, vm_on, ctx, vsphere, notify):
     """Имя уже занято чужой ВМ в vCenter: заявка падает, чужая ВМ остаётся нетронутой."""
-    vsphere.create_errors = [VSphereError("ВМ с именем «rent-dev-box» уже есть в vCenter")] * 2
-    vsphere.existing["rent-dev-box"] = VmInfo("vm-foreign", "rent-dev-box", "poweredOn", None)
+    vsphere.create_errors = [VSphereError("ВМ с именем «A1001» уже есть в vCenter")] * 2
+    vsphere.existing["A1001"] = VmInfo("vm-foreign", "A1001", "poweredOn", None)
     vm = await request(session, ctx)
     await vm_jobs.create_next(session)
     vm = await status_of(session, vm)
@@ -321,7 +404,7 @@ async def test_create_failure_notifies_executors_once_after_second_attempt(sessi
     await vm_jobs.create_next(session)
     notify.assert_awaited_once()
     text = notify.await_args.args[0]
-    assert "rent-dev-box" in text and "Иван Иванов" in text and "QA" in text and "boom" in text
+    assert "A1001" in text and "Иван Иванов" in text and "QA" in text and "boom" in text
 
 
 async def test_create_retry_success_does_not_notify_about_failure(session, vm_on, ctx, vsphere, notify):
@@ -341,8 +424,8 @@ async def test_create_failure_notification_truncates_long_error(session, vm_on, 
 
 async def test_create_pending_drains_queue_one_by_one(session, vm_on, ctx, vsphere, notify):
     await runtime.update(session, {"vm_max_per_user": 5})
-    for i in range(3):
-        await request(session, ctx, name=f"vm-{i}")
+    for _ in range(3):
+        await request(session, ctx)
     await vm_jobs.create_pending(session)
     assert len(vsphere.created) == 3
     rows = (await session.scalars(select(VirtualMachine).order_by(VirtualMachine.id)
@@ -355,8 +438,8 @@ async def test_create_pending_drains_queue_one_by_one(session, vm_on, ctx, vsphe
 async def test_create_pending_failed_vm_does_not_loop_forever(session, vm_on, ctx, vsphere, notify):
     await runtime.update(session, {"vm_max_per_user": 5})
     vsphere.create_errors = [RuntimeError("нет места")] * 2  # первая ВМ падает обеими попытками, вторая создаётся
-    await request(session, ctx, name="vm-bad")
-    await request(session, ctx, name="vm-ok")
+    await request(session, ctx)
+    await request(session, ctx)
     await vm_jobs.create_pending(session)
     rows = (await session.scalars(select(VirtualMachine).order_by(VirtualMachine.id)
                                   .execution_options(populate_existing=True))).unique().all()
@@ -366,7 +449,7 @@ async def test_create_pending_failed_vm_does_not_loop_forever(session, vm_on, ct
 async def test_upkeep_deletes_at_most_batch_and_fills_ip(session, vm_on, ctx, vsphere, notify):
     await runtime.update(session, {"vm_max_per_user": 5})
     vsphere.ip = None
-    made = [await request(session, ctx, name=f"vm-{i}") for i in range(3)]
+    made = [await request(session, ctx) for _ in range(3)]
     await vm_jobs.create_pending(session)
     for vm in made:
         await vms.release(session, ctx.user, vm.id)
@@ -478,11 +561,11 @@ async def test_refresh_ips_fills_missing_ip(session, vm_on, ctx, vsphere, notify
 
 
 async def test_recover_creating(session, vm_on, ctx, vsphere):
-    found, lost = await request(session, ctx, name="vm-found"), await request(session, ctx, name="vm-lost")
+    found, lost = await request(session, ctx), await request(session, ctx)
     for vm in (found, lost):
         vm.status = "creating"
     await session.commit()
-    vsphere.existing["rent-vm-found"] = VmInfo("vm-77", "rent-vm-found", "poweredOn", None)
+    vsphere.existing["A1001"] = VmInfo("vm-77", "A1001", "poweredOn", None)
     await vm_jobs.recover(session)
     found, lost = await status_of(session, found), await status_of(session, lost)
     assert (found.status, found.vsphere_moid) == ("ready", "vm-77") and lost.status == "queued"
@@ -549,7 +632,7 @@ async def test_release_permissions_and_states(session, vm_on, ctx, make_user, vs
     with pytest.raises(Conflict, match="уже удаляется"):
         await vms.release(session, ctx.user, vm.id)
 
-    creating = await request(session, ctx, name="vm-two")
+    creating = await request(session, ctx)
     creating.status = "creating"
     await session.commit()
     with pytest.raises(Conflict, match="создаётся"):
@@ -578,10 +661,10 @@ async def test_list_vms_mine_and_team(session, vm_on, ctx, make_user, make_depar
     ops = await make_department("Ops")
     foreign = await make_user("sidorov", department=ops)
     loner = await make_user("loner")
-    own = await request(session, ctx, name="own-box")
-    by_mate = await vms.create_request(session, mate, payload(ctx.dept.id, name="mate-box"))
-    by_loner = await vms.create_request(session, loner, payload(ctx.dept.id, name="loner-box"))  # на команду QA
-    await vms.create_request(session, foreign, payload(ops.id, name="foreign-box"))
+    own = await request(session, ctx)
+    by_mate = await vms.create_request(session, mate, payload(ctx.dept.id))
+    by_loner = await vms.create_request(session, loner, payload(ctx.dept.id))  # на команду QA
+    await vms.create_request(session, foreign, payload(ops.id))
 
     assert [v.id for v in await vms.list_vms(session, ctx.user)] == [by_loner.id, by_mate.id, own.id]
     assert [v.id for v in await vms.list_vms(session, loner)] == [by_loner.id]  # без отдела — только свои
@@ -757,9 +840,9 @@ async def test_release_waits_for_worker_that_took_the_vm(session, vm_on, ctx):
     assert (await status_of(session, vm)).status == "creating"
 
 
-async def _create_in_own_session(user, dept_id, name):
+async def _create_in_own_session(user, dept_id):
     async with SessionLocal() as s:
-        return await vms.create_request(s, user, payload(dept_id, name=name))
+        return await vms.create_request(s, user, payload(dept_id))
 
 
 @pytest.mark.parametrize("limit", [1, 2])
@@ -767,7 +850,7 @@ async def test_per_user_limit_holds_under_concurrent_requests(session, vm_on, ct
     """Пять одновременных заявок одного человека: проходит ровно limit, остальные — отказ по лимиту."""
     await runtime.update(session, {"vm_max_per_user": limit})
     results = await asyncio.gather(
-        *(_create_in_own_session(ctx.user, ctx.dept.id, f"vm-race{i}") for i in range(5)), return_exceptions=True)
+        *(_create_in_own_session(ctx.user, ctx.dept.id) for _ in range(5)), return_exceptions=True)
     created = [r for r in results if isinstance(r, VirtualMachine)]
     refused = [r for r in results if not isinstance(r, VirtualMachine)]
     assert len(created) == limit
@@ -779,8 +862,9 @@ async def test_limit_lock_does_not_block_other_users(session, vm_on, ctx, make_u
     await runtime.update(session, {"vm_max_per_user": 1})
     other = await make_user("petrov", department=ctx.dept)
     results = await asyncio.gather(
-        _create_in_own_session(ctx.user, ctx.dept.id, "vm-first"), _create_in_own_session(other, ctx.dept.id, "vm-second"))
+        _create_in_own_session(ctx.user, ctx.dept.id), _create_in_own_session(other, ctx.dept.id))
     assert all(isinstance(r, VirtualMachine) for r in results)
+    assert len({r.name for r in results}) == 2  # одновременные заказы разных людей получают разные номера
 
 
 async def test_my_vms_api_includes_team(client, login, api, vm_on, ctx, session, make_user, make_department):

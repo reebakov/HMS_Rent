@@ -42,7 +42,7 @@ async def _notify_failed(vm: VirtualMachine) -> None:
 
 
 async def _fail(session: AsyncSession, vm: VirtualMachine, error: str) -> bool:
-    vm.status, vm.error = VmStatus.failed.value, error
+    vm.status, vm.error, vm.insight_pending = VmStatus.failed.value, error, True  # номер вернётся в Insight
     await session.commit()
     await _notify_failed(vm)
     return True
@@ -97,6 +97,7 @@ async def create_next(session: AsyncSession) -> bool:
             continue
         vm.status, vm.error = VmStatus.ready.value, None
         vm.notes_return_at = annotated_until
+        vm.insight_pending = True  # в Insight известен IP
         vm.vsphere_moid, vm.ip_address, vm.power_state = info.moid, info.ip_address, info.power_state
         vm.ready_at = datetime.now(timezone.utc)
         await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
@@ -115,6 +116,7 @@ async def delete_next(session: AsyncSession) -> bool:
         if vm.vsphere_moid:  # без moid в vCenter нечего удалять: ВМ не создавалась, а по имени искать нельзя
             await asyncio.to_thread(vsphere.delete_vm, vm.vsphere_moid)
         vm.status, vm.deleted_at, vm.error = VmStatus.deleted.value, datetime.now(timezone.utc), None
+        vm.insight_pending = True  # номер освободится в Insight
     except Exception as exc:  # noqa: BLE001 — оставляем в deleting, повторим на следующем круге
         log.exception("Не удалось удалить ВМ %s", vm.name)
         vm.error = str(exc)[:1000]
@@ -134,6 +136,8 @@ async def refresh_ips(session: AsyncSession, batch: int = 10) -> None:
         except Exception:  # noqa: BLE001
             continue
         if info:
+            if info.ip_address != vm.ip_address:
+                vm.insight_pending = True
             vm.ip_address, vm.power_state = info.ip_address, info.power_state
     await session.commit()
 

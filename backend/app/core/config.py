@@ -73,7 +73,6 @@ class Settings(BaseSettings):
     vcenter_template_windows: str = "Template_Win"  # шаблон, с которого клонируем
     vcenter_datastore: str = ""  # пусто — тот же datastore, что у шаблона
     vcenter_customization_spec: str = ""  # спецификация гостевой настройки (sysprep); пусто — без неё
-    vm_name_prefix: str = "rent-"  # имя ВМ в vSphere = префикс + имя от пользователя
 
     # --- Категории мощности (если в Insight нет своего поля) ---
     tier_weak_min_ram_gb: int = 8  # слабее — в каталог не попадает (слабые = от 8 ГБ до границы «средних»)

@@ -274,8 +274,8 @@ describe('ExtendDialog', () => {
   })
 
   it('продление ВМ уходит в POST /vms/{id}/extend с тем же диалогом', async () => {
-    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'rent-qa-02', due: addDays(today, 3) })
-    expect(screen.getByRole('dialog', { name: 'Продлить аренду rent-qa-02' })).toBeInTheDocument()
+    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'A1002', due: addDays(today, 3) })
+    expect(screen.getByRole('dialog', { name: 'Продлить аренду A1002' })).toBeInTheDocument()
     expect(dateInput()).toHaveAttribute('min', addDays(today, 4))
     await user.type(dateInput(), '2099-12-31')
     await user.type(screen.getByLabelText(/Причина/), 'Нужна до релиза')
@@ -283,12 +283,12 @@ describe('ExtendDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(api.post).toHaveBeenCalledOnce()
     expect(api.post).toHaveBeenCalledWith('/vms/4/extend', { expected_return_at: '2099-12-31', comment: 'Нужна до релиза' })
-    expect(toast.success).toHaveBeenCalledWith(`Аренда rent-qa-02 продлена до ${formatDate('2099-12-31')}`)
+    expect(toast.success).toHaveBeenCalledWith(`Аренда A1002 продлена до ${formatDate('2099-12-31')}`)
   })
 
   it('ошибка продления ВМ (409) показывается в форме, окно остаётся открытым', async () => {
     vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Виртуалка удаляется или уже удалена — продлить срок нельзя'))
-    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'rent-qa-02', due: null })
+    const { onClose, user } = setupExtend({ kind: 'vm', id: 4, name: 'A1002', due: null })
     await user.type(dateInput(), '2099-12-31')
     await user.click(extendButton())
     expect(await screen.findByText('Виртуалка удаляется или уже удалена — продлить срок нельзя')).toBeInTheDocument()

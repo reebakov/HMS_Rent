@@ -41,6 +41,9 @@ class VirtualMachine(Base, TimestampMixin):
         # одно имя не может быть у двух «живых» виртуалок
         Index("uq_virtual_machines_alive_name", "name", unique=True,
               postgresql_where=text("status NOT IN ('deleted', 'failed')")),
+        # и один объект Insight (номер ВМ) не может быть у двух живых виртуалок
+        Index("uq_virtual_machines_alive_insight_object", "insight_object_id", unique=True,
+              postgresql_where=text("insight_object_id IS NOT NULL AND status NOT IN ('deleted', 'failed')")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -64,6 +67,9 @@ class VirtualMachine(Base, TimestampMixin):
     expected_return_at: Mapped[date | None] = mapped_column(Date)
 
     vsphere_moid: Mapped[str | None] = mapped_column(String(64))  # id ВМ в vCenter, например vm-1234
+    insight_object_id: Mapped[int | None]  # объект Insight типа Virtual: его имя (A1###) стало именем ВМ
+    insight_object_type_id: Mapped[int | None]
+    insight_pending: Mapped[bool] = mapped_column(default=False, server_default=text("false"))  # записать в Insight
     notes_return_at: Mapped[date | None] = mapped_column(Date)  # срок, записанный сейчас в Notes ВМ в vCenter
     ip_address: Mapped[str | None] = mapped_column(String(64))
     power_state: Mapped[str | None] = mapped_column(String(32))

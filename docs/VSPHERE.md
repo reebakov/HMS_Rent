@@ -9,7 +9,7 @@
 Обязательны `VCENTER_HOST` (адрес vCenter), `VCENTER_USER` (сервисная учётка) и `VCENTER_PASSWORD`: без них конструктор
 выключен (включается тумблером в «Настройках», когда vCenter задан). Остальные настройки (`VCENTER_VERIFY_SSL`,
 `VCENTER_DATACENTER`, `VCENTER_CLUSTER`, `VCENTER_RESOURCE_POOL`, `VCENTER_FOLDER`, `VCENTER_DATASTORE`,
-`VCENTER_CUSTOMIZATION_SPEC`, `VM_NAME_PREFIX`) описаны со значениями по умолчанию в `.env.example` и
+`VCENTER_CUSTOMIZATION_SPEC`) описаны со значениями по умолчанию в `.env.example` и
 `backend/app/core/config.py`.
 
 `VCENTER_TEMPLATE_WINDOWS` и `VCENTER_CUSTOMIZATION_SPEC` задают только начальный шаблон «Windows 10»: список шаблонов

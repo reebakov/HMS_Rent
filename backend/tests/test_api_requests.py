@@ -31,7 +31,7 @@ async def env(session, make_department, make_user, make_pool, make_computer):
     admin = await make_user("admin", role=UserRole.admin.value)
     comp = await make_computer("A001", await make_pool(), insight_status="Свободен")
     booking = await add_booking(session, comp, owner, qa)
-    vm = VirtualMachine(name="rent-vm1", cpu=2, ram_gb=4, disk_gb=50, status="ready", order_number=77,
+    vm = VirtualMachine(name="A1007", cpu=2, ram_gb=4, disk_gb=50, status="ready", order_number=77,
                         user_id=owner.id, department_id=qa.id, requester_name="Иван", requester_nick="ivan", attrs={})
     session.add(vm)
     await session.commit()

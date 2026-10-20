@@ -29,6 +29,10 @@ class InsightSource(Protocol):
         """Все компьютеры/ВМ, попадающие под запрос из маппинга (limit > 0 — только первые N)."""
         ...
 
+    async def fetch_free_vm_objects(self) -> list[InsightObject]:
+        """Объекты ВМ «На складе» (запрос vm_free_query): из них портал берёт номер для новой ВМ."""
+        ...
+
     async def get_object(self, object_id: int) -> InsightObject | None:
         """Один объект «прямо сейчас» (None — не найден) — для перепроверки статуса перед бронью."""
         ...

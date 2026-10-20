@@ -1,5 +1,6 @@
 """Виртуалки из конструктора: заявка → очередь → worker клонирует шаблон в vSphere → «Моя аренда»."""
 import asyncio
+import logging
 from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, NotFound
 from app.db.integrity import conflict_on_integrity_error
+from app.integrations.insight.base import InsightError, InsightObject
+from app.integrations.insight.factory import create_insight_source
 from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
 from app.schemas.settings import RuntimeConfig, VmTemplate
@@ -16,8 +19,11 @@ from app.services import departments, overdue, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number
 
+log = logging.getLogger(__name__)
+
 ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
 VM_LIMIT_LOCK_KEY = 73010002  # пространство ключей advisory-lock для лимита ВМ на пользователя (свой ключ у sync.py)
+VM_NUMBER_LOCK_KEY = 73010003  # выбор свободного номера ВМ: заказы разных людей не должны взять один объект
 
 
 async def _alive_count(session: AsyncSession, user_id: int) -> int:
@@ -44,7 +50,7 @@ async def options(session: AsyncSession, user: User) -> VmOptions:
     elif used >= cfg.vm_max_per_user:
         reason = f"У вас уже {used} из {cfg.vm_max_per_user} доступных виртуалок"
     return VmOptions(
-        enabled=reason is None, reason=reason, name_prefix=settings.vm_name_prefix,
+        enabled=reason is None, reason=reason,
         template=next((t.label for t in _available_templates(cfg)), "—"),
         min_cpu=cfg.vm_min_cpu, max_cpu=cfg.vm_max_cpu, min_ram_gb=cfg.vm_min_ram_gb, max_ram_gb=cfg.vm_max_ram_gb,
         min_disk_gb=cfg.vm_min_disk_gb, max_disk_gb=cfg.vm_max_disk_gb,
@@ -64,6 +70,30 @@ async def check_vcenter() -> dict:
         return {"ok": True, **(await asyncio.to_thread(vsphere.check, names))}
     except vsphere.VSphereError as exc:
         return {"ok": False, "error": str(exc)}
+
+
+async def _take_free_number(session: AsyncSession) -> InsightObject:
+    """Свободный объект ВМ из Insight («На складе»), не занятый живой ВМ портала; его имя (A1###) станет именем ВМ."""
+    source = create_insight_source()
+    try:
+        objects = await source.fetch_free_vm_objects()
+    except InsightError as exc:
+        log.warning("Не удалось получить свободные номера ВМ из Insight: %s", exc)
+        raise Conflict("Insight сейчас недоступен, номер для ВМ выдать нельзя. Попробуйте позже") from exc
+    finally:
+        await source.close()
+    # lock держится до commit заказа: сеть к Insight уже позади, под ним только запросы к своей БД
+    await session.execute(select(func.pg_advisory_xact_lock(VM_NUMBER_LOCK_KEY)))
+    busy = set(await session.scalars(
+        select(VirtualMachine.insight_object_id).where(
+            VirtualMachine.insight_object_id.is_not(None),
+            VirtualMachine.status.notin_((VmStatus.deleted, VmStatus.failed)),
+        )
+    ))
+    free = sorted((o for o in objects if o.id not in busy), key=lambda o: (len(o.label), o.label))
+    if not free:
+        raise Conflict("Нет свободных номеров ВМ в Insight. Обратитесь к администратору")
+    return free[0]
 
 
 async def create_request(session: AsyncSession, user: User, data: VmCreate) -> VirtualMachine:
@@ -88,15 +118,17 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
         raise DomainError(f"Для {tmpl.label} диск — не меньше {tmpl.min_disk_gb} ГБ")
     dept = await departments.get_active(session, data.department_id)
     until, longer = term_limit.plan(user, data.expected_return_at)
+    number = await _take_free_number(session)
     vm = VirtualMachine(
-        order_number=await next_order_number(session),
-        name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
+        order_number=await next_order_number(session), insight_object_id=number.id,
+        insight_object_type_id=number.object_type_id, insight_pending=True,
+        name=number.label, cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
         status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label, os=tmpl.os,
         requester_name=data.requester_name, requester_nick=data.requester_nick,
         purpose=data.purpose or None, expected_return_at=until, attrs={},
     )
     session.add(vm)
-    async with conflict_on_integrity_error(session, f"Имя «{vm.name}» уже занято — придумайте другое"):
+    async with conflict_on_integrity_error(session, f"Номер ВМ {vm.name} только что заняли — повторите заказ"):
         await session.flush()
         if longer:
             term_limit.open_request(session, user, requested=data.expected_return_at, comment=None, vm_id=vm.id)
@@ -140,6 +172,7 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
     vm.released_by_id = user.id
     if vm.status == VmStatus.deleted:
         vm.deleted_at = vm.released_at
+        vm.insight_pending = True  # номер освободится в Insight
     await session.commit()
     return await get_vm(session, vm.id)
 
@@ -152,7 +185,7 @@ def _ensure_extendable(vm: VirtualMachine) -> None:
 async def extend(session: AsyncSession, user: User, vm_id: int, data: VmExtend) -> VirtualMachine:
     """Продление срока ВМ: до лимита (текущий срок + 3 месяца) сразу, дальше — максимум сразу и заявка админу.
 
-    Срок меняется сразу и пишется в журнал продлений. В Insight ВМ не записываются."""
+    Срок меняется сразу и пишется в журнал продлений; новый срок worker запишет в объект ВМ в Insight."""
     vm = await _lock_vm(session, user, vm_id,
                         "Продлить ВМ может тот, кто её заказывал, участник его команды или администратор")
     _ensure_extendable(vm)
@@ -160,6 +193,7 @@ async def extend(session: AsyncSession, user: User, vm_id: int, data: VmExtend) 
                                     pending=vm.requested_return_at)
     overdue.record_extension(session, user, old=vm.expected_return_at, new=until, comment=data.comment, vm_id=vm.id)
     vm.expected_return_at = until
+    vm.insight_pending = True
     if longer:
         term_limit.open_request(session, user, requested=data.expected_return_at, comment=data.comment, vm_id=vm.id)
     await session.commit()
@@ -172,6 +206,7 @@ async def apply_term(session: AsyncSession, admin: User, vm_id: int, new: date, 
     _ensure_extendable(vm)
     overdue.record_extension(session, admin, old=vm.expected_return_at, new=new, comment=comment, vm_id=vm.id)
     vm.expected_return_at = new
+    vm.insight_pending = True
 
 
 async def list_vms(session: AsyncSession, user: User | None = None, include_deleted: bool = True) -> list[VirtualMachine]:

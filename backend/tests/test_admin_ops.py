@@ -179,14 +179,14 @@ async def add_vm_extension(session, vm, user, **kw) -> BookingExtension:
 async def test_extensions_list_both_kinds(admin, api, session, rented):
     """Журнал общий для ПК и ВМ: kind различает вид, у ПК заполнен booking, у ВМ — vm."""
     user, booking = rented
-    vm = await add_vm(session, user, _dept(booking), name="rent-box", expected_return_at=TODAY + timedelta(days=7))
+    vm = await add_vm(session, user, _dept(booking), name="A1006", expected_return_at=TODAY + timedelta(days=7))
     pc_ext = await add_extension(session, booking, user, created_at=datetime.now(timezone.utc) - timedelta(hours=1))
     vm_ext = await add_vm_extension(session, vm, user, comment="ещё сборка")
 
     items = {i["id"]: i for i in (await admin.get(api("/admin/extensions"))).json()}
     assert list(items) == [vm_ext.id, pc_ext.id]  # свежие сверху независимо от вида
     v = items[vm_ext.id]
-    assert (v["kind"], v["name"], v["booking"], v["comment"]) == ("vm", "rent-box", None, "ещё сборка")
+    assert (v["kind"], v["name"], v["booking"], v["comment"]) == ("vm", "A1006", None, "ещё сборка")
     assert (v["vm"]["id"], v["vm"]["order_number"], v["vm"]["department"]["name"], v["vm"]["status"]) == (
         vm.id, vm.order_number, "QA", "ready")
     assert (v["old_return_at"], v["new_return_at"], v["user"]["display_name"]) == ("2026-06-15", "2026-06-22", "Иван Иванов")
@@ -210,8 +210,8 @@ async def test_vm_extension_by_teammate_then_admin_sees_it_new_and_vm_not_overdu
                                                                                   rented):
     """Сквозной путь: ВМ просрочена, команда продлила → просрочка ушла, продление ждёт «Принято», потом принято."""
     user, booking = rented
-    vm = await add_vm(session, user, _dept(booking), name="rent-late", expected_return_at=TODAY - timedelta(days=3))
-    assert [(i["name"], i["days"]) for i in (await admin.get(api("/admin/overdue"))).json()] == [("rent-late", 3)]
+    vm = await add_vm(session, user, _dept(booking), name="A1008", expected_return_at=TODAY - timedelta(days=3))
+    assert [(i["name"], i["days"]) for i in (await admin.get(api("/admin/overdue"))).json()] == [("A1008", 3)]
 
     mate = await make_user("mate", department=_dept(booking))
     new = (TODAY + timedelta(days=10)).isoformat()
@@ -220,7 +220,7 @@ async def test_vm_extension_by_teammate_then_admin_sees_it_new_and_vm_not_overdu
     login(await make_user("boss2", role=UserRole.admin.value))
     assert (await admin.get(api("/admin/overdue"))).json() == []
     (ext,) = (await admin.get(api("/admin/extensions"))).json()
-    assert (ext["kind"], ext["name"], ext["acknowledged_at"], ext["new_return_at"]) == ("vm", "rent-late", None, new)
+    assert (ext["kind"], ext["name"], ext["acknowledged_at"], ext["new_return_at"]) == ("vm", "A1008", None, new)
     assert ext["user"]["username"] == "mate" and ext["vm"]["expected_return_at"] == new
     assert (await admin.post(api(f"/admin/extensions/{ext['id']}/ack"))).json()["acknowledged_by"]["username"] == "boss2"
 

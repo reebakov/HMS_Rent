@@ -27,7 +27,6 @@ const departments = [
 const makeOptions = (over: Partial<VmOptions> = {}): VmOptions => ({
   enabled: true,
   reason: null,
-  name_prefix: 'rent-',
   template: 'win10-tpl',
   min_cpu: 2,
   max_cpu: 8,
@@ -64,14 +63,13 @@ async function setup(onClose = vi.fn()) {
 
 const submit = () => screen.getByRole('button', { name: 'Создать' })
 const sliders = () => screen.getAllByRole('slider') as HTMLInputElement[] // ядра, память, диск
-const nameInput = () => screen.getByLabelText(/Имя виртуалки/)
+const autoNameHint = () => screen.getByText(/назначается автоматически/)
 
 const UNTIL = '2099-12-31'
 const untilInput = () => screen.getByLabelText(/Вернуть до/)
 
 /** Заполняет минимум, чтобы форма стала валидной (срок обязателен) */
-async function fillValid(user: ReturnType<typeof userEvent.setup>, name = 'design-01') {
-  await user.type(nameInput(), name)
+async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
   await user.type(untilInput(), UNTIL)
 }
@@ -86,7 +84,7 @@ beforeEach(() => {
     if (path === '/departments') return departments
     throw new Error(`неожиданный GET ${path}`)
   })
-  vi.mocked(api.post).mockResolvedValue({ id: 5, order_number: 77, name: 'rent-design-01' })
+  vi.mocked(api.post).mockResolvedValue({ id: 5, order_number: 77, name: 'A1001' })
 })
 
 describe('VmBuilderDialog', () => {
@@ -113,7 +111,7 @@ describe('VmBuilderDialog', () => {
     expect(submit()).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByLabelText(/Имя виртуалки/)).toBeInTheDocument()
+    expect(await screen.findByText(/назначается автоматически/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -133,7 +131,7 @@ describe('VmBuilderDialog', () => {
     options = makeOptions({ enabled: false, reason: 'vSphere не настроен администратором' })
     renderWithProviders(<VmBuilderDialog open onClose={() => undefined} />)
     expect(await screen.findByText('vSphere не настроен администратором')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/Имя виртуалки/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/назначается автоматически/)).not.toBeInTheDocument()
     expect(submit()).toBeDisabled()
   })
 
@@ -173,116 +171,11 @@ describe('VmBuilderDialog', () => {
     expect([cpu.value, ram.value, disk.value]).toEqual(['1', '2', '30'])
   })
 
-  it('подсказка показывает префикс vCenter и счётчик занятых ВМ', async () => {
-    const { user } = await setup()
-    expect(screen.getByText('В vCenter будет «rent-имя»', { exact: false })).toBeInTheDocument()
+  it('имя ВМ не вводится: подсказка про номер из Insight и счётчик занятых ВМ', async () => {
+    await setup()
+    expect(autoNameHint()).toHaveTextContent('Имя виртуалки (A1…) назначается автоматически')
+    expect(screen.queryByLabelText(/Имя виртуалки/)).not.toBeInTheDocument()
     expect(screen.getByText(/Занято виртуалок: 1 из 3/)).toBeInTheDocument()
-    await user.type(nameInput(), 'qa-01')
-    expect(screen.getByText('В vCenter будет «rent-qa-01»', { exact: false })).toBeInTheDocument()
-  })
-
-  describe('валидация имени', () => {
-    it('приводит к нижнему регистру', async () => {
-      const { user } = await setup()
-      await user.type(nameInput(), 'Design-01')
-      expect(nameInput()).toHaveValue('design-01')
-    })
-
-    it.each([
-      ['слишком короткое', 'ab'],
-      ['начинается с дефиса', '-abc'],
-      ['заканчивается дефисом', 'abc-'],
-      ['с пробелом', 'ab cd'],
-      ['с подчёркиванием', 'ab_cd'],
-      ['кириллица', 'дизайн'],
-      ['21 символ', 'a'.repeat(21)],
-    ])('%s — ошибка и кнопка отключена', async (_title, value) => {
-      const { user } = await setup()
-      await fillValid(user, value)
-      expect(screen.getByText(/Только a–z, 0–9 и дефис/)).toBeInTheDocument()
-      expect(submit()).toBeDisabled()
-    })
-
-    it.each([['3 символа', 'abc'], ['20 символов', 'a'.repeat(20)], ['с дефисом внутри', 'a-b-c'], ['только цифры', '123']])(
-      '%s — допустимо',
-      async (_title, value) => {
-        const { user } = await setup()
-        await fillValid(user, value)
-        expect(screen.queryByText(/Только a–z, 0–9 и дефис/)).not.toBeInTheDocument()
-        expect(submit()).toBeEnabled()
-      },
-    )
-
-    it('пустое имя — без ошибки, но кнопка отключена', async () => {
-      const { user } = await setup()
-      await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
-      await user.type(untilInput(), UNTIL)
-      expect(screen.queryByText(/Только a–z, 0–9 и дефис/)).not.toBeInTheDocument()
-      expect(submit()).toBeDisabled()
-    })
-  })
-
-  describe('прочие обязательные поля', () => {
-    it('без отдела отправить нельзя', async () => {
-      const { user } = await setup()
-      await user.type(nameInput(), 'design-01')
-      await user.type(untilInput(), UNTIL)
-      expect(submit()).toBeDisabled()
-      await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
-      expect(submit()).toBeEnabled()
-    })
-
-    it('имя и фамилия короче 2 символов или пустой ник блокируют отправку', async () => {
-      const { user } = await setup()
-      await fillValid(user)
-      const person = screen.getByLabelText(/Имя и фамилия/)
-      await user.clear(person)
-      await user.type(person, 'И')
-      expect(submit()).toBeDisabled()
-      await user.type(person, 'в')
-      expect(submit()).toBeEnabled()
-
-      const nick = screen.getByLabelText(/Ник/)
-      await user.clear(nick)
-      expect(submit()).toBeDisabled()
-    })
-
-    it('«Вернуть до» не позволяет выбрать прошедшую дату', async () => {
-      await setup()
-      const min = (screen.getByLabelText(/Вернуть до/) as HTMLInputElement).min
-      expect(min).toBe(todayLocal())
-    })
-
-    it('срок обязателен: подпись с «*», без срока «Создать» неактивна, со сроком — доступна', async () => {
-      const { user } = await setup()
-      expect(screen.getByText('Вернуть до').closest('label')).toHaveTextContent('*')
-      expect(screen.queryByText('Необязательно')).not.toBeInTheDocument()
-      await user.type(nameInput(), 'design-01')
-      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
-      expect(submit()).toBeDisabled()
-      await user.type(untilInput(), UNTIL)
-      expect(submit()).toBeEnabled()
-      await user.clear(untilInput())
-      expect(submit()).toBeDisabled()
-    })
-
-    it('прошедшую дату, впечатанную вручную в обход min, отправить нельзя', async () => {
-      const { user } = await setup()
-      await user.type(nameInput(), 'design-01')
-      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
-      await user.type(untilInput(), addDays(todayLocal(), -1))
-      expect(submit()).toBeDisabled()
-      await user.type(nameInput(), '{Enter}')
-      expect(api.post).not.toHaveBeenCalled()
-    })
-
-    it('сегодняшняя дата допустима', async () => {
-      const { user } = await setup()
-      await user.type(nameInput(), 'design-01')
-      await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
-      await user.type(untilInput(), todayLocal())
-      expect(submit()).toBeEnabled()
-    })
   })
 
   describe('отправка', () => {
@@ -296,7 +189,6 @@ describe('VmBuilderDialog', () => {
 
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
       expect(api.post).toHaveBeenCalledWith('/vms', {
-        name: 'design-01',
         cpu: 6,
         ram_gb: 12,
         disk_gb: 120,
@@ -310,17 +202,18 @@ describe('VmBuilderDialog', () => {
       expect(screen.getByTestId('path')).toHaveTextContent('/my')
     })
 
-    it('Enter в поле имени отправляет валидную форму', async () => {
+    it('Enter в поле формы отправляет валидную форму', async () => {
       const { onClose, user } = await setup()
       await fillValid(user)
-      await user.type(nameInput(), '{Enter}')
+      await user.type(screen.getByLabelText(/Имя и фамилия/), '{Enter}')
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
-      expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ name: 'design-01' }))
+      expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ department_id: 2 }))
+      expect(vi.mocked(api.post).mock.calls[0][1]).not.toHaveProperty('name')
     })
 
-    it('Enter в невалидной форме ничего не отправляет', async () => {
+    it('Enter в невалидной форме (нет отдела и срока) ничего не отправляет', async () => {
       const { user } = await setup()
-      await user.type(nameInput(), 'ab{Enter}')
+      await user.type(screen.getByLabelText(/Имя и фамилия/), '{Enter}')
       expect(api.post).not.toHaveBeenCalled()
     })
 
@@ -497,7 +390,6 @@ describe('VmBuilderDialog: лимит срока', () => {
     expect(screen.getByText(`Без согласования — до ${formatDate(limit)}`)).toBeInTheDocument()
     expect(screen.queryByText(/администратору уйдёт заявка/)).not.toBeInTheDocument()
 
-    await user.type(nameInput(), 'design-01')
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
     await user.type(untilInput(), beyond)
     expect(screen.getByText(/администратору уйдёт заявка/)).toHaveTextContent(
@@ -508,10 +400,9 @@ describe('VmBuilderDialog: лимит срока', () => {
 
   it('заказ ушёл в заявку админу — тост с пояснением', async () => {
     vi.mocked(api.post).mockResolvedValue({
-      id: 5, order_number: 77, name: 'rent-design-01', expected_return_at: limit, requested_return_at: beyond,
+      id: 5, order_number: 77, name: 'A1001', expected_return_at: limit, requested_return_at: beyond,
     })
     const { onClose, user } = await setup()
-    await user.type(nameInput(), 'design-01')
     await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
     await user.type(untilInput(), beyond)
     await user.click(submit())

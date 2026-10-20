@@ -58,7 +58,6 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const create = useCreateVm()
   const o = options.data
 
-  const [name, setName] = useState('')
   const [cpu, setCpu] = useState(2)
   const [ram, setRam] = useState(4)
   const [disk, setDisk] = useState(50)
@@ -70,7 +69,6 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
 
   useEffect(() => {
     if (!open || !o) return
-    setName('')
     setCpu(o.min_cpu)
     setRam(o.min_ram_gb)
     setDisk(o.min_disk_gb)
@@ -82,19 +80,18 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     create.reset()
   }, [open, o?.min_cpu])
 
-  const nameOk = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/.test(name)
   const tmpl = o?.templates.find((t) => t.key === templateKey)
   const minDisk = Math.max(o?.min_disk_gb ?? 0, tmpl?.min_disk_gb ?? 0)
   // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
   const valid =
-    o?.enabled && tmpl?.available && nameOk && departmentId && person.trim().length >= 2 && nick.trim() && until >= todayLocal()
+    o?.enabled && tmpl?.available && departmentId && person.trim().length >= 2 && nick.trim() && until >= todayLocal()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!valid) return
     try {
       const vm = await create.mutateAsync({
-        name, cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
+        cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
         requester_name: person, requester_nick: nick, expected_return_at: until,
       })
       toastTerm(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`, vm)
@@ -136,14 +133,9 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
             <div className="rounded-lg border border-warning/25 bg-warning/5 px-4 py-3 text-[13px] text-warning">{o.reason}</div>
           ) : (
             <div className="space-y-5">
-              <Field
-                label="Имя виртуалки"
-                required
-                hint={`В vCenter будет «${o.name_prefix}${name || 'имя'}». Латиница, цифры и дефис, 3–20 символов`}
-                error={name && !nameOk ? 'Только a–z, 0–9 и дефис; не начинать и не заканчивать дефисом' : undefined}
-              >
-                <Input value={name} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="design-01" />
-              </Field>
+              <p className="rounded-lg bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+                Имя виртуалки (A1…) назначается автоматически: номер берётся из свободных в Insight.
+              </p>
 
               <div>
                 <p className="mb-2 text-[13px] font-medium">Операционная система</p>

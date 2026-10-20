@@ -20,6 +20,7 @@ FIELDS = (
 class WritebackMapping:
     status_attribute: str | None = None
     status_values: dict[str, str] = field(default_factory=dict)  # наш статус -> статус Insight
+    vm_status_values: dict[str, str] = field(default_factory=dict)  # taken / free -> статус объекта ВМ в Insight
     department_attribute: str | None = None  # «Команда-получатель»
     owner_attribute: str | None = None
     pool_attribute: str | None = None  # «Пул выдачи»
@@ -36,6 +37,7 @@ class InsightMapping:
     status_map: dict[str, str] = field(default_factory=dict)  # статус Insight (lower) -> ComputerStatus
     default_status: str = ComputerStatus.unknown.value
     virtual_object_types: list[str] = field(default_factory=list)
+    vm_free_query: str | None = None  # объекты ВМ «На складе»: из них берётся номер (имя ВМ) при заказе
     tier_values: dict[str, str] = field(default_factory=dict)  # значение Insight (lower) -> Tier
     writeback: WritebackMapping = field(default_factory=WritebackMapping)
 
@@ -88,10 +90,13 @@ def load_mapping(path: Path) -> InsightMapping:
         status_map=statuses,
         default_status=raw.get("default_status", ComputerStatus.unknown.value),
         virtual_object_types=[t.lower() for t in raw.get("virtual_object_types") or []],
+        vm_free_query=raw.get("vm_free_query") or None,
         tier_values=tiers,
         writeback=WritebackMapping(
             status_attribute=wb.get("status_attribute"),
             status_values={str(k): str(v) for k, v in (wb.get("status_values") or {}).items() if v},
+            vm_status_values={"taken": "Используется", "free": "На складе"}
+            | {str(k): str(v) for k, v in (wb.get("vm_status_values") or {}).items() if v},
             # если в блоке writeback имя атрибута не задано — пишем туда же, откуда читаем (attributes)
             department_attribute=wb.get("department_attribute") or attrs.get("team"),
             owner_attribute=wb.get("owner_attribute"),

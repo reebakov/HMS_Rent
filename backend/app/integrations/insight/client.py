@@ -162,6 +162,11 @@ class InsightClient:
         log.info("Insight: получено %s объектов", len(result))
         return result
 
+    async def fetch_free_vm_objects(self) -> list[InsightObject]:
+        if not self.mapping.vm_free_query:
+            raise InsightError("В insight_mapping.yaml не задан vm_free_query: нечем выдавать номера ВМ")
+        return await self.fetch_objects(query=self.mapping.vm_free_query)
+
     # ---------- запись ----------
 
     async def _status_id(self, name: str) -> str:

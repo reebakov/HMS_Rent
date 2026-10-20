@@ -39,7 +39,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
 const makeVm = (over: Partial<Vm> = {}): Vm => ({
   id: 3,
   order_number: 200,
-  name: 'rent-design-01',
+  name: 'A1001',
   cpu: 4,
   ram_gb: 8,
   disk_gb: 80,
@@ -453,9 +453,9 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       makeRequest({ id: 8, booking_id: 1, vm_id: null, issue_key: 'HMS-PC' }),
     ]
     renderSdPage()
-    await screen.findByText('rent-design-01')
-    expect(await cardOf('rent-design-01').findByRole('button', { name: /HMS-VM/ })).toBeInTheDocument()
-    expect(cardOf('rent-design-01').queryByRole('button', { name: /HMS-PC/ })).not.toBeInTheDocument()
+    await screen.findByText('A1001')
+    expect(await cardOf('A1001').findByRole('button', { name: /HMS-VM/ })).toBeInTheDocument()
+    expect(cardOf('A1001').queryByRole('button', { name: /HMS-PC/ })).not.toBeInTheDocument()
     expect(await (await card('PC-010')).findByRole('button', { name: /HMS-PC/ })).toBeInTheDocument()
     expect(cardOf('PC-010').queryByRole('button', { name: /HMS-VM/ })).not.toBeInTheDocument()
   })
@@ -464,7 +464,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     sdEnabled = false
     vms = [makeVm()]
     renderSdPage()
-    await screen.findByText('rent-design-01')
+    await screen.findByText('A1001')
     await cfgLoaded()
     expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
   })
@@ -473,7 +473,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
     bookings = []
     vms = [makeVm({ status: 'deleting' })]
     renderSdPage()
-    await screen.findByText('rent-design-01')
+    await screen.findByText('A1001')
     await cfgLoaded()
     expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
   })
@@ -517,7 +517,7 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       vi.mocked(api.post).mockResolvedValue(makeRequest({ vm_id: 3, booking_id: null }))
       renderSdPage()
       await user.click(await screen.findByRole('button', { name: 'Сообщить о проблеме' }))
-      const dialog = screen.getByRole('dialog', { name: 'Проблема с rent-design-01' })
+      const dialog = screen.getByRole('dialog', { name: 'Проблема с A1001' })
       await user.type(within(dialog).getByLabelText(/Что случилось/), 'Нет интернета')
       await user.click(within(dialog).getByRole('button', { name: 'Отправить' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith('/requests', { booking_id: undefined, vm_id: 3, message: 'Нет интернета' }))

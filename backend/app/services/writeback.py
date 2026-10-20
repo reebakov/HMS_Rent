@@ -64,7 +64,8 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
             try:
                 warning = None
                 if values and comp.insight_object_id:
-                    warning = await _write(source, comp, values, extras, wb.status_attribute)
+                    warning = await write_object(source, comp.insight_object_id, comp.insight_object_type_id,
+                                                 values, extras, wb.status_attribute)
                 comp.writeback_pending = False
                 if warning and warning != comp.writeback_error:  # не спамим журнал одной и той же ошибкой
                     add_event(session, computer_id=comp.id, event_type=EventType.writeback_failed, message=warning)
@@ -87,16 +88,15 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
     return done
 
 
-async def _write(source: InsightSource, comp: Computer, values: dict, extras: dict, status_attribute: str | None) -> str | None:
-    """Пишет значения в Insight. Возвращает предупреждение, если статус записан, а доп. поля — нет."""
+async def write_object(source: InsightSource, object_id: int, type_id: int | None, values: dict, extras: dict,
+                       status_attribute: str | None) -> str | None:
+    """Пишет значения в объект Insight. Возвращает предупреждение, если статус записан, а доп. поля — нет."""
     try:
-        await source.update_object(comp.insight_object_id, comp.insight_object_type_id, values, optional=set(extras))
+        await source.update_object(object_id, type_id, values, optional=set(extras))
         return None
     except Exception as exc:  # noqa: BLE001
         if not extras or status_attribute not in values:
             raise
         # доп. поле не прошло (например, у атрибута тип «Select» без такого значения) — статус всё равно пишем
-        await source.update_object(
-            comp.insight_object_id, comp.insight_object_type_id, {status_attribute: values[status_attribute]}
-        )
+        await source.update_object(object_id, type_id, {status_attribute: values[status_attribute]})
         return f"Статус записан, но поля аренды (пул / команда / срок / номер заказа) — нет: {str(exc)[:300]}"

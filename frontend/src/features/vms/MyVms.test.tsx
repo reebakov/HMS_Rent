@@ -19,7 +19,7 @@ vi.mock('@/auth/AuthProvider', () => ({ useSession: () => makeSession() }))
 const makeVm = (over: Partial<Vm> = {}): Vm => ({
   id: 1,
   order_number: 200,
-  name: 'rent-design-01',
+  name: 'A1001',
   cpu: 4,
   ram_gb: 8,
   disk_gb: 80,
@@ -96,7 +96,7 @@ describe('MyVms', () => {
 
     fail = false
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(await screen.findByText('A1001')).toBeInTheDocument()
     expect(screen.queryByText(/Не удалось загрузить/)).not.toBeInTheDocument()
   })
 
@@ -179,21 +179,21 @@ describe('MyVms', () => {
     const teammate = { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' }
     const team = () => [
       makeVm({ id: 1 }),
-      makeVm({ id: 2, name: 'rent-qa-02', user: teammate, requester_name: 'Пётр Петров', requester_nick: 'p.petrov' }),
+      makeVm({ id: 2, name: 'A1002', user: teammate, requester_name: 'Пётр Петров', requester_nick: 'p.petrov' }),
     ]
 
     it('у чужой ВМ — «Арендатор: Имя (ник)», у своей подписи нет', async () => {
       await renderVms(team())
       const row = (name: string) => within(screen.getByText(name).closest('.flex-wrap') as HTMLElement)
-      expect(row('rent-qa-02').getByText('Арендатор: Пётр Петров (p.petrov)')).toBeInTheDocument()
-      expect(row('rent-design-01').queryByText(/Арендатор:/)).not.toBeInTheDocument()
+      expect(row('A1002').getByText('Арендатор: Пётр Петров (p.petrov)')).toBeInTheDocument()
+      expect(row('A1001').queryByText(/Арендатор:/)).not.toBeInTheDocument()
     })
 
     it('чужую ВМ можно удалить: запрос уходит по её id', async () => {
       vi.mocked(api.post).mockResolvedValue(makeVm({ status: 'deleting' }))
       const user = userEvent.setup()
       await renderVms(team())
-      await user.click(within(screen.getByText('rent-qa-02').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
+      await user.click(within(screen.getByText('A1002').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
       await user.click(screen.getByRole('button', { name: 'Удалить' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vms/2/release'))
     })
@@ -202,7 +202,7 @@ describe('MyVms', () => {
       vi.mocked(api.post).mockRejectedValue(new ApiError(403, 'Отказаться от ВМ может тот, кто её заказывал, участник его команды или администратор'))
       const user = userEvent.setup()
       await renderVms(team())
-      await user.click(within(screen.getByText('rent-qa-02').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
+      await user.click(within(screen.getByText('A1002').closest('.flex-wrap') as HTMLElement).getByRole('button', { name: 'Отказаться' }))
       await user.click(screen.getByRole('button', { name: 'Удалить' }))
       await waitFor(() =>
         expect(toast.error).toHaveBeenCalledWith('Отказаться от ВМ может тот, кто её заказывал, участник его команды или администратор'),
@@ -217,7 +217,7 @@ describe('MyVms', () => {
     })
 
     it.each(['deleting', 'deleted'] as const)('для %s кнопки нет', async (status) => {
-      await renderVms([makeVm({ status: 'ready' }), makeVm({ id: 2, name: 'rent-old', status })])
+      await renderVms([makeVm({ status: 'ready' }), makeVm({ id: 2, name: 'A1009', status })])
       // кнопка только у «готовой» ВМ: у удаляемой и удалённой её нет
       expect(screen.getAllByRole('button', { name: 'Продлить' })).toHaveLength(1)
     })
@@ -230,7 +230,7 @@ describe('MyVms', () => {
       const user = userEvent.setup()
       await renderVms([makeVm({ id: 9, expected_return_at: '2999-12-31' })])
       await user.click(screen.getByRole('button', { name: 'Продлить' }))
-      const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду rent-design-01' }))
+      const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду A1001' }))
       expect(dialog.getByText(/Текущий срок — /)).toBeInTheDocument()
       expect(dialog.getByLabelText(/Новый срок/)).toHaveAttribute('min', '3000-01-01')
       await user.type(dialog.getByLabelText(/Новый срок/), '3000-01-31')
@@ -239,7 +239,7 @@ describe('MyVms', () => {
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
       expect(api.post).toHaveBeenCalledWith('/vms/9/extend', { expected_return_at: '3000-01-31', comment: 'Тесты ещё идут' })
-      expect(toast.success).toHaveBeenCalledWith(`Аренда rent-design-01 продлена до ${formatDate('3000-01-31')}`)
+      expect(toast.success).toHaveBeenCalledWith(`Аренда A1001 продлена до ${formatDate('3000-01-31')}`)
       expect(await screen.findByText(new RegExp(`до ${formatDate('3000-01-31')}`))).toBeInTheDocument()
     })
 
@@ -307,14 +307,14 @@ describe('MyVms', () => {
       await renderVms([makeVm({ id: 9 })])
       await user.click(screen.getByRole('button', { name: 'Отказаться' }))
 
-      const dialog = screen.getByRole('dialog', { name: 'Отказаться от rent-design-01?' })
+      const dialog = screen.getByRole('dialog', { name: 'Отказаться от A1001?' })
       expect(dialog).toHaveTextContent('Отменить удаление после подтверждения будет нельзя.')
       expect(api.post).not.toHaveBeenCalled()
 
       await user.click(within(dialog).getByRole('button', { name: 'Удалить' }))
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
       expect(api.post).toHaveBeenCalledWith('/vms/9/release')
-      expect(toast.success).toHaveBeenCalledWith('rent-design-01 будет удалена')
+      expect(toast.success).toHaveBeenCalledWith('A1001 будет удалена')
     })
 
     it('после удаления список перезапрашивается', async () => {
@@ -379,7 +379,7 @@ describe('MyVms: ОС и заявки Service Desk', () => {
   })
 
   it('шаблон ОС выводится перед параметрами, без шаблона — как раньше', async () => {
-    await renderVmsWithSd([makeVm({ os_label: 'Windows 10' }), makeVm({ id: 2, name: 'rent-old', os_label: null })])
+    await renderVmsWithSd([makeVm({ os_label: 'Windows 10' }), makeVm({ id: 2, name: 'A1009', os_label: null })])
     expect(screen.getByText('Windows 10 · 4 ядра · 8 ГБ · 80 ГБ · Разработка')).toBeInTheDocument()
     expect(screen.getByText('4 ядра · 8 ГБ · 80 ГБ · Разработка')).toBeInTheDocument()
   })
@@ -394,14 +394,14 @@ describe('MyVms: ОС и заявки Service Desk', () => {
     const user = userEvent.setup()
     const onOpenRequest = vi.fn()
     const requestsFor = vi.fn((vmId: number) => (vmId === 1 ? [makeRequest({ id: 5 }), makeRequest({ id: 6, issue_key: 'HMS-102', status: 'Выполнено', status_category: 'done' })] : []))
-    await renderVmsWithSd([makeVm({ id: 1 }), makeVm({ id: 2, name: 'rent-qa-02' })], { requestsFor, onOpenRequest })
+    await renderVmsWithSd([makeVm({ id: 1 }), makeVm({ id: 2, name: 'A1002' })], { requestsFor, onOpenRequest })
 
     expect(requestsFor).toHaveBeenCalledWith(1)
     expect(requestsFor).toHaveBeenCalledWith(2)
-    const first = within(rowOf('rent-design-01'))
+    const first = within(rowOf('A1001'))
     expect(first.getByRole('button', { name: 'Заявка HMS-101 · В работе' })).toBeInTheDocument()
     expect(first.getByRole('button', { name: 'Заявка HMS-102 · Выполнено' })).toBeInTheDocument()
-    expect(within(rowOf('rent-qa-02')).queryByRole('button', { name: /Заявка/ })).not.toBeInTheDocument()
+    expect(within(rowOf('A1002')).queryByRole('button', { name: /Заявка/ })).not.toBeInTheDocument()
 
     await user.click(first.getByRole('button', { name: 'Заявка HMS-102 · Выполнено' }))
     expect(onOpenRequest).toHaveBeenCalledWith(6)
@@ -416,9 +416,9 @@ describe('MyVms: ОС и заявки Service Desk', () => {
   it('«Сообщить о проблеме» передаёт выбранную ВМ', async () => {
     const user = userEvent.setup()
     const onReport = vi.fn()
-    const second = makeVm({ id: 2, name: 'rent-qa-02' })
+    const second = makeVm({ id: 2, name: 'A1002' })
     await renderVmsWithSd([makeVm({ id: 1 }), second], { onReport })
-    await user.click(await within(rowOf('rent-qa-02')).findByRole('button', { name: 'Сообщить о проблеме' }))
+    await user.click(await within(rowOf('A1002')).findByRole('button', { name: 'Сообщить о проблеме' }))
     expect(onReport).toHaveBeenCalledOnce()
     expect(onReport).toHaveBeenCalledWith(second)
   })

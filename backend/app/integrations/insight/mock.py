@@ -8,6 +8,8 @@ from app.integrations.insight.mapping import InsightMapping
 
 log = logging.getLogger(__name__)
 
+MOCK_VM_ID_BASE = 9_000_000  # id демо-объектов ВМ, чтобы не пересекаться с демо-ПК
+
 
 class MockInsightSource:
     mode = "mock"
@@ -30,6 +32,14 @@ class MockInsightSource:
                 attributes={k: str(v) for k, v in item.get("attributes", {}).items() if v is not None},
             )
             for item in raw
+        ]
+
+    async def fetch_free_vm_objects(self) -> list[InsightObject]:
+        """Демо-номера A1001…A1050: какие из них заняты, портал знает сам (по своим ВМ)."""
+        return [
+            InsightObject(id=MOCK_VM_ID_BASE + n, key=f"DEMO-A{n}", label=f"A{n}", object_type="Automat",
+                          attributes={"Name": f"A{n}", "Status": "На складе", "Type": "Virtual"})
+            for n in range(1001, 1051)
         ]
 
     async def get_object(self, object_id: int) -> InsightObject | None:

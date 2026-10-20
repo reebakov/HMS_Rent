@@ -782,36 +782,36 @@ def sysprep():
 
 def test_create_vm_windows_spec_sets_computer_name_up_to_15_chars(clone):
     template, asked, placed = clone(sysprep())
-    info = vsphere_client.create_vm("rent-very-long-name-1", 2, 4, 50, "note", "T-Win", "spec-win")
+    info = vsphere_client.create_vm("A1234567890123456", 2, 4, 50, "note", "T-Win", "spec-win")
     assert placed == ["T-Win"] and asked == ["spec-win"]
-    assert template.clone_name == "rent-very-long-name-1"
-    assert template.clone_spec.customization.identity.userData.computerName.name == "rent-very-long-"
+    assert template.clone_name == "A1234567890123456"
+    assert template.clone_spec.customization.identity.userData.computerName.name == "A12345678901234"
     assert (info.moid, info.ip_address) == ("vm-9", "10.1.1.1")
 
 
 def test_create_vm_linux_spec_sets_hostname_up_to_63_chars(clone):
     template, asked, _ = clone(vim.vm.customization.LinuxPrep(hostName=vim.vm.customization.FixedName(name="x"),
                                                               domain="corp.local"))
-    vsphere_client.create_vm("rent-ubuntu", 2, 4, 30, "note", "T-Ubu", "spec-lin")
+    vsphere_client.create_vm("A1010", 2, 4, 30, "note", "T-Ubu", "spec-lin")
     assert asked == ["spec-lin"]
-    assert template.clone_spec.customization.identity.hostName.name == "rent-ubuntu"
+    assert template.clone_spec.customization.identity.hostName.name == "A1010"
 
 
 def test_create_vm_customization_spec_none_falls_back_to_env(clone, monkeypatch):
     monkeypatch.setattr(settings, "vcenter_customization_spec", "env-spec")
     template, asked, placed = clone(sysprep())
-    vsphere_client.create_vm("rent-box", 2, 4, 50, "note")  # старый вызов без шаблона: поведение прежнее
+    vsphere_client.create_vm("A1006", 2, 4, 50, "note")  # старый вызов без шаблона: поведение прежнее
     assert placed == [None] and asked == ["env-spec"] and template.clone_spec.customization is not None
 
 
 def test_create_vm_empty_spec_means_no_customization(clone, monkeypatch):
     monkeypatch.setattr(settings, "vcenter_customization_spec", "env-spec")
     template, asked, _ = clone(sysprep())
-    vsphere_client.create_vm("rent-box", 2, 4, 50, "note", "T", "")
+    vsphere_client.create_vm("A1006", 2, 4, 50, "note", "T", "")
     assert asked == [] and template.clone_spec.customization is None
 
 
 def test_create_vm_rejects_existing_name(monkeypatch, vc):
-    vc(inventory(fake_template("T"), **{"rent-box": object()}))
+    vc(inventory(fake_template("T"), **{"A1006": object()}))
     with pytest.raises(VSphereError, match="уже есть в vCenter"):
-        vsphere_client.create_vm("rent-box", 2, 4, 50, "note", "T")
+        vsphere_client.create_vm("A1006", 2, 4, 50, "note", "T")

@@ -14,7 +14,7 @@ vi.mock('@/lib/api', async (orig) => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const makeVm = (over: Partial<Vm> = {}): Vm => ({
-  id: 1, order_number: 200, name: 'rent-design-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
+  id: 1, order_number: 200, name: 'A1001', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
   status: 'ready', error: null, department: { id: 1, name: 'Разработка' },
   user: { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' }, requester_name: 'Иван Иванов', requester_nick: 'iivanov',
   purpose: null, expected_return_at: null, requested_return_at: null, ip_address: '10.0.0.15', connection_login: 'user', connection_method: 'RDP', power_state: 'on', created_at: '2024-01-10T09:00:00Z',
@@ -24,7 +24,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
 let vms: Vm[]
 
 beforeEach(() => {
-  vms = [makeVm(), makeVm({ id: 2, order_number: 201, name: 'rent-qa-02', cpu: 2, ram_gb: 4, disk_gb: 50, status: 'failed', error: 'Нет места', ip_address: null })]
+  vms = [makeVm(), makeVm({ id: 2, order_number: 201, name: 'A1002', cpu: 2, ram_gb: 4, disk_gb: 50, status: 'failed', error: 'Нет места', ip_address: null })]
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('VmsPage', () => {
   it('рисует виртуалки и суммарные ресурсы только работающих', async () => {
     renderWithProviders(<VmsPage />)
-    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(await screen.findByText('A1001')).toBeInTheDocument()
     expect(screen.getByText('Работают сейчас: 4 ядер, 8 ГБ памяти, 80 ГБ дисков')).toBeInTheDocument()
     expect(screen.getByText('Нет места')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: false })
@@ -58,14 +58,14 @@ describe('VmsPage', () => {
     expect(screen.queryByText('Виртуалок пока нет')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText('rent-design-01')).toBeInTheDocument()
+    expect(await screen.findByText('A1001')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('«Показать удалённые» перезапрашивает список с include_deleted', async () => {
     const user = userEvent.setup()
     renderWithProviders(<VmsPage />)
-    await screen.findByText('rent-design-01')
+    await screen.findByText('A1001')
     await user.click(screen.getByLabelText('Показать удалённые'))
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/admin/vms', { include_deleted: true }))
   })
@@ -73,10 +73,10 @@ describe('VmsPage', () => {
   it('удаление после подтверждения: POST /vms/{id}/release', async () => {
     const user = userEvent.setup()
     renderWithProviders(<VmsPage />)
-    const row = (await screen.findByText('rent-design-01')).closest('tr')!
+    const row = (await screen.findByText('A1001')).closest('tr')!
     await user.click(within(row).getByRole('button', { name: 'Удалить' }))
     const dialog = screen.getByRole('dialog', {
-      name: 'Удалить виртуалку rent-design-01?',
+      name: 'Удалить виртуалку A1001?',
       description: 'Она будет выключена и удалена вместе с диском.',
     })
     expect(api.post).not.toHaveBeenCalled()
@@ -88,7 +88,7 @@ describe('VmsPage', () => {
   it('«Отмена» закрывает окно без запроса', async () => {
     const user = userEvent.setup()
     renderWithProviders(<VmsPage />)
-    const row = (await screen.findByText('rent-design-01')).closest('tr')!
+    const row = (await screen.findByText('A1001')).closest('tr')!
     await user.click(within(row).getByRole('button', { name: 'Удалить' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Отмена' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

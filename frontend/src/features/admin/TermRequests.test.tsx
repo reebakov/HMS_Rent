@@ -27,7 +27,7 @@ const makeRequest = (over: Partial<TermRequestOut> = {}): TermRequestOut => ({
 let requests: TermRequestOut[]
 
 beforeEach(() => {
-  requests = [makeRequest(), makeRequest({ id: 4, kind: 'vm', name: 'rent-vm-01', order_number: 12, comment: null })]
+  requests = [makeRequest(), makeRequest({ id: 4, kind: 'vm', name: 'A1005', order_number: 12, comment: null })]
   for (const m of [api.get, api.post]) vi.mocked(m).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
@@ -53,7 +53,7 @@ describe('TermRequests: список', () => {
     expect(pc.getByText(/→/)).toHaveTextContent(`${formatDate(CURRENT)} → ${formatDate(REQUESTED)}`)
     expect(pc.getByText('Проект затянулся')).toBeInTheDocument()
 
-    const vm = within(row('rent-vm-01'))
+    const vm = within(row('A1005'))
     expect(vm.getByText('Виртуалка · заказ №12')).toBeInTheDocument()
     expect(vm.getByText('—')).toBeInTheDocument() // причины нет
   })

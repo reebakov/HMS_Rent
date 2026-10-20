@@ -38,7 +38,7 @@ const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
 })
 
 const makeVm = (over: Partial<Vm> = {}): Vm => ({
-  id: 5, order_number: 12, name: 'rent-vm-build-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
+  id: 5, order_number: 12, name: 'A1004', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
   status: 'ready', error: null, department: { id: 2, name: 'Аналитика' },
   user: { id: 6, username: 'a.smirnova', display_name: 'Анна Смирнова' }, requester_name: 'Анна Смирнова',
   requester_nick: 'a.smirnova', purpose: null, expected_return_at: '2026-11-01', requested_return_at: null, ip_address: null, connection_login: 'user', connection_method: null, power_state: null,
@@ -48,7 +48,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
 /** Продление ВМ: booking пуст, заполнен vm */
 const makeVmExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut =>
   makeExtension({
-    id: 9, kind: 'vm', name: 'rent-vm-build-01', booking: null, vm: makeVm(),
+    id: 9, kind: 'vm', name: 'A1004', booking: null, vm: makeVm(),
     user: { id: 6, username: 'a.smirnova', display_name: 'Анна Смирнова' }, comment: 'Сборка релиза', ...over,
   })
 
@@ -315,8 +315,8 @@ describe('OverduePage: продления', () => {
   it('продление ВМ: имя ВМ, подпись «ВМ · заказ», команда и арендатор из vm; ссылки на карточку ПК нет', async () => {
     extensions = [makeVmExtension()]
     renderWithProviders(<OverduePage />)
-    await screen.findByText('rent-vm-build-01')
-    const r = within(row('rent-vm-build-01'))
+    await screen.findByText('A1004')
+    const r = within(row('A1004'))
     expect(r.getByText('Новое')).toBeInTheDocument()
     expect(r.getByText('ВМ · заказ №12')).toBeInTheDocument()
     expect(r.getByText('Аналитика')).toBeInTheDocument()
@@ -328,7 +328,7 @@ describe('OverduePage: продления', () => {
   it('продления ПК и ВМ в одном списке, у ПК подписи «ВМ» нет', async () => {
     extensions = [makeExtension(), makeVmExtension()]
     renderWithProviders(<OverduePage />)
-    await screen.findByText('rent-vm-build-01')
+    await screen.findByText('A1004')
     expect(within(row('PC-777')).getByText('заказ №88')).toBeInTheDocument()
     expect(within(row('PC-777')).queryByText(/ВМ/)).not.toBeInTheDocument()
   })
@@ -337,16 +337,16 @@ describe('OverduePage: продления', () => {
     extensions = [makeVmExtension({ id: 9 })]
     const user = userEvent.setup()
     renderWithProviders(<OverduePage />)
-    await screen.findByText('rent-vm-build-01')
-    await user.click(within(row('rent-vm-build-01')).getByRole('button', { name: 'Принято' }))
+    await screen.findByText('A1004')
+    await user.click(within(row('A1004')).getByRole('button', { name: 'Принято' }))
     expect(api.post).toHaveBeenCalledWith('/admin/extensions/9/ack')
   })
 
   it('принятое продление ВМ: видно, кто принял, кнопки нет', async () => {
     extensions = [makeVmExtension({ acknowledged_at: '2026-10-19T10:00:00Z', acknowledged_by: { id: 1, username: 'boss', display_name: 'Анна' } })]
     renderWithProviders(<OverduePage />)
-    await screen.findByText('rent-vm-build-01')
-    const r = within(row('rent-vm-build-01'))
+    await screen.findByText('A1004')
+    const r = within(row('A1004'))
     expect(r.queryByRole('button', { name: 'Принято' })).not.toBeInTheDocument()
     expect(r.getByText('Принято · Анна')).toBeInTheDocument()
   })

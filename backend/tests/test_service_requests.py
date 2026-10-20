@@ -92,7 +92,7 @@ async def env(session, make_department, make_user, make_pool, make_computer):
     comp = await make_computer("A001", await make_pool(), insight_key="ITAM-1", cpu="i9", ram_gb=64,
                                storage="2 TB", gpu="RTX 4090")
     booking = await add_booking(session, comp, owner, qa, requester_name="Иван Иванов", requester_nick="ivan")
-    vm = VirtualMachine(name="rent-vm1", cpu=4, ram_gb=8, disk_gb=100, os_label="Ubuntu 22.04", status="ready",
+    vm = VirtualMachine(name="A1007", cpu=4, ram_gb=8, disk_gb=100, os_label="Ubuntu 22.04", status="ready",
                         order_number=555, user_id=owner.id, department_id=qa.id, requester_name="Иван Иванов",
                         requester_nick="ivan", ip_address="10.0.0.5", attrs={})
     session.add(vm)
@@ -140,8 +140,8 @@ async def test_create_problem_for_booking(session, env, sd):
 async def test_create_problem_for_vm(session, env, sd):
     req = await svc.create_problem(session, env.owner, booking_id=None, vm_id=env.vm.id, message="Нет сети")
     _, summary, description, _ = sd.created[0]
-    assert "rent-vm1" in summary and "заказ №555" in summary
-    for part in ["Нет сети", "Виртуалка: rent-vm1 (Ubuntu 22.04)", "Заказ №555", "4 CPU · 8 ГБ · 100 ГБ, IP: 10.0.0.5, статус: ready",
+    assert "A1007" in summary and "заказ №555" in summary
+    for part in ["Нет сети", "Виртуалка: A1007 (Ubuntu 22.04)", "Заказ №555", "4 CPU · 8 ГБ · 100 ГБ, IP: 10.0.0.5, статус: ready",
                  "Команда-получатель: QA", "Арендатор: Иван Иванов (ivan)", "Обращение отправил: Иван Иванов (ivan@corp.test)"]:
         assert part in description
     assert (req.vm_id, req.booking_id, req.issue_key) == (env.vm.id, None, "HMS-1")

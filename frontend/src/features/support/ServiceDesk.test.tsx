@@ -148,8 +148,8 @@ describe('ReportProblemDialog', () => {
   })
 
   it('заголовок содержит имя ПК или ВМ', () => {
-    renderDialog({ vmId: 3, name: 'rent-design-01' })
-    expect(screen.getByRole('dialog', { name: 'Проблема с rent-design-01' })).toBeInTheDocument()
+    renderDialog({ vmId: 3, name: 'A1001' })
+    expect(screen.getByRole('dialog', { name: 'Проблема с A1001' })).toBeInTheDocument()
   })
 
   it.each([
@@ -183,7 +183,7 @@ describe('ReportProblemDialog', () => {
 
   it('для ВМ шлёт vm_id', async () => {
     vi.mocked(api.post).mockResolvedValue(makeRequest({ vm_id: 3, booking_id: null }))
-    const { onClose, user } = renderDialog({ vmId: 3, name: 'rent-design-01' })
+    const { onClose, user } = renderDialog({ vmId: 3, name: 'A1001' })
     await user.type(field(), 'Нет интернета')
     await user.click(send())
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
