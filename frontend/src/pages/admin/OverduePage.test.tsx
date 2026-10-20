@@ -3,10 +3,10 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { OverduePage } from './OverduePage'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
-import type { ExtensionOut, OverdueItem } from '@/lib/types'
+import type { ExtensionOut, OverdueItem, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -36,6 +36,21 @@ const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
   created_at: '2026-10-19T09:00:00Z', acknowledged_at: null, acknowledged_by: null,
   ...over,
 })
+
+const makeVm = (over: Partial<Vm> = {}): Vm => ({
+  id: 5, order_number: 12, name: 'rent-vm-build-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
+  status: 'ready', error: null, department: { id: 2, name: 'Аналитика' },
+  user: { id: 6, username: 'a.smirnova', display_name: 'Анна Смирнова' }, requester_name: 'Анна Смирнова',
+  requester_nick: 'a.smirnova', purpose: null, expected_return_at: '2026-11-01', ip_address: null, power_state: null,
+  created_at: '2026-09-01T10:00:00Z', ready_at: null, released_at: null, deleted_at: null, ...over,
+})
+
+/** Продление ВМ: booking пуст, заполнен vm */
+const makeVmExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut =>
+  makeExtension({
+    id: 9, kind: 'vm', name: 'rent-vm-build-01', booking: null, vm: makeVm(),
+    user: { id: 6, username: 'a.smirnova', display_name: 'Анна Смирнова' }, comment: 'Сборка релиза', ...over,
+  })
 
 let items: OverdueItem[]
 let extensions: ExtensionOut[]
@@ -229,11 +244,40 @@ describe('OverduePage: «Вернуть» / «Удалить»', () => {
 })
 
 describe('OverduePage: «Продлить»', () => {
-  it('у ПК есть «Продлить», у виртуалки нет', async () => {
+  it('«Продлить» есть и у ПК, и у виртуалки', async () => {
     renderWithProviders(<OverduePage />)
     await screen.findByText('PC-010')
     expect(within(row('PC-010')).getByRole('button', { name: 'Продлить' })).toBeInTheDocument()
-    expect(within(row('vm-build-01')).queryByRole('button', { name: 'Продлить' })).not.toBeInTheDocument()
+    expect(within(row('vm-build-01')).getByRole('button', { name: 'Продлить' })).toBeInTheDocument()
+  })
+
+  it('админ продлевает просроченную ВМ: запрос на /vms/{id}/extend с причиной, окно закрывается', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('vm-build-01')
+    await user.click(within(row('vm-build-01')).getByRole('button', { name: 'Продлить' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Продлить аренду vm-build-01' }))
+    await user.type(dialog.getByLabelText(/Новый срок/), '2099-12-31')
+    await user.type(dialog.getByLabelText(/Причина/), 'Согласовано с арендатором')
+    await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/vms/5/extend', { expected_return_at: '2099-12-31', comment: 'Согласовано с арендатором' }),
+    )
+    expect(api.post).not.toHaveBeenCalledWith(expect.stringContaining('/bookings/'), expect.anything())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(toast.success).toHaveBeenCalledWith(`Аренда vm-build-01 продлена до ${formatDate('2099-12-31')}`)
+  })
+
+  it('ошибка продления ВМ (409) показывается в окне', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Виртуалка удаляется или уже удалена — продлить срок нельзя'))
+    const user = userEvent.setup()
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('vm-build-01')
+    await user.click(within(row('vm-build-01')).getByRole('button', { name: 'Продлить' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Новый срок/), '2099-12-31')
+    await user.click(dialog.getByRole('button', { name: 'Продлить' }))
+    expect(await dialog.findByText('Виртуалка удаляется или уже удалена — продлить срок нельзя')).toBeInTheDocument()
   })
 
   it('админ продлевает просроченную бронь: новый срок уходит в API, окно закрывается', async () => {
@@ -265,6 +309,45 @@ describe('OverduePage: продления', () => {
     expect(r.getByText('Тесты ещё идут')).toBeInTheDocument()
     expect(r.getByText('Иван Иванов')).toBeInTheDocument()
     expect(r.getByRole('button', { name: 'Принято' })).toBeInTheDocument()
+  })
+
+  it('продление ВМ: имя ВМ, подпись «ВМ · заказ», команда и арендатор из vm; ссылки на карточку ПК нет', async () => {
+    extensions = [makeVmExtension()]
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('rent-vm-build-01')
+    const r = within(row('rent-vm-build-01'))
+    expect(r.getByText('Новое')).toBeInTheDocument()
+    expect(r.getByText('ВМ · заказ №12')).toBeInTheDocument()
+    expect(r.getByText('Аналитика')).toBeInTheDocument()
+    expect(r.getByText('Анна Смирнова (a.smirnova)')).toBeInTheDocument()
+    expect(r.getByText('Сборка релиза')).toBeInTheDocument()
+    expect(r.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('продления ПК и ВМ в одном списке, у ПК подписи «ВМ» нет', async () => {
+    extensions = [makeExtension(), makeVmExtension()]
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('rent-vm-build-01')
+    expect(within(row('PC-777')).getByText('заказ №88')).toBeInTheDocument()
+    expect(within(row('PC-777')).queryByText(/ВМ/)).not.toBeInTheDocument()
+  })
+
+  it('«Принято» у продления ВМ отправляет отметку по id продления', async () => {
+    extensions = [makeVmExtension({ id: 9 })]
+    const user = userEvent.setup()
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('rent-vm-build-01')
+    await user.click(within(row('rent-vm-build-01')).getByRole('button', { name: 'Принято' }))
+    expect(api.post).toHaveBeenCalledWith('/admin/extensions/9/ack')
+  })
+
+  it('принятое продление ВМ: видно, кто принял, кнопки нет', async () => {
+    extensions = [makeVmExtension({ acknowledged_at: '2026-10-19T10:00:00Z', acknowledged_by: { id: 1, username: 'boss', display_name: 'Анна' } })]
+    renderWithProviders(<OverduePage />)
+    await screen.findByText('rent-vm-build-01')
+    const r = within(row('rent-vm-build-01'))
+    expect(r.queryByRole('button', { name: 'Принято' })).not.toBeInTheDocument()
+    expect(r.getByText('Принято · Анна')).toBeInTheDocument()
   })
 
   it('принятое продление: без бейджа и кнопки, видно, кто принял', async () => {

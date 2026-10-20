@@ -94,16 +94,14 @@ export function OverduePage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
-                        {item.kind === 'pc' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setExtending({ kind: item.kind, id: item.id, name: item.name, due: item.due })}
-                          >
-                            <CalendarPlus className="h-3.5 w-3.5" />
-                            Продлить
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setExtending({ kind: item.kind, id: item.id, name: item.name, due: item.due })}
+                        >
+                          <CalendarPlus className="h-3.5 w-3.5" />
+                          Продлить
+                        </Button>
                         {item.email && (
                           <a href={mailto(item)} className={buttonClass({ variant: 'ghost', size: 'sm' })}>
                             <Mail className="h-3.5 w-3.5" />
@@ -165,7 +163,7 @@ function Extensions() {
             className="min-w-[900px]"
             head={
               <>
-                <Th>Компьютер</Th>
+                <Th>Что</Th>
                 <Th>Команда / арендатор</Th>
                 <Th>Срок</Th>
                 <Th>Причина</Th>
@@ -175,7 +173,8 @@ function Extensions() {
             }
           >
             {data.map((ext) => {
-              const b = (ext.booking ?? ext.vm)! // у продления ПК есть booking, у ВМ — vm
+              const order = ext.booking ?? ext.vm // у продления ПК заполнен booking, у ВМ — vm
+              if (!order) return null
               const isNew = !ext.acknowledged_at
               return (
                 <tr key={ext.id} className={cn('hover:bg-muted/40', isNew && 'bg-primary/5')}>
@@ -184,12 +183,14 @@ function Extensions() {
                       <span className="font-semibold">{ext.name}</span>
                       {isNew && <Badge tone="primary">Новое</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground">заказ №{b.order_number}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {ext.kind === 'vm' && 'ВМ · '}заказ №{order.order_number}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium">{b.department.name}</p>
+                    <p className="font-medium">{order.department.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {b.requester_name} ({b.requester_nick})
+                      {order.requester_name} ({order.requester_nick})
                     </p>
                   </td>
                   <td className="px-4 py-3 tabular">
