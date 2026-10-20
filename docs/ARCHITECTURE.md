@@ -243,7 +243,7 @@ Desk). В журналах (`returned_by`, `released_by_id`, продления)
   и откат — `README.md`, «Деплой на сервер»). С диска сервера читаются только `backend/config` и, для HTTPS, `deploy/nginx/tls.conf`,
   `frontend/nginx/app.inc` и сертификат.
 * **HTTPS:** `docker-compose.tls.yml` подключается сам, если есть `certs/fullchain.pem` и `certs/privkey.pem`
-  (`docs/DOMAIN_TLS.md`; на проде пока не включён). Секреты и права файлов — `docs/SECRETS.md`.
+  (`docs/DOMAIN_TLS.md`; на проде включён с 20.10.2026). Секреты и права файлов — `docs/SECRETS.md`.
 
 ## Точки расширения
 

@@ -135,7 +135,7 @@ backend при старте. Откат на конкретный коммит: 
 Параметры скрипта (`IMAGE_REPO`, `BACKUP_DIR`, `BACKUP_KEEP`, `HEALTH_TIMEOUT`) и порты — в `.env.example`.
 Применить правку `.env` на проде: `sudo ./scripts/deploy.sh --redeploy`.
 
-HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md) (на проде пока не включён). Включается сам, когда в `certs/`
+HTTPS и домен: [docs/DOMAIN_TLS.md](docs/DOMAIN_TLS.md) (на проде включён с 20.10.2026). Включается сам, когда в `certs/`
 лежат `fullchain.pem` и `privkey.pem`.
 
 ## Локальная разработка без Docker

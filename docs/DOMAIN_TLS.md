@@ -1,9 +1,9 @@
 # Домен и HTTPS
 
-Целевой адрес портала — `https://hmsrent.netsrv.pw`. **HTTPS на проде пока не включён**: сертификата ещё нет, портал
-работает по http на порту 8080. После установки сертификата TLS будет заканчиваться на nginx фронтенда (отдельного
-прокси нет). Включение автоматическое: `scripts/deploy.sh` подключает `docker-compose.tls.yml`, когда на сервере лежат
-`certs/fullchain.pem` и `certs/privkey.pem`. Выкатка в целом — `README.md`, раздел «Деплой на сервер».
+Адрес портала — `https://hmsrent.netsrv.pw`. **HTTPS на проде включён** (20.10.2026): сертификат `*.netsrv.pw` (GlobalSign,
+действует до 20.03.2027) лежит в `certs/` на сервере, порт 8080 снаружи закрыт. TLS заканчивается на nginx фронтенда
+(отдельного прокси нет). Включение автоматическое: `scripts/deploy.sh` подключает `docker-compose.tls.yml`, когда на
+сервере лежат `certs/fullchain.pem` и `certs/privkey.pem`. Выкатка в целом — `README.md`, раздел «Деплой на сервер».
 
 ## Что нужно получить
 
@@ -11,6 +11,22 @@
 - Открытые на сервере порты **80** и **443** (80 только перенаправляет на https).
 - В Bouncer для клиента `hms-rent` — адрес возврата  
   `https://hmsrent.netsrv.pw/api/v1/auth/bouncer/callback` (менеджер клиента или админы Bouncer).
+
+## Если сертификат пришёл отдельными файлами
+
+Администраторы обычно присылают лист (`certificate.crt`), цепочку (`certificate_ca.crt`) и ключ (`certificate.key`), иногда
+ещё запрос (`.csr`) и общий `.pem` со всем подряд, включая ключ. nginx нужны два файла: `fullchain.pem` (лист, затем
+цепочка) и `privkey.pem` (ключ). Перед установкой проверьте, что ключ подходит к сертификату и цепочка собирается:
+
+```bash
+awk 1 certificate.crt certificate_ca.crt > fullchain.pem      # сначала свой сертификат, потом цепочка
+openssl verify -CAfile certificate_ca.crt certificate.crt      # certificate.crt: OK
+[ "$(openssl x509 -in certificate.crt -noout -pubkey | openssl sha256)" = \
+  "$(openssl pkey -in certificate.key -pubout | openssl sha256)" ] && echo "ключ подходит"
+```
+
+Файлы с ключом, кроме `privkey.pem`, держите вне каталога проекта (например в `/root/` с правами `700`): `certs/` целиком
+монтируется в контейнер, а права `644` на ключе открывают его всем пользователям сервера.
 
 ## Включение
 
