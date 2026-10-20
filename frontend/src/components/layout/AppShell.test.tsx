@@ -6,7 +6,7 @@ import { AppShell } from './AppShell'
 import { ThemeToggle } from './ThemeToggle'
 import { api } from '@/lib/api'
 import { makeSession, renderWithProviders } from '@/test/helpers'
-import type { ExtensionOut, OverdueItem, Session } from '@/lib/types'
+import type { ExtensionOut, OverdueItem, Session, TermRequestOut } from '@/lib/types'
 
 let session: Session
 const logout = vi.fn()
@@ -46,17 +46,21 @@ let overdue: OverdueItem[]
 const extension = (id: number, acknowledged: boolean, kind: ExtensionOut['kind'] = 'pc') =>
   ({ id, kind, acknowledged_at: acknowledged ? '2026-10-02T10:00:00Z' : null }) as ExtensionOut
 let extensions: ExtensionOut[]
+const termRequest = (id: number) => ({ id }) as TermRequestOut
+let termRequests: TermRequestOut[]
 
 beforeEach(() => {
   session = makeSession()
   overdue = []
   extensions = []
+  termRequests = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
-  // меню админа запрашивает просрочки и продления для счётчика
+  // меню админа запрашивает просрочки, заявки на срок и продления для счётчика
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/admin/overdue') return overdue
     if (path === '/admin/extensions') return extensions
+    if (path === '/admin/term-requests') return termRequests
     throw new Error(`неожиданный GET ${path}`)
   })
   document.documentElement.classList.remove('dark')
@@ -291,6 +295,14 @@ describe('AppShell: «Сроки аренды»', () => {
     extensions = [extension(1, false, 'vm'), extension(2, true, 'vm'), extension(3, false)]
     mountShell()
     expect(await within(overdueLink()).findByText('5')).toBeInTheDocument()
+  })
+
+  it('заявки на срок дольше лимита тоже в счётчике', async () => {
+    termRequests = [termRequest(1), termRequest(2)]
+    extensions = [extension(1, false)]
+    mountShell()
+    expect(await within(overdueLink()).findByText('6')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/admin/term-requests')
   })
 
   it('без просрочек счётчик показывает новые продления', async () => {

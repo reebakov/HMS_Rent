@@ -383,6 +383,36 @@ describe('просрочки и детали синхронизации', () => 
     await waitFor(() => expect(keys(spy)).toEqual([['admin', 'extensions']]))
   })
 
+  it('useTermRequests: GET /admin/term-requests, ключ [admin, term-requests], опрос раз в минуту', async () => {
+    vi.mocked(api.get).mockResolvedValue([{ id: 1 }])
+    const { result } = hook(() => q.useTermRequests())
+    await waitFor(() => expect(result.current.data).toEqual([{ id: 1 }]))
+    expect(api.get).toHaveBeenCalledWith('/admin/term-requests')
+    expect(refetchInterval(['admin', 'term-requests'])).toBe(60_000)
+  })
+
+  it('useTermRequests(false): запрос не уходит', () => {
+    const { result } = hook(() => q.useTermRequests(false))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('useApproveTermRequest: POST со сроком админа и обновление админки и броней', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useApproveTermRequest())
+    await act(() => result.current.mutateAsync({ id: 4, approved_return_at: '2027-01-31' }))
+    expect(api.post).toHaveBeenCalledWith('/admin/term-requests/4/approve', { approved_return_at: '2027-01-31' })
+    await waitFor(() => expect(keys(spy)).toContainEqual(['admin']))
+  })
+
+  it('useRejectTermRequest: POST отказа и обновление списка заявок', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries')
+    const { result } = hook(() => q.useRejectTermRequest())
+    await act(() => result.current.mutateAsync(4))
+    expect(api.post).toHaveBeenCalledWith('/admin/term-requests/4/reject')
+    await waitFor(() => expect(keys(spy)).toEqual([['admin', 'term-requests']]))
+  })
+
   it('useOverdue: ключ под префиксом admin — инвалидация admin обновляет и просрочки', async () => {
     const { result } = hook(() => q.useOverdue())
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

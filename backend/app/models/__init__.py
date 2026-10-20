@@ -1,5 +1,5 @@
 """Импорт всех моделей в одном месте — нужен Alembic и остальному коду."""
-from app.models.booking import Booking, BookingExtension
+from app.models.booking import Booking, BookingExtension, TermRequest
 from app.models.computer import Computer
 from app.models.department import Department
 from app.models.enums import (
@@ -8,6 +8,7 @@ from app.models.enums import (
     EventType,
     ServiceRequestKind,
     SyncRunStatus,
+    TermRequestStatus,
     Tier,
     UserRole,
     VmStatus,
@@ -33,6 +34,8 @@ __all__ = [
     "ServiceRequestKind",
     "SyncRun",
     "SyncRunStatus",
+    "TermRequest",
+    "TermRequestStatus",
     "Tier",
     "User",
     "UserRole",

@@ -45,6 +45,16 @@ function localIso(d: Date) {
 
 export const todayLocal = () => localIso(new Date())
 
+/** Срок аренды без согласования админа, месяцев; то же правило на backend (services/term_limit.py) */
+export const MAX_TERM_MONTHS = 3
+
+/** YYYY-MM-DD через months месяцев от даты YYYY-MM-DD; если такого дня нет (31 → февраль), конец месяца */
+export function addMonths(date: string, months: number) {
+  const [y, m, d] = date.split('-').map(Number)
+  const lastDay = new Date(y, m - 1 + months + 1, 0).getDate()
+  return localIso(new Date(y, m - 1 + months, Math.min(d, lastDay)))
+}
+
 /** YYYY-MM-DD через days дней от даты YYYY-MM-DD */
 export function addDays(date: string, days: number) {
   const d = new Date(`${date}T00:00:00`)

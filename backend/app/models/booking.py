@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 from app.models.computer import Computer
 from app.models.department import Department
-from app.models.enums import BookingStatus
+from app.models.enums import BookingStatus, TermRequestStatus
 from app.models.user import User
 from app.models.vm import VirtualMachine
 
@@ -47,6 +47,15 @@ class Booking(Base, TimestampMixin):
     department: Mapped[Department] = relationship(lazy="joined")
     user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
     returned_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[returned_by_id])
+    pending_term_request: Mapped["TermRequest | None"] = relationship(
+        primaryjoin="and_(Booking.id == TermRequest.booking_id, TermRequest.status == 'pending')",
+        lazy="selectin", viewonly=True,
+    )
+
+    @property
+    def requested_return_at(self) -> date | None:
+        """Срок, о котором арендатор просит дольше лимита и который ещё не согласован."""
+        return self.pending_term_request.requested_return_at if self.pending_term_request else None
 
 
 class BookingExtension(Base):
@@ -84,3 +93,69 @@ class BookingExtension(Base):
     def name(self) -> str:
         """Имя ПК или ВМ, которой продлили срок."""
         return self.vm.name if self.vm is not None else self.booking.computer.name
+
+
+class TermRequest(Base):
+    """Заявка админу на срок аренды дольше лимита (ПК — booking_id, ВМ — vm_id).
+
+    Заказ при этом уже оформлен или продлён на максимальный срок; согласование меняет срок на нужный.
+    Решённые заявки остаются в таблице, у одного заказа ждёт решения не больше одной.
+    """
+
+    __tablename__ = "term_requests"
+    __table_args__ = (
+        CheckConstraint("(booking_id IS NULL) <> (vm_id IS NULL)", name="one_target"),
+        Index("uq_term_requests_pending_booking", "booking_id", unique=True,
+              postgresql_where=text("status = 'pending' AND booking_id IS NOT NULL")),
+        Index("uq_term_requests_pending_vm", "vm_id", unique=True,
+              postgresql_where=text("status = 'pending' AND vm_id IS NOT NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"))
+    vm_id: Mapped[int | None] = mapped_column(ForeignKey("virtual_machines.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))  # кто просит: арендатор или участник его команды
+    requested_return_at: Mapped[date] = mapped_column(Date)
+    comment: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default=TermRequestStatus.pending.value)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    booking: Mapped[Booking | None] = relationship(lazy="joined")
+    vm: Mapped[VirtualMachine | None] = relationship(lazy="joined")
+    user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
+
+    @property
+    def kind(self) -> str:
+        return "vm" if self.vm_id is not None else "pc"
+
+    @property
+    def _order(self) -> "Booking | VirtualMachine":
+        return self.vm if self.vm is not None else self.booking
+
+    @property
+    def name(self) -> str:
+        """Имя ПК или ВМ, для которой просят срок."""
+        return self.vm.name if self.vm is not None else self.booking.computer.name
+
+    @property
+    def order_number(self) -> int:
+        return self._order.order_number
+
+    @property
+    def department(self) -> Department:
+        return self._order.department
+
+    @property
+    def requester_name(self) -> str:
+        return self._order.requester_name
+
+    @property
+    def requester_nick(self) -> str:
+        return self._order.requester_nick
+
+    @property
+    def current_return_at(self) -> date | None:
+        """Срок, который сейчас стоит у заказа."""
+        return self._order.expected_return_at

@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { BookingDialog, ExtendDialog, type ExtendTarget } from './BookingDialog'
+import { termLimit } from './TermLimit'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeComputer, makeSession, renderWithProviders } from '@/test/helpers'
 import { addDays, formatDate, todayLocal } from '@/lib/utils'
@@ -330,5 +331,114 @@ describe('ExtendDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(api.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('BookingDialog: лимит срока', () => {
+  const limit = termLimit(todayLocal())
+  const beyond = addDays(limit, 1)
+
+  beforeEach(() => {
+    session = makeSession()
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.post).mockResolvedValue(bookingResponse)
+    vi.mocked(toast.success).mockReset()
+  })
+
+  it('под полем срока подсказка, до какой даты можно без согласования', async () => {
+    setup()
+    await waitForDepartments()
+    expect(screen.getByText(`Без согласования — до ${formatDate(limit)}`)).toBeInTheDocument()
+  })
+
+  it('срок в пределах лимита — пояснения про заявку нет', async () => {
+    const { user } = setup()
+    await waitForDepartments()
+    await user.type(returnDate(), limit)
+    expect(screen.queryByText(/администратору уйдёт заявка/)).not.toBeInTheDocument()
+  })
+
+  it('срок дальше лимита — пояснение: аренда по лимиту, заявка на выбранный срок; отправить можно', async () => {
+    const { user } = setup()
+    await waitForDepartments()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '1')
+    await user.type(returnDate(), beyond)
+    expect(screen.getByText(/администратору уйдёт заявка/)).toHaveTextContent(
+      `аренда оформится до ${formatDate(limit)}, а администратору уйдёт заявка на ${formatDate(beyond)}`,
+    )
+    expect(submitButton()).toBeEnabled()
+  })
+
+  it('бронь ушла в заявку админу — тост с пояснением и кнопкой «Моя аренда»', async () => {
+    vi.mocked(api.post).mockResolvedValue({ ...bookingResponse, expected_return_at: limit, requested_return_at: beyond })
+    const { onClose, user } = setup()
+    await waitForDepartments()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await user.type(returnDate(), beyond)
+    await user.click(submitButton())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ expected_return_at: beyond }))
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('заказ №123'),
+      expect.objectContaining({
+        description: `Срок ограничен ${formatDate(limit)} — заявка на ${formatDate(beyond)} отправлена администратору`,
+        action: expect.objectContaining({ label: 'Моя аренда' }),
+      }),
+    )
+  })
+})
+
+describe('ExtendDialog: лимит срока', () => {
+  const today = todayLocal()
+  const due = addDays(today, 30)
+  const limit = termLimit(due)
+  const beyond = addDays(limit, 1)
+  const target: ExtendTarget = { kind: 'pc', id: 7, name: 'PC-042', due }
+
+  const dateInput = () => screen.getByLabelText(/Новый срок/)
+  const setupExtend = (t: ExtendTarget = target) => {
+    const onClose = vi.fn()
+    renderWithProviders(<ExtendDialog target={t} onClose={onClose} />)
+    return { onClose, user: userEvent.setup() }
+  }
+
+  beforeEach(() => {
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.post).mockResolvedValue({})
+    vi.mocked(toast.success).mockReset()
+  })
+
+  it('лимит считается от текущего срока, а не от сегодня', () => {
+    setupExtend()
+    expect(screen.getByText(`Без согласования — до ${formatDate(limit)}`)).toBeInTheDocument()
+  })
+
+  it('у просроченной аренды лимит считается от сегодня', () => {
+    setupExtend({ ...target, due: addDays(today, -10) })
+    expect(screen.getByText(`Без согласования — до ${formatDate(termLimit(today))}`)).toBeInTheDocument()
+  })
+
+  it('в пределах лимита пояснения нет, дальше — есть и отправить можно', async () => {
+    const { user } = setupExtend()
+    await user.type(dateInput(), limit)
+    expect(screen.queryByText(/администратору уйдёт заявка/)).not.toBeInTheDocument()
+    await user.clear(dateInput())
+    await user.type(dateInput(), beyond)
+    expect(screen.getByText(/администратору уйдёт заявка/)).toHaveTextContent(
+      `аренда продлится до ${formatDate(limit)}, а администратору уйдёт заявка на ${formatDate(beyond)}`,
+    )
+    expect(screen.getByRole('button', { name: 'Продлить' })).toBeEnabled()
+  })
+
+  it('продление ушло в заявку админу — в тосте срок из ответа и пояснение', async () => {
+    vi.mocked(api.post).mockResolvedValue({ expected_return_at: limit, requested_return_at: beyond })
+    const { onClose, user } = setupExtend()
+    await user.type(dateInput(), beyond)
+    await user.click(screen.getByRole('button', { name: 'Продлить' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(api.post).toHaveBeenCalledWith('/bookings/7/extend', { expected_return_at: beyond })
+    expect(toast.success).toHaveBeenCalledWith(`Аренда PC-042 продлена до ${formatDate(limit)}`, {
+      description: `Срок ограничен ${formatDate(limit)} — заявка на ${formatDate(beyond)} отправлена администратору`,
+    })
   })
 })

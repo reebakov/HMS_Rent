@@ -1,6 +1,6 @@
 """Бронирование и возврат компьютеров."""
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate, BookingExtend
-from app.services import departments, overdue, runtime, service_requests
+from app.services import departments, overdue, runtime, service_requests, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.events import add_event
 from app.services.orders import next_order_number
@@ -76,6 +76,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         await session.commit()
         raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
     dept = await departments.get_active(session, data.department_id)
+    until, longer = term_limit.plan(user, data.expected_return_at)
 
     order_number = await next_order_number(session)  # берём номер в последнюю очередь, чтобы не плодить пропуски
     booking = Booking(
@@ -86,17 +87,20 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         requester_name=data.requester_name,
         requester_nick=data.requester_nick,
         purpose=data.purpose or None,
-        expected_return_at=data.expected_return_at,
+        expected_return_at=until,
         status=BookingStatus.active.value,
     )
     session.add(booking)
     comp.status = ComputerStatus.booked.value
     comp.department_id = dept.id
-    comp.usage_until = data.expected_return_at
+    comp.usage_until = until
     comp.order_number = order_number
     comp.writeback_pending = runtime.current().insight_writeback
     async with conflict_on_integrity_error(session, f"{comp.name} только что забронировали"):
         await session.flush()
+        if longer:
+            term_limit.open_request(session, user, requested=data.expected_return_at, comment=None,
+                                    booking_id=booking.id)
         add_event(
             session,
             computer_id=comp.id,
@@ -117,6 +121,7 @@ async def _lock_active(session: AsyncSession, user: User, booking_id: int, actio
     """Активная бронь и её ПК под блокировкой; менять её может арендатор, участник его команды или администратор."""
     booking = await session.scalar(
         select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
+        .execution_options(populate_existing=True)
     )
     if booking is None:
         raise NotFound("Бронирование не найдено")
@@ -159,10 +164,10 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
     return await get_booking(session, booking.id)
 
 
-async def extend_booking(session: AsyncSession, user: User, booking_id: int, data: BookingExtend) -> Booking:
-    booking, comp = await _lock_active(session, user, booking_id, "Продлить аренду")
-    old, new = booking.expected_return_at, data.expected_return_at
-    comment = data.comment or None
+def _extend(session: AsyncSession, user: User, booking: Booking, comp: Computer, new: date,
+            comment: str | None) -> None:
+    """Новый срок брони: журнал продлений, срок ПК в портале и в Insight, событие. Без commit."""
+    old = booking.expected_return_at
     overdue.record_extension(session, user, old=old, new=new, comment=comment, booking_id=booking.id)
 
     booking.expected_return_at = new
@@ -177,8 +182,26 @@ async def extend_booking(session: AsyncSession, user: User, booking_id: int, dat
         message=f"Заказ №{booking.order_number}: срок продлён "
                 f"{f'с {old:%d.%m.%Y} ' if old else ''}до {new:%d.%m.%Y}" + (f": {comment}" if comment else ""),
     )
+
+
+async def extend_booking(session: AsyncSession, user: User, booking_id: int, data: BookingExtend) -> Booking:
+    """Продление: до лимита (текущий срок + 3 месяца) сразу, дальше — максимум сразу и заявка админу на нужный срок."""
+    booking, comp = await _lock_active(session, user, booking_id, "Продлить аренду")
+    comment = data.comment or None
+    until, longer = term_limit.plan(user, data.expected_return_at, base=booking.expected_return_at,
+                                    pending=booking.requested_return_at)
+    _extend(session, user, booking, comp, until, comment)
+    if longer:
+        term_limit.open_request(session, user, requested=data.expected_return_at, comment=comment,
+                                booking_id=booking.id)
     await session.commit()
     return await get_booking(session, booking.id)
+
+
+async def apply_term(session: AsyncSession, admin: User, booking_id: int, new: date, comment: str) -> None:
+    """Согласование заявки на срок (term_requests.approve): ставит срок брони; commit делает вызывающий."""
+    booking, comp = await _lock_active(session, admin, booking_id, "Согласовать срок")
+    _extend(session, admin, booking, comp, new, comment)
 
 
 async def list_user_bookings(session: AsyncSession, user: User) -> list[Booking]:

@@ -35,7 +35,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   department: { id: 5, name: 'Разработка' },
   user: { id: 2, display_name: 'Пётр Петров', username: 'p.petrov' } as never,
   requester_name: 'Пётр Петров', requester_nick: 'p.petrov', purpose: null,
-  booked_at: '2024-03-01T10:00:00Z', expected_return_at: null, returned_at: '2024-03-05T10:00:00Z',
+  booked_at: '2024-03-01T10:00:00Z', expected_return_at: null, requested_return_at: null, returned_at: '2024-03-05T10:00:00Z',
   returned_by: null, return_comment: null, ...over,
 })
 

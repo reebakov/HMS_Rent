@@ -33,6 +33,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   requester_nick: 'iivanov',
   purpose: null,
   expected_return_at: null,
+  requested_return_at: null,
   ip_address: '10.0.0.15',
   power_state: 'on',
   created_at: '2024-01-10T09:00:00Z',
@@ -426,5 +427,17 @@ describe('MyVms: ОС и заявки Service Desk', () => {
       await cfgLoaded()
       expect(screen.queryByRole('button', { name: 'Сообщить о проблеме' })).not.toBeInTheDocument()
     }
+  })
+})
+
+describe('MyVms: заявка на срок', () => {
+  it('срок из заявки, которая ждёт админа, виден у ВМ', async () => {
+    await renderVms([makeVm({ requested_return_at: '2999-12-31' })])
+    expect(screen.getByText(`Заявка на срок до ${formatDate('2999-12-31')} ждёт администратора`)).toBeInTheDocument()
+  })
+
+  it('без заявки пояснения нет', async () => {
+    await renderVms([makeVm()])
+    expect(screen.queryByText(/ждёт администратора/)).not.toBeInTheDocument()
   })
 })

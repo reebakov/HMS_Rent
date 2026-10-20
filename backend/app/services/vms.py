@@ -1,6 +1,6 @@
 """Виртуалки из конструктора: заявка → очередь → worker клонирует шаблон в vSphere → «Моя аренда»."""
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,7 @@ from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
 from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmTemplateOption
-from app.services import departments, overdue, runtime
+from app.services import departments, overdue, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number
 
@@ -87,15 +87,19 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
     if data.disk_gb < tmpl.min_disk_gb:
         raise DomainError(f"Для {tmpl.label} диск — не меньше {tmpl.min_disk_gb} ГБ")
     dept = await departments.get_active(session, data.department_id)
+    until, longer = term_limit.plan(user, data.expected_return_at)
     vm = VirtualMachine(
         order_number=await next_order_number(session),
         name=f"{settings.vm_name_prefix}{data.name}", cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
         status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label,
         requester_name=data.requester_name, requester_nick=data.requester_nick,
-        purpose=data.purpose or None, expected_return_at=data.expected_return_at, attrs={},
+        purpose=data.purpose or None, expected_return_at=until, attrs={},
     )
     session.add(vm)
     async with conflict_on_integrity_error(session, f"Имя «{vm.name}» уже занято — придумайте другое"):
+        await session.flush()
+        if longer:
+            term_limit.open_request(session, user, requested=data.expected_return_at, comment=None, vm_id=vm.id)
         await session.commit()
     return await get_vm(session, vm.id)
 
@@ -140,18 +144,34 @@ async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachi
     return await get_vm(session, vm.id)
 
 
-async def extend(session: AsyncSession, user: User, vm_id: int, data: VmExtend) -> VirtualMachine:
-    """Продление срока ВМ: сразу меняет срок и пишет продление в журнал. В Insight ВМ не записываются."""
-    vm = await _lock_vm(session, user, vm_id,
-                        "Продлить ВМ может тот, кто её заказывал, участник его команды или администратор")
+def _ensure_extendable(vm: VirtualMachine) -> None:
     if vm.status in (VmStatus.deleting, VmStatus.deleted):
         raise Conflict("Виртуалка удаляется или уже удалена — продлить срок нельзя")
-    old = vm.expected_return_at
-    overdue.record_extension(session, user, old=old, new=data.expected_return_at, comment=data.comment,
-                             vm_id=vm.id)
-    vm.expected_return_at = data.expected_return_at
+
+
+async def extend(session: AsyncSession, user: User, vm_id: int, data: VmExtend) -> VirtualMachine:
+    """Продление срока ВМ: до лимита (текущий срок + 3 месяца) сразу, дальше — максимум сразу и заявка админу.
+
+    Срок меняется сразу и пишется в журнал продлений. В Insight ВМ не записываются."""
+    vm = await _lock_vm(session, user, vm_id,
+                        "Продлить ВМ может тот, кто её заказывал, участник его команды или администратор")
+    _ensure_extendable(vm)
+    until, longer = term_limit.plan(user, data.expected_return_at, base=vm.expected_return_at,
+                                    pending=vm.requested_return_at)
+    overdue.record_extension(session, user, old=vm.expected_return_at, new=until, comment=data.comment, vm_id=vm.id)
+    vm.expected_return_at = until
+    if longer:
+        term_limit.open_request(session, user, requested=data.expected_return_at, comment=data.comment, vm_id=vm.id)
     await session.commit()
     return await get_vm(session, vm.id)
+
+
+async def apply_term(session: AsyncSession, admin: User, vm_id: int, new: date, comment: str) -> None:
+    """Согласование заявки на срок (term_requests.approve): ставит срок ВМ; commit делает вызывающий."""
+    vm = await _lock_vm(session, admin, vm_id, "Согласовать срок")
+    _ensure_extendable(vm)
+    overdue.record_extension(session, admin, old=vm.expected_return_at, new=new, comment=comment, vm_id=vm.id)
+    vm.expected_return_at = new
 
 
 async def list_vms(session: AsyncSession, user: User | None = None, include_deleted: bool = True) -> list[VirtualMachine]:

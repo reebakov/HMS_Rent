@@ -108,6 +108,7 @@ export interface Booking {
   purpose: string | null
   booked_at: string
   expected_return_at: string | null
+  requested_return_at: string | null // срок из заявки админу, пока она ждёт решения
   returned_at: string | null
   returned_by: UserShort | null
   return_comment: string | null
@@ -270,6 +271,7 @@ export interface Vm {
   requester_nick: string
   purpose: string | null
   expected_return_at: string | null
+  requested_return_at: string | null // срок из заявки админу, пока она ждёт решения
   ip_address: string | null
   power_state: string | null
   created_at: string
@@ -400,6 +402,22 @@ export interface ExtensionOut {
   created_at: string
   acknowledged_at: string | null
   acknowledged_by: UserShort | null
+}
+
+/** Заявка админу на срок аренды дольше лимита */
+export interface TermRequestOut {
+  id: number
+  kind: 'pc' | 'vm'
+  name: string
+  order_number: number
+  department: Ref
+  requester_name: string
+  requester_nick: string
+  user: UserShort // кто просит
+  current_return_at: string | null
+  requested_return_at: string
+  comment: string | null
+  created_at: string
 }
 
 export interface OverdueItem {

@@ -35,6 +35,7 @@ class BookingOut(ORMModel):
     purpose: str | None
     booked_at: datetime
     expected_return_at: date | None
+    requested_return_at: date | None  # срок из заявки админу, пока она ждёт решения
     returned_at: datetime | None
     returned_by: UserShort | None
     return_comment: str | None

@@ -29,7 +29,7 @@ const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
     id: 20, order_number: 88, status: 'active', computer: makeComputer({ id: 2, name: 'PC-777' }),
     department: { id: 1, name: 'QA' }, user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
     requester_name: 'Иван Иванов', requester_nick: 'i.ivanov', purpose: null, booked_at: '2026-09-01T10:00:00Z',
-    expected_return_at: '2026-11-01', returned_at: null, returned_by: null, return_comment: null,
+    expected_return_at: '2026-11-01', requested_return_at: null, returned_at: null, returned_by: null, return_comment: null,
   },
   user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
   old_return_at: '2026-10-20', new_return_at: '2026-11-01', comment: 'Тесты ещё идут',
@@ -41,7 +41,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   id: 5, order_number: 12, name: 'rent-vm-build-01', cpu: 4, ram_gb: 8, disk_gb: 80, template_key: null, os_label: null,
   status: 'ready', error: null, department: { id: 2, name: 'Аналитика' },
   user: { id: 6, username: 'a.smirnova', display_name: 'Анна Смирнова' }, requester_name: 'Анна Смирнова',
-  requester_nick: 'a.smirnova', purpose: null, expected_return_at: '2026-11-01', ip_address: null, power_state: null,
+  requester_nick: 'a.smirnova', purpose: null, expected_return_at: '2026-11-01', requested_return_at: null, ip_address: null, power_state: null,
   created_at: '2026-09-01T10:00:00Z', ready_at: null, released_at: null, deleted_at: null, ...over,
 })
 
@@ -68,6 +68,7 @@ beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/admin/overdue') return items
     if (path === '/admin/extensions') return extensions
+    if (path === '/admin/term-requests') return [] // блок заявок на срок проверяется в TermRequests.test.tsx
     throw new Error(`неожиданный GET ${path}`)
   })
   vi.mocked(api.post).mockResolvedValue({})

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import Tier
 from app.schemas.booking import BookingOut
-from app.schemas.common import DepartmentShort, InputModel, ORMModel, UserShort, reject_explicit_null
+from app.schemas.common import DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort, reject_explicit_null
 from app.schemas.computer import ComputerOut
 from app.schemas.vm import VmOut
 
@@ -81,6 +81,27 @@ class ExtensionOut(ORMModel):
     created_at: datetime
     acknowledged_at: datetime | None
     acknowledged_by: UserShort | None
+
+
+class TermRequestOut(ORMModel):
+    id: int
+    kind: Literal["pc", "vm"]
+    name: str  # имя ПК или ВМ
+    order_number: int
+    department: DepartmentShort
+    requester_name: str
+    requester_nick: str
+    user: UserShort  # кто просит: арендатор или участник его команды
+    current_return_at: date | None
+    requested_return_at: date
+    comment: str | None
+    created_at: datetime
+
+
+class TermApprove(InputModel):
+    """Согласование заявки: свой срок админа; без него ставится запрошенный."""
+
+    approved_return_at: ReturnDate | None = None
 
 
 class InventoryBooking(ORMModel):

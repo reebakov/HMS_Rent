@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { TermRequests } from '@/features/admin/TermRequests'
 import { ExtendDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
 import { useAckExtension, useExtensions, useOverdue, useReleaseVm, useReturnBooking } from '@/lib/queries'
 import type { ExtensionOut, OverdueItem } from '@/lib/types'
@@ -41,7 +42,7 @@ export function OverduePage() {
     <>
       <PageHeader
         title="Сроки аренды"
-        description="Просроченная техника и продления аренды. Раз в день сводка просрочек уходит в Mattermost"
+        description="Просрочки, заявки на срок дольше 3 месяцев и продления аренды. Раз в день сводка просрочек уходит в Mattermost"
       />
       <Card>
         <CardHeader title="Просрочки" description="Компьютеры и виртуалки, которые должны были вернуть, но не вернули" />
@@ -120,6 +121,8 @@ export function OverduePage() {
           )}
         </DataState>
       </Card>
+
+      <TermRequests />
 
       <Extensions />
 

@@ -45,6 +45,7 @@ class VmOut(ORMModel):
     requester_nick: str
     purpose: str | None
     expected_return_at: date | None
+    requested_return_at: date | None  # срок из заявки админу, пока она ждёт решения
     ip_address: str | None
     power_state: str | None
     created_at: datetime

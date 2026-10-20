@@ -5,7 +5,7 @@ import { api } from './api'
 import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
-  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck,
+  Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut,
 } from './types'
 
 export interface ComputerFilters {
@@ -331,6 +331,32 @@ export function useAckExtension() {
   return useMutation({
     mutationFn: (id: number) => api.post<ExtensionOut>(`/admin/extensions/${id}/ack`),
     onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'extensions'] }),
+  })
+}
+
+export const useTermRequests = (enabled = true) =>
+  useQuery({
+    queryKey: ['admin', 'term-requests'],
+    queryFn: () => api.get<TermRequestOut[]>('/admin/term-requests'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+/** Согласование заявки на срок: без approved_return_at ставится запрошенный срок */
+export function useApproveTermRequest() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, approved_return_at }: { id: number; approved_return_at?: string }) =>
+      api.post<TermRequestOut>(`/admin/term-requests/${id}/approve`, { approved_return_at }),
+    onSettled: invalidate,
+  })
+}
+
+export function useRejectTermRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<TermRequestOut>(`/admin/term-requests/${id}/reject`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'term-requests'] }),
   })
 }
 

@@ -1,15 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { DataState, FormError, QueryError } from '@/components/ui/data-state'
 import { DepartmentOptions, Field, Input, Select } from '@/components/ui/input'
 import { useSession } from '@/auth/AuthProvider'
+import { TermLimitNote, termLimit, toastTerm } from '@/features/booking/TermLimit'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
-import { cn, todayLocal } from '@/lib/utils'
+import { cn, formatDate, todayLocal } from '@/lib/utils'
 
 type Range = { min: number; max: number; step: number }
 
@@ -97,7 +97,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
         name, cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
         requester_name: person, requester_nick: nick, expected_return_at: until,
       })
-      toast.success(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`)
+      toastTerm(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`, vm)
       onClose()
       navigate('/my')
     } catch {
@@ -188,7 +188,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                     <DepartmentOptions departments={departments.data} />
                   </Select>
                 </Field>
-                <Field label="Вернуть до" required>
+                <Field label="Вернуть до" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
                   <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
                 </Field>
                 <Field label="Имя и фамилия" required>
@@ -198,6 +198,8 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                   <Input value={nick} onChange={(e) => setNick(e.target.value)} />
                 </Field>
               </div>
+
+              <TermLimitNote until={until} base={todayLocal()} verb="оформится" />
 
               <QueryError query={departments} title="Не удалось загрузить отделы" />
 

@@ -29,6 +29,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   purpose: null,
   booked_at: '2024-01-10T09:00:00Z',
   expected_return_at: '2999-12-31',
+  requested_return_at: null,
   returned_at: null,
   returned_by: null,
   return_comment: null,
@@ -52,6 +53,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   requester_nick: 'iivanov',
   purpose: null,
   expected_return_at: null,
+  requested_return_at: null,
   ip_address: '10.0.0.15',
   power_state: 'on',
   created_at: '2024-01-10T09:00:00Z',
@@ -613,5 +615,20 @@ describe('MyBookingsPage: заявки Service Desk', () => {
       // заявка закрыта — поля ответа нет
       expect(screen.queryByPlaceholderText('Ответить администраторам…')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('MyBookingsPage: заявка на срок', () => {
+  it('срок из заявки, которая ждёт админа, виден у брони', async () => {
+    bookings = [makeBooking({ requested_return_at: '2999-12-31' })]
+    renderPage()
+    expect(await screen.findByText(`Заявка на срок до ${formatDate('2999-12-31')} ждёт администратора`)).toBeInTheDocument()
+  })
+
+  it('без заявки пояснения нет', async () => {
+    bookings = [makeBooking()]
+    renderPage()
+    await screen.findByText('PC-010')
+    expect(screen.queryByText(/ждёт администратора/)).not.toBeInTheDocument()
   })
 })

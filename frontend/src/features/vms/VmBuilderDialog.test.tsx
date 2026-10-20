@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { VmBuilderDialog } from './VmBuilderDialog'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
-import { addDays, todayLocal } from '@/lib/utils'
+import { termLimit } from '@/features/booking/TermLimit'
+import { addDays, formatDate, todayLocal } from '@/lib/utils'
 import type { VmOptions, VmTemplateOption } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -484,5 +485,39 @@ describe('VmBuilderDialog: отправка с шаблоном', () => {
     await user.click(submit())
     await waitFor(() => expect(api.post).toHaveBeenCalled())
     expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ template_key: 'win11' }))
+  })
+})
+
+describe('VmBuilderDialog: лимит срока', () => {
+  const limit = termLimit(todayLocal())
+  const beyond = addDays(limit, 1)
+
+  it('подсказка про срок без согласования; дальше лимита — пояснение про заявку, отправить можно', async () => {
+    const { user } = await setup()
+    expect(screen.getByText(`Без согласования — до ${formatDate(limit)}`)).toBeInTheDocument()
+    expect(screen.queryByText(/администратору уйдёт заявка/)).not.toBeInTheDocument()
+
+    await user.type(nameInput(), 'design-01')
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await user.type(untilInput(), beyond)
+    expect(screen.getByText(/администратору уйдёт заявка/)).toHaveTextContent(
+      `аренда оформится до ${formatDate(limit)}, а администратору уйдёт заявка на ${formatDate(beyond)}`,
+    )
+    expect(submit()).toBeEnabled()
+  })
+
+  it('заказ ушёл в заявку админу — тост с пояснением', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      id: 5, order_number: 77, name: 'rent-design-01', expected_return_at: limit, requested_return_at: beyond,
+    })
+    const { onClose, user } = await setup()
+    await user.type(nameInput(), 'design-01')
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    await user.type(untilInput(), beyond)
+    await user.click(submit())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Заказ №77'), {
+      description: `Срок ограничен ${formatDate(limit)} — заявка на ${formatDate(beyond)} отправлена администратору`,
+    })
   })
 })

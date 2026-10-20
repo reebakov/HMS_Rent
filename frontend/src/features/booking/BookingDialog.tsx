@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { FormError, QueryError } from '@/components/ui/data-state'
 import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/ui/input'
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
+import { TermLimitNote, termLimit, toastTerm } from '@/features/booking/TermLimit'
 import { useSession } from '@/auth/AuthProvider'
 import { useCreateBooking, useDepartments, useExtendBooking, useExtendVm } from '@/lib/queries'
 import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
@@ -54,7 +54,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
         expected_return_at: until,
       })
       safeStorage.set(LAST_DEPARTMENT_KEY, departmentId)
-      toast.success(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, {
+      toastTerm(`${booking.computer.name} закреплён за отделом «${booking.department.name}» · заказ №${booking.order_number}`, booking, {
         action: { label: 'Моя аренда', onClick: () => navigate('/my') },
       })
       onClose()
@@ -114,13 +114,15 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Планирую вернуть" required>
+            <Field label="Планирую вернуть" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
               <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
             </Field>
             <Field label="Для чего нужен" hint="Необязательно">
               <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый сотрудник, тесты…" />
             </Field>
           </div>
+
+          <TermLimitNote until={until} base={todayLocal()} verb="оформится" />
 
           {create.error && <FormError>{create.error.message}</FormError>}
         </div>
@@ -193,15 +195,18 @@ export function ExtendDialog({ target, onClose }: { target: ExtendTarget | null;
   }, [target?.kind, target?.id])
 
   const today = todayLocal()
-  const min = target?.due && target.due >= today ? addDays(target.due, 1) : today
+  const inFuture = !!target?.due && target.due >= today
+  const min = inFuture ? addDays(target.due!, 1) : today
+  const limitBase = inFuture ? target.due! : today // как на backend: у просроченного заказа лимит считается от сегодня
   const canExtend = until >= min // ISO-даты сравниваются строками; пустая строка меньше любой даты
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!target || !canExtend) return
     try {
-      await extend.mutateAsync({ id: target.id, expected_return_at: until, comment: comment || undefined })
-      toast.success(`Аренда ${target.name} продлена до ${formatDate(until)}`)
+      const order = await extend.mutateAsync({ id: target.id, expected_return_at: until, comment: comment || undefined })
+      // при заявке админу срок сразу стоит не тот, что выбран: берём его из ответа
+      toastTerm(`Аренда ${target.name} продлена до ${formatDate(order.requested_return_at ? order.expected_return_at : until)}`, order)
       onClose()
     } catch {
       /* ошибка показывается в форме */
@@ -229,9 +234,10 @@ export function ExtendDialog({ target, onClose }: { target: ExtendTarget | null;
       }
     >
       <div className="space-y-4">
-        <Field label="Новый срок" required>
+        <Field label="Новый срок" required hint={`Без согласования — до ${formatDate(termLimit(limitBase))}`}>
           <Input type="date" min={min} value={until} onChange={(e) => setUntil(e.target.value)} />
         </Field>
+        <TermLimitNote until={until} base={limitBase} verb="продлится" />
         <Field label="Причина" hint="Необязательно">
           <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Тесты ещё идут…" />
         </Field>

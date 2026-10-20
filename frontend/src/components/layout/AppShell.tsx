@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
-import { useExtensions, useOverdue } from '@/lib/queries'
+import { useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { ShortcutsButton } from './Shortcuts'
 import { ThemeToggle } from './ThemeToggle'
@@ -65,9 +65,11 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
 export function AppShell() {
   const session = useSession()
   const isAdmin = session.user.role === 'admin'
-  // «Сроки аренды» требуют внимания: просрочки и продления, которые ещё не отметили «Принято»
+  // «Сроки аренды» требуют внимания: просрочки, заявки на срок и продления, которые ещё не отметили «Принято»
   const deadlinesCount =
-    (useOverdue(isAdmin).data?.length ?? 0) + (useExtensions(isAdmin).data?.filter((e) => !e.acknowledged_at).length ?? 0)
+    (useOverdue(isAdmin).data?.length ?? 0) +
+    (useTermRequests(isAdmin).data?.length ?? 0) +
+    (useExtensions(isAdmin).data?.filter((e) => !e.acknowledged_at).length ?? 0)
   const { logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()

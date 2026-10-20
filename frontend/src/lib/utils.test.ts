@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addDays, cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
+import { addDays, addMonths, cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -140,5 +140,19 @@ describe('computerSpecs', () => {
     [{ cpu: null, ram_gb: null, gpu: null }, ''],
   ])('%j -> «%s»', (computer, expected) => {
     expect(computerSpecs(computer)).toBe(expected)
+  })
+})
+
+describe('addMonths', () => {
+  it.each([
+    ['2026-01-15', 3, '2026-04-15'],
+    ['2026-11-20', 3, '2027-02-20'], // через год
+    ['2026-05-31', 3, '2026-08-31'],
+    ['2026-11-30', 3, '2027-02-28'], // в феврале нет 30-го — конец месяца
+    ['2023-11-30', 3, '2024-02-29'], // високосный год
+    ['2026-12-31', 3, '2027-03-31'],
+    ['2026-03-15', 0, '2026-03-15'],
+  ])('%s + %i мес. = %s', (date, months, expected) => {
+    expect(addMonths(date, months)).toBe(expected)
   })
 })

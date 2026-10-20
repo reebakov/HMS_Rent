@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -9,6 +9,9 @@ from app.db.base import Base, TimestampMixin
 from app.models.department import Department
 from app.models.enums import VmStatus
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.models.booking import TermRequest
 
 
 class AppSetting(Base):
@@ -67,3 +70,12 @@ class VirtualMachine(Base, TimestampMixin):
     user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
     department: Mapped[Department] = relationship(lazy="joined")
     released_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[released_by_id])
+    pending_term_request: Mapped["TermRequest | None"] = relationship(
+        primaryjoin="and_(VirtualMachine.id == TermRequest.vm_id, TermRequest.status == 'pending')",
+        lazy="selectin", viewonly=True,
+    )
+
+    @property
+    def requested_return_at(self) -> date | None:
+        """Срок, о котором арендатор просит дольше лимита и который ещё не согласован."""
+        return self.pending_term_request.requested_return_at if self.pending_term_request else None

@@ -35,7 +35,7 @@ function mount(route: string, session: ReturnType<typeof makeSession> | null) {
       if (!session) throw new ApiError(401, 'нет сессии')
       return session
     }
-    if (path === '/admin/overdue' || path === '/admin/extensions') return [] // счётчик «Сроки аренды» в меню админа
+    if (['/admin/overdue', '/admin/extensions', '/admin/term-requests'].includes(path)) return [] // счётчик «Сроки аренды» в меню админа
     throw new Error(`неожиданный GET ${path}`)
   })
   return renderWithProviders(

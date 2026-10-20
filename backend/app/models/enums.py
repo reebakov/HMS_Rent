@@ -36,6 +36,12 @@ class VmStatus(StrEnum):
     failed = "failed"
 
 
+class TermRequestStatus(StrEnum):
+    pending = "pending"    # ждёт решения администратора
+    approved = "approved"
+    rejected = "rejected"
+
+
 class SyncRunStatus(StrEnum):
     running = "running"
     success = "success"

@@ -1,10 +1,10 @@
-"""Админка: детали синхронизации, просрочки и продления."""
-from fastapi import APIRouter
+"""Админка: детали синхронизации, просрочки, продления и заявки на срок."""
+from fastapi import APIRouter, BackgroundTasks
 
 from app.api.deps import DB, AdminUser
-from app.models import BookingExtension
-from app.schemas.admin import ExtensionOut, OverdueItem
-from app.services import overdue, sync_runs
+from app.models import BookingExtension, TermRequest
+from app.schemas.admin import ExtensionOut, OverdueItem, TermApprove, TermRequestOut
+from app.services import bookings, overdue, sync_runs, term_requests
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -28,3 +28,22 @@ async def extensions_list(_: AdminUser, session: DB) -> list[BookingExtension]:
 @router.post("/extensions/{extension_id}/ack", response_model=ExtensionOut)
 async def extension_ack(extension_id: int, admin: AdminUser, session: DB) -> BookingExtension:
     return await overdue.acknowledge_extension(session, admin, extension_id)
+
+
+@router.get("/term-requests", response_model=list[TermRequestOut])
+async def term_requests_list(_: AdminUser, session: DB) -> list[TermRequest]:
+    return await term_requests.list_pending(session)
+
+
+@router.post("/term-requests/{request_id}/approve", response_model=TermRequestOut)
+async def term_request_approve(
+    request_id: int, data: TermApprove, admin: AdminUser, session: DB, tasks: BackgroundTasks
+) -> TermRequest:
+    req = await term_requests.approve(session, admin, request_id, data.approved_return_at)
+    tasks.add_task(bookings.push_to_insight)  # новый «Срок использования» ПК в Insight
+    return req
+
+
+@router.post("/term-requests/{request_id}/reject", response_model=TermRequestOut)
+async def term_request_reject(request_id: int, admin: AdminUser, session: DB) -> TermRequest:
+    return await term_requests.reject(session, admin, request_id)
