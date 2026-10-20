@@ -11,6 +11,7 @@ from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
 from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
 from app.schemas.service_request import RequestOut
+from app.services.access import ensure_access, mine_or_team
 
 log = logging.getLogger(__name__)
 
@@ -21,10 +22,6 @@ def request_out(req: ServiceRequest) -> RequestOut:
     row = RequestOut.model_validate(req)
     row.url = portal_url(req.issue_key) if req.issue_key else None
     return row
-
-
-def _can_access(user: User, owner_id: int, department_id: int) -> bool:
-    return user.is_admin or owner_id == user.id or (user.department_id is not None and user.department_id == department_id)
 
 
 def _booking_text(b: Booking) -> str:
@@ -64,16 +61,14 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
         item = await session.get(Booking, booking_id)
         if item is None:
             raise NotFound("Бронирование не найдено")
-        if not _can_access(user, item.user_id, item.department_id):
-            raise Forbidden("Это не ваш компьютер")
+        ensure_access(user, item.user_id, item.department_id, "Это не ваш компьютер")
         summary = f"HMS Rent: проблема с ПК {item.computer.name} (заказ №{item.order_number})"
         context = _booking_text(item)
     elif vm_id:
         item = await session.get(VirtualMachine, vm_id)
         if item is None:
             raise NotFound("Виртуалка не найдена")
-        if not _can_access(user, item.user_id, item.department_id):
-            raise Forbidden("Это не ваша виртуалка")
+        ensure_access(user, item.user_id, item.department_id, "Это не ваша виртуалка")
         summary = f"HMS Rent: проблема с ВМ {item.name} (заказ №{item.order_number})"
         context = _vm_text(item)
     else:
@@ -116,13 +111,10 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
 
 
 def _visible_to(user: User):
-    """Условие доступа к заявке: своя или заявка по ПК и виртуалкам команды."""
-    team_bookings = select(Booking.id).where(Booking.department_id == user.department_id)
-    team_vms = select(VirtualMachine.id).where(VirtualMachine.department_id == user.department_id)
-    cond = ServiceRequest.user_id == user.id
-    if user.department_id:
-        cond = or_(cond, ServiceRequest.booking_id.in_(team_bookings), ServiceRequest.vm_id.in_(team_vms))
-    return cond
+    """Условие доступа к заявке: своя или заявка по ПК и виртуалкам пользователя и его команды."""
+    bookings = select(Booking.id).where(mine_or_team(user, Booking.user_id, Booking.department_id))
+    vms = select(VirtualMachine.id).where(mine_or_team(user, VirtualMachine.user_id, VirtualMachine.department_id))
+    return or_(ServiceRequest.user_id == user.id, ServiceRequest.booking_id.in_(bookings), ServiceRequest.vm_id.in_(vms))
 
 
 async def list_for_user(session: AsyncSession, user: User) -> list[ServiceRequest]:

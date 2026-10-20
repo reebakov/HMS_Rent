@@ -257,6 +257,15 @@ async def test_list_for_user_team_sees_booking_requests_made_by_others(session, 
     assert await svc.list_for_user(session, env.stranger) == []
 
 
+async def test_list_for_user_author_of_order_for_other_team_sees_its_requests(session, env, sd, make_computer):
+    """Заказ можно оформить на другую команду: его автор видит заявки по нему, как и участники этой команды."""
+    comp = await make_computer("A002")
+    booking = await add_booking(session, comp, env.stranger, env.qa)  # автор из Ops, команда-получатель QA
+    req = await add_req(session, env.mate, booking=booking)
+    assert [r.id for r in await svc.list_for_user(session, env.stranger)] == [req.id]
+    assert (await svc.get_with_comments(session, env.stranger, req.id))[0].id == req.id
+
+
 async def test_list_for_user_without_department_only_own(session, env, sd):
     own = await add_req(session, env.nodept, key="HMS-1")
     await add_req(session, env.owner, booking=env.booking, key="HMS-2")

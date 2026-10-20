@@ -2,10 +2,10 @@
 import pytest
 from sqlalchemy import func, select
 
-from app.core.errors import Conflict, NotFound
+from app.core.errors import Conflict, Forbidden, NotFound
 from app.db.integrity import conflict_on_integrity_error
 from app.models import AppSetting, Department
-from app.services import departments, runtime
+from app.services import access, departments, runtime
 
 
 async def test_integrity_error_becomes_conflict_and_session_stays_usable(session, make_department):
@@ -61,3 +61,34 @@ async def test_put_setting_creates_then_updates(session):
     await session.commit()
     rows = (await session.scalars(select(AppSetting).where(AppSetting.key == "some_key"))).all()
     assert [r.value for r in rows] == ["v2"]
+
+
+# ---------- доступ к заказам (services/access.py) ----------
+
+@pytest.fixture
+async def people(make_department, make_user):
+    qa, ops = await make_department("QA"), await make_department("Ops")
+    return {
+        "owner": await make_user("owner", department=qa), "mate": await make_user("mate", department=qa),
+        "other_team": await make_user("other", department=ops), "no_team": await make_user("nodept"),
+        "admin": await make_user("boss", role="admin", department=ops), "qa": qa,
+    }
+
+
+@pytest.mark.parametrize("who, allowed", [
+    ("owner", True), ("mate", True), ("admin", True), ("other_team", False), ("no_team", False),
+])
+async def test_can_access_order(people, who, allowed):
+    user, order_dept = people[who], people["qa"].id
+    assert access.can_access(user, people["owner"].id, order_dept) is allowed
+    if allowed:
+        access.ensure_access(user, people["owner"].id, order_dept, "нельзя")
+    else:
+        with pytest.raises(Forbidden, match="нельзя"):
+            access.ensure_access(user, people["owner"].id, order_dept, "нельзя")
+
+
+async def test_user_without_team_is_not_member_of_anything(people):
+    """Пустой отдел не совпадает ни с каким: иначе все без отдела были бы «одной командой»."""
+    assert not access.is_team_member(people["no_team"], people["qa"].id)
+    assert access.is_team_member(people["mate"], people["qa"].id)
