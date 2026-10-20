@@ -41,6 +41,7 @@ class FakeVSphere:
     def __init__(self):
         self.created: list[dict] = []
         self.deleted: list[str] = []
+        self.sent: list[str] = []  # тексты уведомлений в Mattermost
 
     def create_vm(self, name, cpu, ram_gb, disk_gb, annotation, template_name=None, customization_spec=None):
         self.created.append({"name": name, "template": template_name, "spec": customization_spec})
@@ -54,16 +55,15 @@ class FakeVSphere:
 def vsphere(monkeypatch):
     fake = FakeVSphere()
     monkeypatch.setattr(vm_jobs, "vsphere", fake)
-    monkeypatch.setattr(vm_jobs, "notify", _noop)
+
+    async def record(text, *_a, **_kw):
+        fake.sent.append(text)
+    monkeypatch.setattr(vm_jobs, "notify", record)
 
     async def no_wait(_):
         pass
     monkeypatch.setattr(vm_jobs, "_pause", no_wait)
     return fake
-
-
-async def _noop(*_a, **_kw):
-    pass
 
 
 @pytest.fixture
@@ -602,6 +602,7 @@ async def test_create_next_vanished_template_does_not_fall_back_to_windows(sessi
     session.expire_all()
     vm = await session.get(VirtualMachine, vm_id)
     assert vm.status == "failed" and "больше не доступен" in vm.error
+    assert any("больше не доступен" in text for text in vsphere.sent)  # исполнители узнают и об этой ошибке
     assert vsphere.created == []  # Linux-ВМ не должна создаваться из Windows-шаблона
 
 

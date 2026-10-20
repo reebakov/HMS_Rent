@@ -36,6 +36,11 @@ def _annotation(vm: VirtualMachine) -> str:
     return "\n".join(lines)
 
 
+async def _notify_failed(vm: VirtualMachine) -> None:
+    """Исполнители узнают об ошибке из канала: в портале её видит только заказчик в карточке ВМ."""
+    await notify(f"⚠️ ВМ **{vm.name}** не создана для {vm.requester_name} ({vm.department.name}): {(vm.error or '')[:300]}")
+
+
 async def _take(session: AsyncSession, status: VmStatus) -> VirtualMachine | None:
     """Одна задача из очереди; SKIP LOCKED — два worker'а не возьмут одну ВМ."""
     return await session.scalar(
@@ -57,6 +62,7 @@ async def create_next(session: AsyncSession) -> bool:
             # шаблон убрали из настроек после постановки в очередь: клон из шаблона по умолчанию дал бы не ту ОС
             vm.status, vm.error = VmStatus.failed.value, f"Шаблон ОС «{vm.os_label or vm.template_key}» больше не доступен"
             await session.commit()
+            await _notify_failed(vm)
             return True
         template, spec = tmpl.template, tmpl.customization_spec
     annotated_until = vm.expected_return_at  # срок попадёт в Notes; если его продлят во время клона, upkeep обновит
@@ -81,6 +87,9 @@ async def create_next(session: AsyncSession) -> bool:
         break
     else:
         vm.status = VmStatus.failed.value  # в error осталась ошибка последней попытки
+        await session.commit()
+        await _notify_failed(vm)
+        return True
     await session.commit()
     return True
 

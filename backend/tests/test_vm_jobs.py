@@ -260,7 +260,7 @@ async def test_create_failure_marks_failed_and_never_deletes_by_name(session, vm
     vm = await status_of(session, vm)
     assert vm.status == "failed" and "datastore full" in vm.error and vm.ready_at is None
     assert vsphere.deleted == []  # недоделанный клон убирает vSphere-клиент, а по имени воркер не удаляет ничего
-    notify.assert_not_awaited()  # об успехе — уведомление, об ошибке — нет (см. xfail ниже)
+    notify.assert_awaited_once()  # об ошибке после второй попытки исполнители узнают из канала
 
 
 async def test_create_failure_name_taken_by_foreign_vm_deletes_nothing(session, vm_on, ctx, vsphere, notify):
@@ -305,12 +305,28 @@ async def test_create_no_retry_after_success(session, vm_on, ctx, vsphere, notif
     assert (await status_of(session, vm)).status == "ready"
 
 
-@pytest.mark.xfail(strict=True, reason="При ошибке создания ВМ notify не вызывается (только при успехе)")
-async def test_create_failure_notifies(session, vm_on, ctx, vsphere, notify):
+async def test_create_failure_notifies_executors_once_after_second_attempt(session, vm_on, ctx, vsphere, notify):
     vsphere.create_errors = [RuntimeError("boom")] * 2  # обе попытки неудачны
     await request(session, ctx)
     await vm_jobs.create_next(session)
     notify.assert_awaited_once()
+    text = notify.await_args.args[0]
+    assert "rent-dev-box" in text and "Иван Иванов" in text and "QA" in text and "boom" in text
+
+
+async def test_create_retry_success_does_not_notify_about_failure(session, vm_on, ctx, vsphere, notify):
+    vsphere.create_errors = [RuntimeError("временный сбой")]
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    notify.assert_awaited_once()
+    assert "создана" in notify.await_args.args[0] and "не создана" not in notify.await_args.args[0]
+
+
+async def test_create_failure_notification_truncates_long_error(session, vm_on, ctx, vsphere, notify):
+    vsphere.create_errors = [RuntimeError("x" * 900)] * 2
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    assert len(notify.await_args.args[0]) < 450
 
 
 async def test_create_pending_drains_queue_one_by_one(session, vm_on, ctx, vsphere, notify):
