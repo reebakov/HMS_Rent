@@ -2,9 +2,10 @@
 from datetime import date, datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from app.core import clock
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.models import Booking
 from app.schemas.booking import BookingCreate, BookingExtend
 from app.schemas.vm import VmCreate
@@ -73,3 +74,14 @@ async def test_stats_overdue_counter_uses_portal_day(at_instant, session, make_c
     comp, user, dept = await make_computer("A1"), await make_user("emp"), await make_department("QA")
     await add_booking(session, comp, user, dept, expected_return_at=JUNE_15)
     assert (await inventory.get_stats(session)).overdue == count
+
+
+@pytest.mark.parametrize("tz", ["Europe/Novosibirsk", "Moscow", "", "../etc/passwd"])
+def test_unknown_display_timezone_stops_startup(tz):
+    """Опечатка в DISPLAY_TIMEZONE не даёт портал запустить, а не роняет 500 каждую бронь (регрессия 21.10.2026)."""
+    with pytest.raises(ValidationError, match="Неизвестный часовой пояс DISPLAY_TIMEZONE"):
+        Settings(_env_file=None, display_timezone=tz)
+
+
+def test_known_display_timezone_accepted():
+    assert Settings(_env_file=None, display_timezone="Asia/Novosibirsk").display_timezone == "Asia/Novosibirsk"

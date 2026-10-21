@@ -2,7 +2,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # папка backend/
@@ -104,6 +106,16 @@ class Settings(BaseSettings):
 
     # --- Справочник отделов по умолчанию (создаётся, если таблица пустая) ---
     default_departments: str = "Разработка,Тестирование (QA),Аналитика,Дизайн,Маркетинг,Поддержка"
+
+    @field_validator("display_timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        # Опечатка в поясе иначе всплывает 500 на каждой брони и сроке; при старте deploy.sh её увидит и откатит
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(f"Неизвестный часовой пояс DISPLAY_TIMEZONE={value!r}, пример: Asia/Novosibirsk") from None
+        return value
 
     @property
     def bouncer_enabled(self) -> bool:
