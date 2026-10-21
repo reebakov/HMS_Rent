@@ -4,12 +4,12 @@ import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { DataState, FormError, QueryError } from '@/components/ui/data-state'
-import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/ui/input'
+import { Field, Input, Select, Textarea } from '@/components/ui/input'
+import { OrderDepartmentField, initialOrderDepartment } from '@/features/booking/OrderDepartment'
 import { Tabs } from '@/components/ui/tabs'
 import { useSession } from '@/auth/AuthProvider'
 import { termLimit } from '@/features/booking/TermLimit'
 import { useCreateBuild, useDepartments, useOrderOptions } from '@/lib/queries'
-import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import { addDays, formatDate, todayLocal } from '@/lib/utils'
 
 const VARIANTS = ['Типовая сборка', 'Своя конфигурация'] as const
@@ -40,7 +40,7 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
     setBuild('')
     setCustom('')
     setOs('')
-    setDepartmentId(String(session.user.department_id ?? safeStorage.get(LAST_DEPARTMENT_KEY) ?? ''))
+    setDepartmentId(initialOrderDepartment(session))
     setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
@@ -143,14 +143,7 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
                   ))}
                 </Select>
               </Field>
-              <Field label="Отдел" required>
-                <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-                  <option value="" disabled>
-                    Выберите отдел
-                  </option>
-                  <DepartmentOptions departments={departments.data} />
-                </Select>
-              </Field>
+              <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
               <Field label="Имя и фамилия" required>
                 <Input value={person} onChange={(e) => setPerson(e.target.value)} />
               </Field>

@@ -37,7 +37,7 @@ beforeEach(() => {
 async function setup() {
   const onClose = vi.fn()
   renderWithProviders(<BuildOrderDialog open onClose={onClose} />)
-  await screen.findByRole('option', { name: 'Аналитика' })
+  await screen.findByText('Аналитика')
   await screen.findByRole('option', { name: BUILD_A })
   return { onClose, user: userEvent.setup() }
 }
@@ -65,6 +65,35 @@ describe('BuildOrderDialog', () => {
       requester_nick: 'i.ivanov', expected_return_at: UNTIL, wanted_by: undefined, purpose: undefined,
     })
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('HMS-42'), expect.objectContaining({ action: expect.anything() }))
+  })
+
+  it('сотрудник оформляет на свой отдел и не выбирает его', async () => {
+    await setup()
+    expect(screen.queryByLabelText(/Отдел/)).not.toBeInTheDocument()
+  })
+
+  it('админ выбирает отдел из списка', async () => {
+    session = makeSession({ role: 'admin' })
+    const user = userEvent.setup()
+    renderWithProviders(<BuildOrderDialog open onClose={vi.fn()} />)
+    await screen.findByRole('option', { name: 'Аналитика' })
+    await screen.findByRole('option', { name: BUILD_A })
+    await user.selectOptions(screen.getByLabelText(/Типовая сборка/), BUILD_A)
+    await fillCommon(user)
+    expect(submit()).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText(/Отдел/), '2')
+    expect(submit()).toBeEnabled()
+  })
+
+  it('сотрудник без отдела не может отправить заявку', async () => {
+    session = makeSession()
+    const user = userEvent.setup()
+    renderWithProviders(<BuildOrderDialog open onClose={vi.fn()} />)
+    expect(await screen.findByText(/Вам не назначен отдел/)).toBeInTheDocument()
+    await screen.findByRole('option', { name: BUILD_A })
+    await user.selectOptions(screen.getByLabelText(/Типовая сборка/), BUILD_A)
+    await fillCommon(user)
+    expect(submit()).toBeDisabled()
   })
 
   it('своя конфигурация: описание не короче 5 символов, сборка не отправляется', async () => {

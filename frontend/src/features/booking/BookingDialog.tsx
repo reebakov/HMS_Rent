@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { FormError, QueryError } from '@/components/ui/data-state'
-import { DepartmentOptions, Field, Input, Select, Textarea } from '@/components/ui/input'
+import { Field, Input, Select, Textarea } from '@/components/ui/input'
+import { OrderDepartmentField, initialOrderDepartment } from '@/features/booking/OrderDepartment'
 import { TierBadge } from '@/components/ui/badge'
 import { SpecGrid } from '@/features/catalog/SpecGrid'
 import { TermLimitNote, termLimit, toastTerm } from '@/features/booking/TermLimit'
@@ -30,7 +31,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   // при каждом открытии — подставляем данные из рабочего аккаунта
   useEffect(() => {
     if (!computer) return
-    setDepartmentId(safeStorage.get(LAST_DEPARTMENT_KEY) ?? '')
+    setDepartmentId(initialOrderDepartment(session))
     setName(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
@@ -99,14 +100,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
             <SpecGrid computer={computer} className="xl:grid-cols-2" />
           </div>
 
-          <Field label="Отдел" required hint="Если вашего отдела нет в списке — напишите в HMS">
-            <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-              <option value="" disabled>
-                {departments.isLoading ? 'Загрузка…' : 'Выберите отдел'}
-              </option>
-              <DepartmentOptions departments={departments.data} />
-            </Select>
-          </Field>
+          <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
           <QueryError query={departments} title="Не удалось загрузить отделы" />
 
           <div className="grid gap-4 sm:grid-cols-2">

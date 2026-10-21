@@ -2,9 +2,9 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFound
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.integrity import conflict_on_integrity_error
-from app.models import Department
+from app.models import Department, User
 from app.schemas.department import DepartmentCreate, DepartmentUpdate
 
 NAME_TAKEN = "Отдел с таким названием уже есть"
@@ -27,6 +27,27 @@ async def get_active(session: AsyncSession, department_id: int) -> Department:
     dept = await session.get(Department, department_id)
     if dept is None or not dept.is_active:
         raise NotFound("Отдел не найден")
+    return dept
+
+
+async def for_order(session: AsyncSession, user: User, requested: int | None) -> Department:
+    """Отдел заказа (команда, которой доступен заказ): отдел сотрудника.
+
+    Обычный сотрудник оформляет заказ только на свой отдел: без отдела заказ нельзя оформить (его назначает админ),
+    чужой отдел — отказ. Админ может оформить на любой активный отдел, а если не указал — на свой.
+    """
+    if user.is_admin:
+        dept_id = requested or user.department_id
+        if dept_id is None:
+            raise DomainError("Укажите отдел заказа")
+        return await get_active(session, dept_id)
+    if user.department_id is None:
+        raise Conflict("Вам не назначен отдел. Обратитесь к администратору")
+    if requested not in (None, user.department_id):
+        raise Forbidden("Заказ оформляется на ваш отдел")
+    dept = await session.get(Department, user.department_id)
+    if dept is None or not dept.is_active:
+        raise Conflict("Ваш отдел отключён. Обратитесь к администратору")
     return dept
 
 

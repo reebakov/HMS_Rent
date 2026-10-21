@@ -7,7 +7,7 @@ from app.schemas.common import ComputerShort, DepartmentShort, InputModel, ORMMo
 
 class BookingCreate(InputModel):
     computer_id: int
-    department_id: int
+    department_id: int | None = None  # админ может указать любой отдел, остальным — свой
     requester_name: str = Field(min_length=2, max_length=255)
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)

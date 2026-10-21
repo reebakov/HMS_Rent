@@ -13,7 +13,7 @@ vi.mock('@/lib/api', async (orig) => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-let session = makeSession()
+let session = makeSession({ role: 'admin' })
 vi.mock('@/auth/AuthProvider', () => ({ useSession: () => session }))
 
 const departments = [
@@ -45,7 +45,7 @@ const fillReturnDate = (user: ReturnType<typeof userEvent.setup>) => user.type(r
 
 describe('BookingDialog', () => {
   beforeEach(() => {
-    session = makeSession()
+    session = makeSession({ role: 'admin' })
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(bookingResponse)
   })
@@ -66,7 +66,7 @@ describe('BookingDialog', () => {
   })
 
   it('ник по умолчанию — часть логина до «@», как в конструкторе ВМ', async () => {
-    session = makeSession({ username: 'i.ivanov@corp.example' })
+    session = makeSession({ role: 'admin', username: 'i.ivanov@corp.example' })
     setup()
     await waitForDepartments()
     expect(screen.getByLabelText(/Ник \/ логин/)).toHaveValue('i.ivanov')
@@ -98,6 +98,25 @@ describe('BookingDialog', () => {
       vi.useRealTimers()
       vi.unstubAllEnvs()
     }
+  })
+
+  it('сотрудник оформляет бронь на свой отдел и не выбирает его', async () => {
+    session = makeSession({ department_id: 2 })
+    const { user } = setup()
+    await screen.findByText('Аналитика')
+    expect(screen.queryByLabelText(/Отдел/)).not.toBeInTheDocument()
+    await fillReturnDate(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ department_id: 2 })))
+  })
+
+  it('сотрудник без отдела не может забронировать', async () => {
+    localStorage.setItem('hmsrent:last-department', '2') // сотрудник не берёт отдел из прошлого выбора
+    session = makeSession()
+    const { user } = setup()
+    expect(await screen.findByText(/Вам не назначен отдел/)).toBeInTheDocument()
+    await fillReturnDate(user)
+    expect(submitButton()).toBeDisabled()
   })
 
   it('кнопка отключена, пока не выбран отдел', async () => {
@@ -339,7 +358,7 @@ describe('BookingDialog: лимит срока', () => {
   const beyond = addDays(limit, 1)
 
   beforeEach(() => {
-    session = makeSession()
+    session = makeSession({ role: 'admin' })
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(bookingResponse)
     vi.mocked(toast.success).mockReset()
@@ -447,7 +466,7 @@ describe('BookingDialog: операционная система', () => {
   const OS = ['Ubuntu 24.04', 'Windows 11 26H2']
 
   beforeEach(() => {
-    session = makeSession()
+    session = makeSession({ role: 'admin' })
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(bookingResponse)
   })

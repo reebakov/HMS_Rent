@@ -141,7 +141,7 @@ async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> 
         raise DomainError("Такой типовой сборки нет в списке — обновите страницу")
     if data.os_label not in cfg.pc_os_list:
         raise DomainError("Такой ОС нет в списке — обновите страницу")
-    dept = await departments.get_active(session, data.department_id)
+    dept = await departments.for_order(session, user, data.department_id)
     _, longer = term_limit.plan(user, data.expected_return_at)
 
     order_number = await next_order_number(session)

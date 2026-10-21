@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core import clock
-from app.core.errors import Conflict, Forbidden, NotFound
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations.insight.base import InsightObject
 from app.integrations.insight.factory import get_mapping
@@ -27,6 +27,7 @@ from app.models import (
 from app.schemas.booking import BookingCreate, BookingExtend
 from app.services import bookings, runtime
 from app.services.runtime import RuntimeConfig
+from tests.sync_fakes import add_booking
 
 # ---------- Фикстуры и хелперы ----------
 
@@ -190,21 +191,71 @@ async def test_pool_of_other_department(session, env, make_department, make_pool
     admin = await make_user("root", role=UserRole.admin.value)
     assert (await bookings.create_booking(session, admin, payload(comp, env.dept))).status == BookingStatus.active
     member = await make_user("member", department=other_dept)
-    assert (await bookings.create_booking(session, member, payload(comp2, env.dept))).status == BookingStatus.active
+    assert (await bookings.create_booking(session, member, payload(comp2, other_dept))).status == BookingStatus.active
 
 
-async def test_inactive_department_not_found(session, env, make_department):
+async def test_admin_cannot_order_for_inactive_department(session, env, make_department, make_user):
     dept = await make_department("Old", is_active=False)
+    admin = await make_user("root", role=UserRole.admin.value)
     with pytest.raises(NotFound):
-        await bookings.create_booking(session, env.user, payload(env.comp, dept))
+        await bookings.create_booking(session, admin, payload(env.comp, dept))
     assert (await db_get(Computer, env.comp.id)).status == ComputerStatus.available
 
 
-async def test_missing_department_not_found(session, env):
+async def test_admin_unknown_department_not_found(session, env, make_user):
+    admin = await make_user("root", role=UserRole.admin.value)
     with pytest.raises(NotFound):
-        await bookings.create_booking(session, env.user, BookingCreate(
+        await bookings.create_booking(session, admin, BookingCreate(
             computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i",
             expected_return_at=clock.today()))
+
+
+# ---------- отдел заказа: свой отдел сотрудника ----------
+
+async def test_order_department_defaults_to_own_when_not_given(session, env):
+    booking = await bookings.create_booking(session, env.user, BookingCreate(
+        computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
+    assert booking.department_id == env.dept.id
+
+
+async def test_user_cannot_order_for_foreign_department(session, env, make_department):
+    other = await make_department("Other")
+    with pytest.raises(Forbidden, match="на ваш отдел"):
+        await bookings.create_booking(session, env.user, payload(env.comp, other))
+    assert (await db_get(Computer, env.comp.id)).status == ComputerStatus.available
+
+
+async def test_user_without_department_cannot_order(session, env, make_user):
+    loner = await make_user("loner")
+    with pytest.raises(Conflict, match="не назначен отдел"):
+        await bookings.create_booking(session, loner, payload(env.comp, env.dept))
+    assert (await db_get(Computer, env.comp.id)).status == ComputerStatus.available
+
+
+async def test_user_with_inactive_own_department_cannot_order(session, env, make_department, make_user):
+    off = await make_department("Off", is_active=False)
+    user = await make_user("offuser", department=off)
+    with pytest.raises(Conflict, match="отдел отключён"):
+        await bookings.create_booking(session, user, BookingCreate(
+            computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
+
+
+async def test_admin_orders_for_any_department_or_own(session, env, make_user, make_department, make_computer):
+    admin = await make_user("root", role=UserRole.admin.value, department=await make_department("Admins"))
+    other = await make_department("Other")
+    for_other = await bookings.create_booking(session, admin, payload(env.comp, other))
+    assert for_other.department_id == other.id
+    own = await bookings.create_booking(session, admin, BookingCreate(
+        computer_id=(await make_computer(pool=env.pool)).id, requester_name="Иван", requester_nick="i",
+        expected_return_at=clock.today()))
+    assert own.department_id == admin.department_id
+
+
+async def test_admin_without_department_must_name_one(session, env, make_user):
+    admin = await make_user("root", role=UserRole.admin.value)
+    with pytest.raises(DomainError, match="Укажите отдел"):
+        await bookings.create_booking(session, admin, BookingCreate(
+            computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
 
 
 # ---------- Проверка Insight «прямо сейчас» ----------
@@ -557,8 +608,8 @@ async def test_list_user_bookings_own_only_newest_first(session, env, make_user,
     other = await make_user("petrov", department=await make_department("Ops"))
     loner = await make_user("loner")
     comps = [env.comp] + [await make_computer(pool=env.pool) for _ in range(4)]
-    mine = [await bookings.create_booking(session, loner, payload(c, env.dept)) for c in comps[:3]]
-    await bookings.create_booking(session, other, payload(comps[3], env.dept))
+    mine = [await add_booking(session, c, loner, env.dept) for c in comps[:3]]  # заказы до правила про отдел сотрудника
+    await add_booking(session, comps[3], other, env.dept)
 
     rows = await bookings.list_user_bookings(session, loner)
     assert [b.id for b in rows] == [b.id for b in reversed(mine)]
@@ -576,7 +627,7 @@ async def test_list_user_bookings_includes_team_without_duplicates(session, env,
     team = await bookings.create_booking(session, mate, payload(comps[1], env.dept))
     closed = await bookings.create_booking(session, mate, payload(comps[2], env.dept))
     await bookings.return_booking(session, mate, closed.id, None)
-    await bookings.create_booking(session, foreign, payload(comps[3], await make_department("Third")))
+    await add_booking(session, comps[3], foreign, await make_department("Third"))
 
     rows = await bookings.list_user_bookings(session, env.user)
     assert [b.id for b in rows] == [closed.id, team.id, own.id]

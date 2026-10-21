@@ -238,11 +238,28 @@ async def test_booking_invisible_computers_are_404(client, shop, make_computer, 
             ).status_code == 404
 
 
-async def test_booking_unknown_or_inactive_department_is_404(client, shop, make_department, api):
+async def test_admin_booking_for_unknown_or_inactive_department_is_404(client, shop, make_department, make_user,
+                                                                     login, api):
     off = await make_department("Off", is_active=False)
+    login(await make_user("boss", role=ADMIN))
     assert (await client.post(api("/bookings"), json=_payload(shop["comp"], off))).status_code == 404
     assert (await client.post(api("/bookings"), json={**_payload(shop["comp"], off), "department_id": 999})
             ).status_code == 404
+
+
+async def test_user_booking_for_foreign_department_is_403_and_without_department_409(client, shop, make_department,
+                                                                                     make_user, login, api):
+    other = await make_department("Other")
+    assert (await client.post(api("/bookings"), json=_payload(shop["comp"], other))).status_code == 403
+    login(await make_user("loner"))
+    r = await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))
+    assert r.status_code == 409 and "не назначен отдел" in r.json()["detail"]
+
+
+async def test_booking_without_department_in_body_uses_own(client, shop, api):
+    body = {k: v for k, v in _payload(shop["comp"], shop["dept"]).items() if k != "department_id"}
+    r = await client.post(api("/bookings"), json=body)
+    assert r.status_code == 201 and r.json()["department"]["id"] == shop["dept"].id
 
 
 @pytest.mark.parametrize("patch", [
@@ -284,8 +301,9 @@ async def test_my_bookings_only_own_newest_first(client, shop, login, make_user,
     await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))
     await client.post(api("/bookings"), json=_payload(c2, shop["dept"]))
     client.cookies.clear()
-    login(await make_user("other"))
-    await client.post(api("/bookings"), json=_payload(c3, await make_department("Ops")))
+    ops = await make_department("Ops")
+    login(await make_user("other", department=ops))
+    await client.post(api("/bookings"), json=_payload(c3, ops))
     assert [b["computer"]["name"] for b in (await client.get(api("/bookings/my"))).json()] == ["A3"]
     client.cookies.clear()
     login(shop["emp"])

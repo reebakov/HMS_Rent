@@ -498,9 +498,10 @@ async def test_create_checks_still_come_before_template(session, vm_on, ctx):
         await request(session, ctx, name="vm-three", template_key="nope")
 
 
-async def test_create_unknown_department_still_rejected(session, vm_on, ctx):
+async def test_admin_create_unknown_department_still_rejected(session, vm_on, ctx, make_user):
+    admin = await make_user("root", role="admin")
     with pytest.raises(DomainError, match="Отдел"):
-        await vms.create_request(session, ctx.user, payload(9999))
+        await vms.create_request(session, admin, payload(9999))
 
 
 # ---------- API и схема вывода ----------

@@ -146,7 +146,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
         raise DomainError("Эта ОС пока недоступна — выберите другую")
     if data.disk_gb < tmpl.min_disk_gb:
         raise DomainError(f"Для {tmpl.label} диск — не меньше {tmpl.min_disk_gb} ГБ")
-    dept = await departments.get_active(session, data.department_id)
+    dept = await departments.for_order(session, user, data.department_id)
     until, longer = term_limit.plan(user, data.expected_return_at)
     number = await _take_free_number(session)
     vm = VirtualMachine(

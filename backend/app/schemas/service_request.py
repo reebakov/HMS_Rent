@@ -31,7 +31,7 @@ class BuildCreate(InputModel):
     build: str | None = Field(default=None, max_length=300)
     custom: str | None = Field(default=None, max_length=2000)
     os_label: str = Field(min_length=2, max_length=64)
-    department_id: int
+    department_id: int | None = None  # админ может указать любой отдел, остальным — свой
     requester_name: str = Field(min_length=2, max_length=255)
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)

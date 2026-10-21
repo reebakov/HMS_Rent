@@ -18,6 +18,7 @@ from app.integrations.vsphere.client import ClusterUsage, VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
 from app.schemas.vm import VmCreate, VmExtend, VmOut
 from app.services import customer_mail, runtime, vm_jobs, vms
+from tests.test_overdue import add_vm
 
 TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
 
@@ -180,7 +181,7 @@ async def test_per_user_limit(session, vm_on, ctx, make_user):
     await request(session, ctx)
     with pytest.raises(Conflict, match="2 из 2"):
         await request(session, ctx)
-    other = await make_user("petrov")  # лимит — на пользователя
+    other = await make_user("petrov", department=ctx.dept)  # лимит — на пользователя
     await vms.create_request(session, other, payload(ctx.dept.id))
     # удалённая ВМ освобождает место
     await vms.release(session, ctx.user, first.id)  # из очереди -> сразу deleted
@@ -323,9 +324,23 @@ async def test_object_cannot_belong_to_two_live_vms(session, vm_on, ctx):
     await session.rollback()
 
 
-async def test_unknown_department(session, vm_on, ctx):
+async def test_admin_unknown_department(session, vm_on, ctx, make_user):
+    admin = await make_user("root", role="admin")
     with pytest.raises(DomainError, match="Отдел"):
-        await vms.create_request(session, ctx.user, payload(9999))
+        await vms.create_request(session, admin, payload(9999))
+
+
+async def test_order_department_is_users_own(session, vm_on, ctx, make_user, make_department):
+    """Своя команда подставляется сама; чужая — отказ; без отдела заказать нельзя; админ — любая."""
+    vm = await vms.create_request(session, ctx.user, VmCreate(**{**payload(ctx.dept.id).model_dump(), "department_id": None}))
+    assert vm.department_id == ctx.dept.id
+    ops = await make_department("Ops")
+    with pytest.raises(Forbidden, match="на ваш отдел"):
+        await vms.create_request(session, ctx.user, payload(ops.id))
+    with pytest.raises(Conflict, match="не назначен отдел"):
+        await vms.create_request(session, await make_user("loner"), payload(ctx.dept.id))
+    admin = await make_user("root", role="admin")
+    assert (await vms.create_request(session, admin, payload(ops.id))).department_id == ops.id
 
 
 def test_payload_validation():
@@ -745,7 +760,7 @@ async def test_list_vms_mine_and_team(session, vm_on, ctx, make_user, make_depar
     loner = await make_user("loner")
     own = await request(session, ctx)
     by_mate = await vms.create_request(session, mate, payload(ctx.dept.id))
-    by_loner = await vms.create_request(session, loner, payload(ctx.dept.id))  # на команду QA
+    by_loner = await add_vm(session, loner, ctx.dept, status="queued", name="A9001")  # заказ без отдела у автора (прежний)
     await vms.create_request(session, foreign, payload(ops.id))
 
     assert [v.id for v in await vms.list_vms(session, ctx.user)] == [by_loner.id, by_mate.id, own.id]

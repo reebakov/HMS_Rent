@@ -335,10 +335,10 @@ async def test_create_build_validation_422(client, login, api, env, sd, kw):
     assert await rows() == []
 
 
-async def test_create_build_unknown_os_400_and_inactive_department(client, login, api, env, sd, session):
+async def test_create_build_unknown_os_400_and_foreign_department_403(client, login, api, env, sd, session):
     login(env.owner)
     assert (await client.post(api("/requests/build"), json=_build_body(env, os_label="MS-DOS"))).status_code == 400
-    assert (await client.post(api("/requests/build"), json=_build_body(env, department_id=999))).status_code in (400, 404)
+    assert (await client.post(api("/requests/build"), json=_build_body(env, department_id=999))).status_code == 403
     assert await rows() == []
 
 

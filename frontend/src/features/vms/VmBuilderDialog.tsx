@@ -4,11 +4,11 @@ import { Cpu, HardDrive, MemoryStick, Monitor, Terminal } from 'lucide-react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { DataState, FormError, QueryError } from '@/components/ui/data-state'
-import { DepartmentOptions, Field, Input, Select } from '@/components/ui/input'
+import { Field, Input } from '@/components/ui/input'
+import { OrderDepartmentField, initialOrderDepartment } from '@/features/booking/OrderDepartment'
 import { useSession } from '@/auth/AuthProvider'
 import { TermLimitNote, termLimit, toastTerm } from '@/features/booking/TermLimit'
 import { useCreateVm, useDepartments, useVmOptions } from '@/lib/queries'
-import { LAST_DEPARTMENT_KEY, safeStorage } from '@/lib/storage'
 import { cn, formatDate, todayLocal } from '@/lib/utils'
 
 type Range = { min: number; max: number; step: number }
@@ -73,7 +73,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     setRam(o.min_ram_gb)
     setDisk(o.min_disk_gb)
     setTemplateKey(o.templates.find((t) => t.available)?.key ?? '')
-    setDepartmentId(String(session.user.department_id ?? safeStorage.get(LAST_DEPARTMENT_KEY) ?? ''))
+    setDepartmentId(initialOrderDepartment(session))
     setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
@@ -204,14 +204,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Отдел" required>
-                  <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-                    <option value="" disabled>
-                      Выберите отдел
-                    </option>
-                    <DepartmentOptions departments={departments.data} />
-                  </Select>
-                </Field>
+                <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
                 <Field label="Вернуть до" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
                   <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
                 </Field>

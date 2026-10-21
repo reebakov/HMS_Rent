@@ -75,7 +75,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         comp.insight_status, comp.status = fresh.insight_status, fresh.status
         await session.commit()
         raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
-    dept = await departments.get_active(session, data.department_id)
+    dept = await departments.for_order(session, user, data.department_id)
     if data.os_label and data.os_label not in (await runtime.load(session)).pc_os_list:
         raise DomainError("Такой ОС нет в списке — обновите страницу")
     until, longer = term_limit.plan(user, data.expected_return_at)

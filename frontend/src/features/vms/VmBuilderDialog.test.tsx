@@ -16,7 +16,7 @@ vi.mock('@/lib/api', async (orig) => ({
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-let session = makeSession()
+let session = makeSession({ role: 'admin' })
 vi.mock('@/auth/AuthProvider', () => ({ useSession: () => session }))
 
 const departments = [
@@ -57,7 +57,7 @@ const Where = () => <span data-testid="path">{useLocation().pathname}</span>
  * опций и отделов не гарантирован: ждём результат эффекта (имя из сессии), иначе ползунки можно прочитать до него */
 async function setup(onClose = vi.fn()) {
   renderWithProviders(<><VmBuilderDialog open onClose={onClose} /><Where /></>, { route: '/' })
-  await screen.findByRole('option', { name: 'Аналитика' })
+  await screen.findAllByText('Аналитика')
   await waitFor(() => expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue(session.user.display_name))
   return { onClose, user: userEvent.setup() }
 }
@@ -76,7 +76,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
 }
 
 beforeEach(() => {
-  session = makeSession()
+  session = makeSession({ role: 'admin' })
   options = makeOptions()
   vi.mocked(api.get).mockReset()
   vi.mocked(api.post).mockReset()
@@ -137,7 +137,7 @@ describe('VmBuilderDialog', () => {
   })
 
   it('подставляет значения по умолчанию: минимумы лимитов, имя и ник из сессии', async () => {
-    session = makeSession({ username: 'i.ivanov@corp.example', department_id: 2 })
+    session = makeSession({ role: 'admin', username: 'i.ivanov@corp.example', department_id: 2 })
     await setup()
     expect(screen.getByRole('dialog', { name: 'Конструктор виртуалки' })).toBeInTheDocument()
     expect(sliders().map((s) => s.value)).toEqual(['2', '4', '50'])
@@ -150,6 +150,23 @@ describe('VmBuilderDialog', () => {
     expect(screen.getByLabelText(/Ник/)).toHaveValue('i.ivanov')
     // отдел из профиля
     expect(screen.getByLabelText(/Отдел/)).toHaveValue('2')
+  })
+
+  it('сотрудник оформляет на свой отдел и не выбирает его', async () => {
+    session = makeSession({ department_id: 2 })
+    await setup()
+    expect(screen.queryByLabelText(/Отдел/)).not.toBeInTheDocument()
+    expect(screen.getByText('Аналитика')).toBeInTheDocument()
+    await userEvent.setup().type(untilInput(), UNTIL)
+    expect(submit()).toBeEnabled()
+  })
+
+  it('сотрудник без отдела не может оформить заказ', async () => {
+    session = makeSession()
+    renderWithProviders(<VmBuilderDialog open onClose={vi.fn()} />, { route: '/' })
+    expect(await screen.findByText(/Вам не назначен отдел/)).toBeInTheDocument()
+    await userEvent.setup().type(await waitFor(() => untilInput()), UNTIL)
+    expect(submit()).toBeDisabled()
   })
 
   it('отдел берётся из localStorage, если в профиле его нет', async () => {
