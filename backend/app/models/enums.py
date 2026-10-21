@@ -59,6 +59,7 @@ class EventType(StrEnum):
     booked = "booked"
     returned = "returned"
     extended = "extended"
+    prepared = "prepared"  # исполнитель подготовил ПК и внёс данные для подключения
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"
@@ -70,6 +71,7 @@ class EventType(StrEnum):
 class NotificationKind(StrEnum):
     """Что случилось с заказом заказчика; по виду фронтенд выбирает значок и цвет."""
 
+    pc_ready = "pc_ready"  # исполнитель подготовил ПК, данные для подключения в «Моей аренде»
     vm_ready = "vm_ready"
     vm_failed = "vm_failed"
     request_status = "request_status"  # сменился статус заявки в Service Desk
@@ -80,4 +82,5 @@ class NotificationKind(StrEnum):
 
 class UserRole(StrEnum):
     user = "user"
+    executor = "executor"  # исполнитель HMS: готовит выданные ПК и вносит данные для подключения
     admin = "admin"

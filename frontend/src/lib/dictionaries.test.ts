@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canExtendVm, canReleaseVm, VM_STATUS } from './dictionaries'
+import { canExecute, canExtendVm, canReleaseVm, ROLE_LABELS, VM_STATUS } from './dictionaries'
 import type { VmStatus } from './types'
 
 describe('VM_STATUS', () => {
@@ -31,5 +31,17 @@ describe('canExtendVm', () => {
     ['deleted', false],
   ] as [VmStatus, boolean][])('%s -> %s', (status, expected) => {
     expect(canExtendVm(status)).toBe(expected)
+  })
+})
+
+describe('роли', () => {
+  it('раздел «Исполнитель» — исполнителю и админу, сотруднику нет', () => {
+    expect(canExecute('executor')).toBe(true)
+    expect(canExecute('admin')).toBe(true)
+    expect(canExecute('user')).toBe(false)
+  })
+
+  it('у каждой роли есть подпись', () => {
+    expect(ROLE_LABELS).toEqual({ user: 'сотрудник', executor: 'исполнитель', admin: 'администратор' })
   })
 })

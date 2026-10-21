@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     bouncer_client_secret: str = ""
     bouncer_issuer: str = ""  # ожидаемый iss в id_token; пусто — не проверять
     admins_file: str = "config/admins.txt"
+    executors_file: str = "config/executors.txt"
     work_calendar_file: str = "config/work_calendar.yaml"  # праздники и рабочие выходные для расчёта рабочих дней
     auth_local_enabled: bool = True
     auth_dev_enabled: bool = False
@@ -96,6 +97,7 @@ class Settings(BaseSettings):
     sd_return_on_return: bool = True  # возврат ПК на сайте создаёт заявку «Возврат»
     sd_request_type_order: int = 1252  # «Прочее»: подготовка ПК после брони и сборка по запросу
     sd_prepare_on_booking: bool = True  # бронь ПК создаёт заявку «подготовить ПК» (ОС, первичная настройка)
+    sd_summary_prefix: str = ""  # слово в начале темы заявки («ТЕСТ» для проверок), чтобы исполнители их не брали
 
     # --- Уведомления ---
     mattermost_webhook_url: str = ""  # канал исполнителей: бронь, возврат, ВМ, сводка просрочек

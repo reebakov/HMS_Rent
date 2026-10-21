@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { failGetOnce, makeSession, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeSession, renderWithProviders, unprepared } from '@/test/helpers'
 import { formatDate } from '@/lib/utils'
 import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
@@ -34,6 +34,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   returned_at: null,
   returned_by: null,
   return_comment: null,
+  ...unprepared,
   ...over,
 })
 
@@ -660,5 +661,25 @@ describe('MyBookingsPage: сборки по запросу и ОС', () => {
     bookings = [makeBooking({ os_label: 'Debian 12' })]
     renderPage()
     expect(await screen.findByText('ОС: Debian 12')).toBeInTheDocument()
+  })
+})
+
+describe('MyBookingsPage: данные для подключения к ПК', () => {
+  it('пока исполнитель не подготовил ПК — подсказка, что данные появятся', async () => {
+    bookings = [makeBooking()]
+    renderPage()
+    expect(await screen.findByText('Исполнитель готовит ПК — данные для подключения появятся здесь.')).toBeInTheDocument()
+  })
+
+  it('подготовленный ПК: имя, IP, логин, способ и напоминание сменить пароль', async () => {
+    bookings = [makeBooking({
+      connection_host: 'A032.ff.local', connection_ip: '10.1.2.3', connection_method: 'RDP', connection_login: 'user',
+      prepared_at: '2026-10-21T10:00:00Z',
+    })]
+    renderPage()
+    expect(await screen.findByText('10.1.2.3')).toBeInTheDocument()
+    expect(screen.getByText(/A032\.ff\.local/)).toBeInTheDocument()
+    expect(screen.getByText(/Логин user · RDP\. Пароль сообщит исполнитель — смените его при первом входе\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Исполнитель готовит ПК/)).not.toBeInTheDocument()
   })
 })

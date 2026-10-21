@@ -1,4 +1,4 @@
-"""Матрица доступа: все маршруты реального роутера × (аноним, сотрудник, админ).
+"""Матрица доступа: все маршруты реального роутера × (аноним, сотрудник, исполнитель, админ).
 
 Маршруты берутся из app.main.app.routes, поэтому новый эндпоинт без авторизации сразу покраснеет
 (его надо либо защитить, либо осознанно добавить в ANON_OK).
@@ -41,7 +41,8 @@ def _all_routes() -> list[tuple[str, str]]:
 ALL = _all_routes()
 PROTECTED = [r for r in ALL if r not in ANON_OK]
 ADMIN = [r for r in PROTECTED if r[1].startswith(f"{P}/admin")]
-EMPLOYEE = [r for r in PROTECTED if r not in ADMIN]
+EXECUTOR = [r for r in PROTECTED if r[1].startswith(f"{P}/executor")]
+EMPLOYEE = [r for r in PROTECTED if r not in ADMIN and r not in EXECUTOR]
 
 
 def _call(c, method: str, path: str):
@@ -55,7 +56,7 @@ def _ids(routes):
 
 def test_route_discovery_sanity():
     """Страховка от пустой параметризации и от устаревших записей белого списка."""
-    assert len(ADMIN) >= 20 and len(EMPLOYEE) >= 8
+    assert len(ADMIN) >= 20 and len(EMPLOYEE) >= 8 and len(EXECUTOR) >= 3
     assert ANON_OK <= set(ALL), f"в белом списке нет таких маршрутов: {ANON_OK - set(ALL)}"
     # все admin-эндпоинты живут под /admin: нет «админских» ручек вне префикса
     assert not [p for _, p in EMPLOYEE if "/admin" in p]
@@ -74,6 +75,24 @@ async def test_whitelisted_open_for_anonymous(client, method, path):
 @pytest.mark.parametrize("method,path", ADMIN, ids=_ids(ADMIN))
 async def test_employee_gets_403_on_admin_routes(client, login, make_user, method, path):
     login(await make_user("emp"))
+    assert (await _call(client, method, path)).status_code == 403
+
+
+@pytest.mark.parametrize("method,path", EXECUTOR, ids=_ids(EXECUTOR))
+async def test_employee_gets_403_on_executor_routes(client, login, make_user, method, path):
+    login(await make_user("emp"))
+    assert (await _call(client, method, path)).status_code == 403
+
+
+@pytest.mark.parametrize("method,path", EXECUTOR + EMPLOYEE, ids=_ids(EXECUTOR + EMPLOYEE))
+async def test_executor_allowed_on_executor_and_regular_routes(client, login, make_user, method, path):
+    login(await make_user("worker", role=UserRole.executor.value))
+    assert (await _call(client, method, path)).status_code not in (401, 403)
+
+
+@pytest.mark.parametrize("method,path", ADMIN, ids=_ids(ADMIN))
+async def test_executor_gets_403_on_admin_routes(client, login, make_user, method, path):
+    login(await make_user("worker", role=UserRole.executor.value))
     assert (await _call(client, method, path)).status_code == 403
 
 

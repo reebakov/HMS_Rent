@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorResult,
 } from './types'
 
 export interface ComputerFilters {
@@ -413,5 +413,28 @@ export function useReadNotifications() {
   return useMutation({
     mutationFn: (id?: number) => api.post<void>(id === undefined ? '/notifications/read-all' : `/notifications/${id}/read`),
     onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+// ---------- Исполнитель ----------
+
+/** Активные брони: сначала ждущие подготовки, обновляется сама — новые брони появляются без перезагрузки */
+export const useExecutorOrders = (enabled = true) =>
+  useQuery({
+    queryKey: ['executor', 'orders'],
+    queryFn: () => api.get<ExecutorOrder[]>('/executor/orders'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+export const useExecutorOrder = (id: number) =>
+  useQuery({ queryKey: ['executor', 'order', id], queryFn: () => api.get<ExecutorOrder>(`/executor/orders/${id}`) })
+
+export function useSaveExecutorResult() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: ExecutorResult & { id: number }) =>
+      api.post<ExecutorOrder>(`/executor/orders/${id}/result`, data),
+    onSettled: () => Promise.all(['executor', 'my-bookings'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
   })
 }

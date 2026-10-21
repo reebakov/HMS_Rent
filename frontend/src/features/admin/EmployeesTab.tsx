@@ -96,6 +96,7 @@ export function EmployeesTab() {
                     <td className="px-4 py-3">
                       <p className="font-medium">
                         {u.display_name} {u.role === 'admin' && <Badge tone="primary">админ</Badge>}
+                        {u.role === 'executor' && <Badge>исполнитель</Badge>}
                       </p>
                       <p className="text-xs text-muted-foreground">{u.email ?? u.username}</p>
                     </td>

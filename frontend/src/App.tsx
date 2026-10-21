@@ -16,6 +16,9 @@ import { SettingsPage } from '@/pages/admin/SettingsPage'
 import { PeoplePage } from '@/pages/admin/PeoplePage'
 import { VmsPage } from '@/pages/admin/VmsPage'
 import { OverduePage } from '@/pages/admin/OverduePage'
+import { ExecutorOrdersPage } from '@/pages/executor/ExecutorOrdersPage'
+import { ExecutorOrderPage } from '@/pages/executor/ExecutorOrderPage'
+import { canExecute } from '@/lib/dictionaries'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth()
@@ -25,6 +28,11 @@ function RequireAuth({ children }: { children: ReactElement }) {
 function RequireAdmin({ children }: { children: ReactElement }) {
   const { session } = useAuth()
   return session?.user.role === 'admin' ? children : <Navigate to="/" replace />
+}
+
+function RequireExecutor({ children }: { children: ReactElement }) {
+  const { session } = useAuth()
+  return session && canExecute(session.user.role) ? children : <Navigate to="/" replace />
 }
 
 export default function App() {
@@ -50,6 +58,8 @@ export default function App() {
       >
         <Route index element={<CatalogPage />} />
         <Route path="my" element={<MyBookingsPage />} />
+        <Route path="executor" element={<RequireExecutor><ExecutorOrdersPage /></RequireExecutor>} />
+        <Route path="executor/orders/:id" element={<RequireExecutor><ExecutorOrderPage /></RequireExecutor>} />
         <Route path="admin" element={<RequireAdmin><AdminOverviewPage /></RequireAdmin>} />
         <Route path="admin/inventory" element={<RequireAdmin><InventoryPage /></RequireAdmin>} />
         <Route path="admin/pools" element={<RequireAdmin><PoolsPage /></RequireAdmin>} />

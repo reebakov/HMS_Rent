@@ -1,6 +1,6 @@
 import { Cloud, Cpu, Monitor, Zap, type LucideIcon } from 'lucide-react'
 import type { Tone } from '@/components/ui/badge'
-import type { ComputerStatus, Tier, VmStatus } from './types'
+import type { ComputerStatus, Tier, UserRole, VmStatus } from './types'
 
 // Всё, что связано с подписью категорий и статусов, — в одном месте
 
@@ -65,6 +65,7 @@ export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',
   returned: 'Возврат',
   extended: 'Продление',
+  prepared: 'Подготовка ПК',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',
@@ -72,3 +73,12 @@ export const EVENT_LABELS: Record<string, string> = {
   admin_update: 'Правка админа',
   writeback_failed: 'Ошибка записи в Insight',
 }
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  user: 'сотрудник',
+  executor: 'исполнитель',
+  admin: 'администратор',
+}
+
+/** Раздел «Исполнитель» видят исполнители и администраторы (как User.is_executor на backend) */
+export const canExecute = (role: UserRole) => role === 'executor' || role === 'admin'

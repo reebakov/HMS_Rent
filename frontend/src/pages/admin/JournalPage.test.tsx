@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { JournalPage } from './JournalPage'
 import { api } from '@/lib/api'
-import { failGetOnce, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, renderWithProviders, unprepared } from '@/test/helpers'
 import type { Booking } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -28,6 +28,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   returned_at: null,
   returned_by: null,
   return_comment: null,
+  ...unprepared,
   ...over,
 })
 

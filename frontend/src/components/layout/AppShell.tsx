@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
-import { useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
+import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
+import { useExecutorOrders, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
+import { canExecute, ROLE_LABELS } from '@/lib/dictionaries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { NotificationBell } from './NotificationBell'
 import { ShortcutsButton } from './Shortcuts'
@@ -19,6 +20,8 @@ const userNav: NavItem[] = [
   { to: '/', label: 'Каталог', icon: LayoutGrid },
   { to: '/my', label: 'Моя аренда', icon: ClipboardList },
 ]
+
+const executorNav: NavItem[] = [{ to: '/executor', label: 'Заказы на подготовку', icon: Wrench }]
 
 const adminNav: NavItem[] = [
   { to: '/admin', label: 'Обзор', icon: BarChart3 },
@@ -66,6 +69,9 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
 export function AppShell() {
   const session = useSession()
   const isAdmin = session.user.role === 'admin'
+  const isExecutor = canExecute(session.user.role)
+  // счётчик у «Заказов на подготовку»: выданные ПК, по которым исполнитель ещё не внёс данные для подключения
+  const waitingCount = useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0
   // «Сроки аренды» требуют внимания: просрочки, заявки на срок и продления, которые ещё не отметили «Принято»
   const deadlinesCount =
     (useOverdue(isAdmin).data?.length ?? 0) +
@@ -117,6 +123,9 @@ export function AppShell() {
 
       <nav className="flex-1">
         <NavGroup items={userNav} onNavigate={closeMenu} />
+        {isExecutor && (
+          <NavGroup title="Исполнитель" items={executorNav.map((i) => ({ ...i, badge: waitingCount }))} onNavigate={closeMenu} />
+        )}
         {isAdmin && (
           <NavGroup
             title="Администрирование"
@@ -138,7 +147,7 @@ export function AppShell() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-medium text-white">{session.user.display_name}</p>
             <p className="truncate text-[11px] text-sidebar-muted">
-              {session.user.username} · {isAdmin ? 'администратор' : 'сотрудник'}
+              {session.user.username} · {ROLE_LABELS[session.user.role]}
             </p>
           </div>
           <button

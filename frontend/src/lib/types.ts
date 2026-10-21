@@ -3,6 +3,7 @@
 export type Tier = 'weak' | 'medium' | 'powerful' | 'vm'
 export type ComputerStatus = 'available' | 'booked' | 'in_use' | 'maintenance' | 'retired' | 'unknown'
 export type BookingStatus = 'active' | 'returned' | 'cancelled'
+export type UserRole = 'user' | 'executor' | 'admin' // исполнитель видит раздел «Исполнитель», админ — всё
 
 export interface User {
   id: number
@@ -11,7 +12,7 @@ export interface User {
   email: string | null
   avatar_url: string | null
   auth_source: 'bouncer' | 'microsoft' | 'local' | 'dev'
-  role: 'user' | 'admin'
+  role: UserRole
   department_id: number | null
 }
 
@@ -113,6 +114,25 @@ export interface Booking {
   returned_at: string | null
   returned_by: UserShort | null
   return_comment: string | null
+  // данные для подключения вносит исполнитель; до этого всё пусто
+  connection_host: string | null
+  connection_ip: string | null
+  connection_method: ConnectionMethod | null
+  connection_login: string | null
+  prepared_at: string | null
+}
+
+export type ConnectionMethod = 'RDP' | 'VNC'
+
+/** Заказ в разделе «Исполнитель»: заказчику имя исполнителя не показывается */
+export interface ExecutorOrder extends Booking {
+  prepared_by: UserShort | null
+}
+
+export interface ExecutorResult {
+  host: string
+  ip: string
+  method: ConnectionMethod
 }
 
 export interface BookingCreate {
@@ -324,7 +344,7 @@ export interface Vm {
   requested_return_at: string | null // срок из заявки админу, пока она ждёт решения
   ip_address: string | null
   connection_login: string
-  connection_method: 'RDP' | 'VNC' | null // способ подключения по ОС; пусто, если ОС неизвестна
+  connection_method: ConnectionMethod | null // способ подключения по ОС; пусто, если ОС неизвестна
   power_state: string | null
   created_at: string
   ready_at: string | null
@@ -413,7 +433,7 @@ export interface AdminUserRow {
   display_name: string
   email: string | null
   auth_source: 'bouncer' | 'microsoft' | 'local' | 'dev'
-  role: 'user' | 'admin'
+  role: UserRole
   is_active: boolean
   department: Ref | null
   last_login_at: string | null
@@ -522,7 +542,7 @@ export type VsphereCheck =
 
 // ---------- Уведомления (колокольчик) ----------
 
-export type NotificationKind = 'vm_ready' | 'vm_failed' | 'request_status' | 'term_decision' | 'term_ending' | 'term_overdue'
+export type NotificationKind = 'pc_ready' | 'vm_ready' | 'vm_failed' | 'request_status' | 'term_decision' | 'term_ending' | 'term_overdue'
 
 export interface UserNotification {
   id: number

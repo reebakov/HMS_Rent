@@ -50,8 +50,14 @@ def _vm_text(vm: VirtualMachine) -> str:
     ])
 
 
+def _jira_summary(summary: str) -> str:
+    """Тема заявки в Jira: с префиксом SD_SUMMARY_PREFIX («ТЕСТ» при проверках), в портале — без него."""
+    prefix = settings.sd_summary_prefix.strip()
+    return f"{prefix} {summary}" if prefix else summary
+
+
 async def _send(req: ServiceRequest, request_type_id: int, on_behalf_of: str | None) -> None:
-    key, status = await sd.create_request(request_type_id, req.summary, req.description, on_behalf_of)
+    key, status = await sd.create_request(request_type_id, _jira_summary(req.summary), req.description, on_behalf_of)
     req.issue_key, req.status, req.status_category = key, status.status, status.category
     req.error, req.last_checked_at = None, datetime.now(timezone.utc)
 
@@ -127,7 +133,8 @@ async def create_prepare(session: AsyncSession, booking_id: int, actor: User) ->
     await _save_in_background(session, ServiceRequest(
         kind=ServiceRequestKind.prepare.value, user_id=actor.id, booking_id=b.id,
         summary=f"HMS Rent: подготовить ПК {b.computer.name} (заказ №{b.order_number})",
-        description="Поставить выбранную ОС, выполнить первичную настройку и передать заказчику данные для подключения.\n\n"
+        description="Поставить выбранную ОС, выполнить первичную настройку и внести данные для подключения "
+        f"на странице заказа: {settings.public_url.rstrip('/')}/executor/orders/{b.id}\n\n"
         + _booking_text(b) + (f"\nЦель: {b.purpose}" if b.purpose else ""),
     ), settings.sd_request_type_order, actor)
 

@@ -152,6 +152,7 @@ export function MyBookingsPage() {
                     </div>
                   </dl>
                   {b.purpose && <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">{b.purpose}</p>}
+                  <ConnectionInfo booking={b} />
 
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
                     <RequestBadges requests={requestsFor(b.id)} onOpen={setOpenedRequest} />
@@ -233,3 +234,19 @@ export function MyBookingsPage() {
   )
 }
 
+/** Данные для подключения к ПК: их вносит исполнитель, когда подготовил ПК; пароль в портале не хранится */
+function ConnectionInfo({ booking: b }: { booking: Booking }) {
+  if (!b.prepared_at) {
+    return <p className="mt-4 text-[13px] text-muted-foreground">Исполнитель готовит ПК — данные для подключения появятся здесь.</p>
+  }
+  return (
+    <div className="mt-4 rounded-lg border px-3 py-2.5 text-[13px]">
+      <p className="font-medium">
+        {b.connection_host} · <span className="font-mono">{b.connection_ip}</span>
+      </p>
+      <p className="text-muted-foreground">
+        Логин {b.connection_login} · {b.connection_method}. Пароль сообщит исполнитель — смените его при первом входе.
+      </p>
+    </div>
+  )
+}

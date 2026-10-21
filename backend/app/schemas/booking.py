@@ -1,4 +1,6 @@
 from datetime import date, datetime
+from ipaddress import IPv4Address
+from typing import Literal
 
 from pydantic import Field
 
@@ -40,3 +42,22 @@ class BookingOut(ORMModel):
     returned_at: datetime | None
     returned_by: UserShort | None
     return_comment: str | None
+    connection_host: str | None  # данные для подключения — от исполнителя (POST /executor/orders/{id}/result)
+    connection_ip: str | None
+    connection_method: str | None
+    connection_login: str | None
+    prepared_at: datetime | None
+
+
+class ExecutorOrderOut(BookingOut):
+    """Заказ для исполнителя: заказчику имя исполнителя не показывается, поэтому поле только здесь."""
+
+    prepared_by: UserShort | None
+
+
+class ExecutorResult(InputModel):
+    """Результат подготовки ПК: логин `user` и пароль исполнитель не вводит."""
+
+    host: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$")  # A32.ff.local
+    ip: IPv4Address
+    method: Literal["RDP", "VNC"]

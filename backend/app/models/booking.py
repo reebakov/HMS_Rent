@@ -8,7 +8,7 @@ from app.models.computer import Computer
 from app.models.department import Department
 from app.models.enums import BookingStatus, TermRequestStatus
 from app.models.user import User
-from app.models.vm import VirtualMachine
+from app.models.vm import VM_LOGIN, VirtualMachine
 
 
 class Booking(Base, TimestampMixin):
@@ -44,10 +44,18 @@ class Booking(Base, TimestampMixin):
     returned_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     return_comment: Mapped[str | None] = mapped_column(Text)
 
+    # Данные для подключения вносит исполнитель, когда подготовил ПК; пароль в портале не хранится
+    connection_host: Mapped[str | None] = mapped_column(String(255))
+    connection_ip: Mapped[str | None] = mapped_column(String(45))
+    connection_method: Mapped[str | None] = mapped_column(String(8))  # RDP / VNC
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prepared_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
     computer: Mapped[Computer] = relationship(lazy="joined")
     department: Mapped[Department] = relationship(lazy="joined")
     user: Mapped[User] = relationship(lazy="joined", foreign_keys=[user_id])
     returned_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[returned_by_id])
+    prepared_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[prepared_by_id])
     pending_term_request: Mapped["TermRequest | None"] = relationship(
         primaryjoin="and_(Booking.id == TermRequest.booking_id, TermRequest.status == 'pending')",
         lazy="selectin", viewonly=True,
@@ -57,6 +65,11 @@ class Booking(Base, TimestampMixin):
     def requested_return_at(self) -> date | None:
         """Срок, о котором арендатор просит дольше лимита и который ещё не согласован."""
         return self.pending_term_request.requested_return_at if self.pending_term_request else None
+
+    @property
+    def connection_login(self) -> str | None:
+        """Локальная учётка `user` создаётся при подготовке ПК; до неё логина нет."""
+        return VM_LOGIN if self.prepared_at else None
 
 
 class BookingExtension(Base):

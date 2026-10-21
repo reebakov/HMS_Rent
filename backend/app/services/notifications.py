@@ -62,6 +62,15 @@ def _until(order: Booking | VirtualMachine) -> str:
     return f"{order.expected_return_at:%d.%m.%Y}" if order.expected_return_at else "без срока"
 
 
+def pc_ready(session: AsyncSession, booking: Booking, *, changed: bool) -> None:
+    """Исполнитель внёс данные для подключения к ПК; `changed` — исправил уже внесённые."""
+    name = booking.computer.name
+    add(session, booking.user_id, NotificationKind.pc_ready,
+        f"Данные подключения к ПК {name} изменены" if changed else f"ПК {name} готов",
+        f"Заказ №{booking.order_number}, аренда до {_until(booking)}. Адрес и логин — в «Моей аренде», пароль сообщит "
+        "исполнитель; смените его при первом входе.")
+
+
 def vm_ready(session: AsyncSession, vm: VirtualMachine) -> None:
     add(session, vm.user_id, NotificationKind.vm_ready, f"ВМ {vm.name} готова",
         f"Заказ №{vm.order_number}, аренда до {_until(vm)}. Адрес и логин — в «Моей аренде», пароль сообщит исполнитель.")

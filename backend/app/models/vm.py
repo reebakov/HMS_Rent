@@ -25,7 +25,7 @@ class AppSetting(Base):
                                                  onupdate=func.now())
 
 
-VM_LOGIN = "user"  # локальная учётная запись в шаблонах ВМ; пароль заказчику сообщают отдельно
+VM_LOGIN = "user"  # локальная учётная запись в шаблонах ВМ и на подготовленных ПК; пароль сообщают отдельно
 CONNECTION_METHODS = {"windows": "RDP", "linux": "VNC"}
 
 

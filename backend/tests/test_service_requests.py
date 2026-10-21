@@ -502,6 +502,27 @@ async def test_create_prepare_saves_request_with_os(session, env, sd, monkeypatc
     assert (saved.kind, saved.user_id, saved.booking_id, saved.issue_key) == ("prepare", env.mate.id, env.booking.id, "HMS-1")
 
 
+async def test_create_prepare_links_executor_order_page(session, env, sd, monkeypatch):
+    monkeypatch.setattr(settings, "public_url", "https://hmsrent.test/")
+    await svc.create_prepare(session, env.booking.id, env.owner)
+    description = sd.created[0][2]
+    assert f"на странице заказа: https://hmsrent.test/executor/orders/{env.booking.id}" in description
+
+
+@pytest.mark.parametrize("prefix, expected", [
+    ("", "HMS Rent: подготовить ПК A001"),
+    ("ТЕСТ", "ТЕСТ HMS Rent: подготовить ПК A001"),
+    ("  ТЕСТ  ", "ТЕСТ HMS Rent: подготовить ПК A001"),
+])
+async def test_summary_prefix_only_in_jira(session, env, sd, monkeypatch, prefix, expected):
+    """SD_SUMMARY_PREFIX помечает проверочные заявки в Jira; в портале тема остаётся без него."""
+    monkeypatch.setattr(settings, "sd_summary_prefix", prefix)
+    await svc.create_prepare(session, env.booking.id, env.owner)
+    assert sd.created[0][1].startswith(f"{expected} (заказ №")
+    [saved] = await rows()
+    assert saved.summary.startswith("HMS Rent: подготовить ПК A001")
+
+
 @pytest.mark.parametrize("field, value", [("sd_token", ""), ("sd_prepare_on_booking", False)])
 async def test_create_prepare_disabled(session, env, sd, monkeypatch, field, value):
     monkeypatch.setattr(settings, field, value)

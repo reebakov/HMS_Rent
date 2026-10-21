@@ -33,12 +33,11 @@ def _reset_throttle():
         store.clear()
 
 
-@pytest.fixture
-def admins_file(tmp_path, monkeypatch):
-    """Подменяет источник списка админов на временный файл. write(*строки) пишет его заново."""
-    path = tmp_path / "admins.txt"
-    monkeypatch.setattr(admins, "_path", lambda: path)
-    monkeypatch.setattr(admins, "_cache", (-1.0, frozenset()))
+def _role_file(tmp_path, monkeypatch, name: str, path_attr: str, cache_attr: str):
+    """Подменяет файл списка роли (admins.txt, executors.txt) на временный. write(*строки) пишет его заново."""
+    path = tmp_path / name
+    monkeypatch.setattr(admins, path_attr, lambda: path)
+    monkeypatch.setattr(admins, cache_attr, (-1.0, frozenset()))
     tick = count(1_000_000_000, 10)  # разные mtime: кэш инвалидируется по mtime, а не по содержимому
 
     def write(*lines: str) -> None:
@@ -46,6 +45,16 @@ def admins_file(tmp_path, monkeypatch):
         t = next(tick)
         os.utime(path, (t, t))
     return write
+
+
+@pytest.fixture
+def admins_file(tmp_path, monkeypatch):
+    return _role_file(tmp_path, monkeypatch, "admins.txt", "_path", "_cache")
+
+
+@pytest.fixture
+def executors_file(tmp_path, monkeypatch):
+    return _role_file(tmp_path, monkeypatch, "executors.txt", "_executors_path", "_executors_cache")
 
 
 async def _login(client, username, password="pass12345", ip=None):
@@ -362,6 +371,44 @@ async def test_local_admin_not_governed_by_list(client, login, make_user, admins
     client.cookies.clear()
     login(await make_user("emp", email="emp@corp.io"))
     assert (await client.get(api("/admin/stats"))).status_code == 403
+
+
+@pytest.mark.parametrize("source", ["bouncer", "dev"])
+async def test_sso_executor_granted_and_revoked_by_list(client, login, make_user, admins_file, executors_file, api,
+                                                        source):
+    admins_file()
+    executors_file("worker@corp.io")
+    login(await make_user("worker@corp.io", auth_source=source, email="worker@corp.io", password=None))
+    assert (await client.get(api("/auth/me"))).json()["user"]["role"] == "executor"
+    assert (await client.get(api("/executor/orders"))).status_code == 200
+    assert (await client.get(api("/admin/stats"))).status_code == 403  # исполнитель — не администратор
+    executors_file("someone-else@corp.io")  # убрали из списка — раздел пропал без повторного входа
+    assert (await client.get(api("/executor/orders"))).status_code == 403
+    assert (await client.get(api("/auth/me"))).json()["user"]["role"] == "user"
+
+
+async def test_admin_in_both_lists_stays_admin(client, login, make_user, admins_file, executors_file, api):
+    admins_file("boss@corp.io")
+    executors_file("boss@corp.io")
+    login(await make_user("boss@corp.io", auth_source="bouncer", email="boss@corp.io", password=None))
+    assert (await client.get(api("/auth/me"))).json()["user"]["role"] == "admin"
+    assert (await client.get(api("/executor/orders"))).status_code == 200
+
+
+async def test_dev_login_executor_role_in_response(client, admins_file, executors_file, monkeypatch):
+    """Ответ входа уже содержит роль исполнителя: меню «Исполнитель» видно без перезагрузки."""
+    admins_file()
+    executors_file("worker@corp.io")
+    monkeypatch.setattr(settings, "auth_dev_enabled", True)
+    assert (await _login(client, "worker@corp.io", "")).json()["user"]["role"] == "executor"
+
+
+def test_executors_file_parsing_and_missing_file(executors_file, tmp_path, monkeypatch):
+    executors_file("# шапка", "W@x.io  # смена 1", "", "v@x.io")
+    assert admins.executor_emails() == {"w@x.io", "v@x.io"}
+    assert admins.is_executor_email("W@X.IO") and not admins.is_executor_email(None)
+    monkeypatch.setattr(admins, "_executors_path", lambda: tmp_path / "missing.txt")
+    assert admins.executor_emails() == frozenset() and not admins.is_executor_email("w@x.io")
 
 
 def test_admins_file_parsing_and_missing_file(admins_file, tmp_path, monkeypatch):

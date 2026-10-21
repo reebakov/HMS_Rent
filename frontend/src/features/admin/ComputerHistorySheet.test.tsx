@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { ComputerHistorySheet } from './ComputerHistorySheet'
 import { api } from '@/lib/api'
-import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, renderWithProviders, unprepared } from '@/test/helpers'
 import type { AssetEvent, Booking, ComputerHistory, InventoryRow } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -36,7 +36,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   user: { id: 2, display_name: 'Пётр Петров', username: 'p.petrov' } as never,
   requester_name: 'Пётр Петров', requester_nick: 'p.petrov', purpose: null,
   booked_at: '2024-03-01T10:00:00Z', expected_return_at: null, requested_return_at: null, os_label: null, returned_at: '2024-03-05T10:00:00Z',
-  returned_by: null, return_comment: null, ...over,
+  returned_by: null, return_comment: null, ...unprepared, ...over,
 })
 
 const makeEvent = (over: Partial<AssetEvent> = {}): AssetEvent => ({

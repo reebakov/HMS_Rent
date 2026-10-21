@@ -218,6 +218,18 @@ async def test_list_users_role_for_local_admin_and_sso(client, boss, api, make_u
     assert roles == {"Босс": "admin", "B1": "admin", "B2": "user", "B3": "user", "B4": "user"}
 
 
+async def test_list_users_role_executor_from_file(client, boss, api, make_user, admins_file, monkeypatch, tmp_path):
+    admins_file("both@corp.io")
+    path = tmp_path / "executors.txt"
+    path.write_text("worker@corp.io\nboth@corp.io", encoding="utf-8")
+    monkeypatch.setattr(admins, "_executors_path", lambda: path)
+    monkeypatch.setattr(admins, "_executors_cache", (-1.0, frozenset()))
+    await make_user("worker@corp.io", auth_source="bouncer", email="worker@corp.io", display_name="W")
+    await make_user("both@corp.io", auth_source="bouncer", email="both@corp.io", display_name="A")
+    roles = {u["display_name"]: u["role"] for u in (await client.get(api("/admin/users"))).json()}
+    assert roles == {"Босс": "admin", "W": "executor", "A": "admin"}  # администратор важнее исполнителя
+
+
 async def test_list_users_empty_admins_file_missing(client, boss, api, monkeypatch, tmp_path):
     monkeypatch.setattr(admins, "_path", lambda: tmp_path / "нет-файла.txt")
     monkeypatch.setattr(admins, "_cache", (-1.0, frozenset()))

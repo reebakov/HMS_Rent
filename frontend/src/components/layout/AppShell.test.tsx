@@ -6,7 +6,7 @@ import { AppShell } from './AppShell'
 import { ThemeToggle } from './ThemeToggle'
 import { api } from '@/lib/api'
 import { makeSession, renderWithProviders } from '@/test/helpers'
-import type { ExtensionOut, OverdueItem, Session, TermRequestOut } from '@/lib/types'
+import type { ExecutorOrder, ExtensionOut, OverdueItem, Session, TermRequestOut } from '@/lib/types'
 
 let session: Session
 const logout = vi.fn()
@@ -48,12 +48,15 @@ const extension = (id: number, acknowledged: boolean, kind: ExtensionOut['kind']
 let extensions: ExtensionOut[]
 const termRequest = (id: number) => ({ id }) as TermRequestOut
 let termRequests: TermRequestOut[]
+const order = (id: number, prepared: boolean) => ({ id, prepared_at: prepared ? '2026-10-02T10:00:00Z' : null }) as ExecutorOrder
+let executorOrders: ExecutorOrder[]
 
 beforeEach(() => {
   session = makeSession()
   overdue = []
   extensions = []
   termRequests = []
+  executorOrders = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
   // меню админа запрашивает просрочки, заявки на срок и продления для счётчика
@@ -61,6 +64,7 @@ beforeEach(() => {
     if (path === '/admin/overdue') return overdue
     if (path === '/admin/extensions') return extensions
     if (path === '/admin/term-requests') return termRequests
+    if (path === '/executor/orders') return executorOrders
     if (path === '/notifications') return { items: [], unread: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
@@ -85,6 +89,30 @@ describe('AppShell: меню по роли', () => {
     expect(screen.getByRole('link', { name: 'Обзор' })).toHaveAttribute('href', '/admin')
     expect(screen.getByRole('link', { name: 'Настройки' })).toHaveAttribute('href', '/admin/settings')
     expect(screen.getByText(/администратор$/)).toBeInTheDocument()
+  })
+
+  it('исполнитель видит блок «Исполнитель» со счётчиком неподготовленных ПК, но не админку', async () => {
+    session = makeSession({ role: 'executor' })
+    executorOrders = [order(1, false), order(2, false), order(3, true)]
+    mountShell()
+    expect(screen.getByText('Исполнитель')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    expect(link).toHaveAttribute('href', '/executor')
+    await waitFor(() => expect(within(link).getByText('2')).toBeInTheDocument())
+    expect(screen.queryByText('Администрирование')).not.toBeInTheDocument()
+    expect(screen.getByText(/исполнитель$/)).toBeInTheDocument()
+  })
+
+  it('сотрудник не видит блок «Исполнитель» и не запрашивает очередь', () => {
+    mountShell()
+    expect(screen.queryByRole('link', { name: /Заказы на подготовку/ })).not.toBeInTheDocument()
+    expect(api.get).not.toHaveBeenCalledWith('/executor/orders')
+  })
+
+  it('админу раздел исполнителя тоже доступен', () => {
+    session = makeSession({ role: 'admin' })
+    mountShell()
+    expect(screen.getByRole('link', { name: /Заказы на подготовку/ })).toBeInTheDocument()
   })
 
   it('подсвечивается только активный пункт: /admin не активирует вложенные и «Каталог»', () => {

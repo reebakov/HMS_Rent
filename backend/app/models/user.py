@@ -35,3 +35,8 @@ class User(Base, TimestampMixin):
     @property
     def is_admin(self) -> bool:
         return self.role == UserRole.admin
+
+    @property
+    def is_executor(self) -> bool:
+        """Раздел «Исполнитель» доступен исполнителям и администраторам."""
+        return self.role in (UserRole.executor, UserRole.admin)

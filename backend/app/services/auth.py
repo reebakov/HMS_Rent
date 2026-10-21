@@ -10,8 +10,9 @@ from app.core.errors import Unauthorized
 from app.core.security import verify_password
 from app.integrations.auth.base import AuthError, AuthResult
 from app.integrations.auth.dev import dev_login
-from app.models import User, UserRole
+from app.models import User
 from app.services import auth_throttle
+from app.services.users import sso_role
 
 BAD_CREDENTIALS = "Неверный логин или пароль"
 
@@ -29,7 +30,7 @@ async def upsert_sso_user(session: AsyncSession, result: AuthResult, source: str
     user.display_name = result.display_name
     user.email = result.email
     user.avatar_url = result.avatar_url
-    user.role = UserRole.admin.value if result.is_admin else UserRole.user.value
+    user.role = sso_role(result.email or result.username, admin=result.is_admin)
     user.last_login_at = datetime.now(timezone.utc)
     await session.commit()
     return user

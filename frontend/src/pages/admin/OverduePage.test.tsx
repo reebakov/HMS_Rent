@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { OverduePage } from './OverduePage'
 import { api, ApiError } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-import { failGetOnce, makeComputer, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeComputer, renderWithProviders, unprepared } from '@/test/helpers'
 import type { ExtensionOut, OverdueItem, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -30,6 +30,7 @@ const makeExtension = (over: Partial<ExtensionOut> = {}): ExtensionOut => ({
     department: { id: 1, name: 'QA' }, user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
     requester_name: 'Иван Иванов', requester_nick: 'i.ivanov', purpose: null, booked_at: '2026-09-01T10:00:00Z',
     expected_return_at: '2026-11-01', requested_return_at: null, os_label: null, returned_at: null, returned_by: null, return_comment: null,
+    ...unprepared,
   },
   user: { id: 4, username: 'i.ivanov', display_name: 'Иван Иванов' },
   old_return_at: '2026-10-20', new_return_at: '2026-11-01', comment: 'Тесты ещё идут',

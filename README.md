@@ -39,6 +39,11 @@ Swagger с описанием API: **http://localhost:8080/api/docs**.
 | Светлая и тёмная тема | Расхождения с Insight; сроки аренды: просрочки, заявки на срок дольше 3 месяцев, продления с отметкой «Принято», ежедневная сводка в Mattermost; уведомления заказчику в колокольчике: ВМ готова, статус заявки, срок заканчивается или закончился |
 | | Синхронизация с Insight по расписанию и по кнопке |
 | Срок аренды до 3 месяцев; дольше — заявка админу, продление в пределах 3 месяцев без согласования | Сотрудники и отделы в одном разделе (две вкладки): поиск сотрудника по имени и нику, отдел, блокировка, заведение заранее |
+| Данные для подключения к ПК (имя, IP, логин, RDP или VNC), когда исполнитель подготовил его | |
+
+**Исполнитель** (почта в `backend/config/executors.txt`) видит раздел «Заказы на подготовку»: выданные ПК, которые ждут
+подготовки, и страницу заказа, где вносит доменное имя, IP и способ подключения; ссылка на неё — в заявке Service Desk
+«подготовить ПК». Администратору раздел тоже доступен.
 
 ## Структура проекта
 
@@ -73,7 +78,7 @@ hms-rent/
 │   │   ├── models/           # таблицы: computers, bookings, asset_events, departments, pools, users,
 │   │   │                     #   virtual_machines, service_requests, sync_runs, app_settings
 │   │   ├── schemas/          # pydantic-схемы запросов/ответов API
-│   │   ├── api/routes/       # auth, catalog, bookings, vms, requests, notifications, admin, admin_extra, admin_ops
+│   │   ├── api/routes/       # auth, catalog, bookings, vms, requests, notifications, executor, admin, admin_extra, admin_ops
 │   │   ├── services/         # бизнес-логика: брони, синхронизация, инвентаризация, пулы, ВМ, заявки, просрочки
 │   │   └── integrations/
 │   │       ├── insight/      # клиент Insight (Server/DC), mock, маппинг атрибутов
@@ -81,12 +86,12 @@ hms-rent/
 │   │       ├── auth/         # вход: Bouncer (OIDC), dev
 │   │       ├── servicedesk.py  # клиент Jira Service Desk
 │   │       └── notify.py     # уведомления в Mattermost (канал исполнителей)
-│   ├── config/               # admins.txt, маппинг Insight под jira.marvin-it.com и маппинг демо-данных
+│   ├── config/               # admins.txt, executors.txt, маппинг Insight, календарь, маппинг демо-данных
 │   ├── seed/mock_computers.json      # демо-данные
 │   └── alembic/              # миграции БД
 └── frontend/                 # React 18 · TypeScript · Vite · Tailwind · TanStack Query
     └── src/
-        ├── pages/            # Login, Catalog, MyBookings, admin/*
+        ├── pages/            # Login, Catalog, MyBookings, executor/*, admin/*
         ├── features/         # admin, booking, catalog, support, vms — составные блоки страниц
         ├── components/       # ui-кит (button, dialog, badge…) и layout (сайдбар, шапка)
         ├── auth/             # контекст сессии
@@ -99,7 +104,8 @@ hms-rent/
    проверка `python -m app.cli insight-check`, затем `INSIGHT_MODE=live`.
 2. **Пулы** — после синхронизации админ добавляет ПК в опубликованный пул: только их видят сотрудники.
 3. **Вход** — [docs/BOUNCER_SSO.md](docs/BOUNCER_SSO.md): Bouncer для сотрудников, администраторы — по
-   почте из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`).
+   почте из `backend/config/admins.txt` (входят через тот же Bouncer) или локальные учётки (`python -m app.cli create-admin <логин>`),
+   исполнители — по почте из `backend/config/executors.txt`.
 4. **Прод** — `ENVIRONMENT=prod`, `AUTH_DEV_ENABLED=false`, свой `SECRET_KEY`, HTTPS и `COOKIE_SECURE=true`.
    Остальные настройки и их значения по умолчанию — в `.env.example`.
 5. **Секреты** — [docs/SECRETS.md](docs/SECRETS.md): где лежат, какие права нужны, как менять при утечке.
@@ -125,7 +131,7 @@ sudo ./scripts/deploy.sh --redeploy # перезапустить текущий 
 Если сервис не поднялся, возвращает прежний коммит и его образы. `.env` и данные БД не трогает; миграции применяет
 backend при старте. Откат на конкретный коммит: `sudo ./scripts/deploy.sh --force-ref --ref <sha>`.
 
-Настройки, которые читаются с диска сервера без пересборки: `backend/config/admins.txt`, маппинг Insight
+Настройки, которые читаются с диска сервера без пересборки: `backend/config/admins.txt`, `backend/config/executors.txt`, маппинг Insight
 (`backend/config/*.yaml`) и производственный календарь `backend/config/work_calendar.yaml`. Всё остальное в образе.
 
 Первый раз (один раз на сервере): образы публикуются в приватный пакет GHCR — сделайте пакеты публичными

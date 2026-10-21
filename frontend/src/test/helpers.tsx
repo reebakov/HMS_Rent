@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
 import type { QueryLike } from '@/components/ui/data-state'
-import type { Computer, Session } from '@/lib/types'
+import type { Booking, Computer, ExecutorOrder, Session } from '@/lib/types'
 
 export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?: string } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -74,5 +74,37 @@ export const makeComputer = (over: Partial<Computer> = {}): Computer => ({
   insight_status: null,
   department: null,
   synced_at: null,
+  ...over,
+})
+
+/** Поля брони, которые заполняет исполнитель: у неподготовленного ПК все пусты */
+export const unprepared = {
+  connection_host: null,
+  connection_ip: null,
+  connection_method: null,
+  connection_login: null,
+  prepared_at: null,
+} satisfies Partial<Booking>
+
+/** Заказ в разделе «Исполнитель»: по умолчанию активный и ещё не подготовленный */
+export const makeExecutorOrder = (over: Partial<ExecutorOrder> = {}): ExecutorOrder => ({
+  id: 7,
+  order_number: 1042,
+  status: 'active',
+  computer: { id: 10, name: 'A032', tier: 'medium', is_virtual: false, cpu: 'Intel Core i5', ram_gb: 16, storage: null, gpu: null },
+  department: { id: 1, name: 'Builder Studio' },
+  user: { id: 2, username: 'p.petrov', display_name: 'Пётр Петров' },
+  requester_name: 'Пётр Петров',
+  requester_nick: 'petrov',
+  purpose: null,
+  os_label: 'Windows 11 26H2',
+  booked_at: '2026-10-20T09:00:00Z',
+  expected_return_at: '2026-12-31',
+  requested_return_at: null,
+  returned_at: null,
+  returned_by: null,
+  return_comment: null,
+  ...unprepared,
+  prepared_by: null,
   ...over,
 })
