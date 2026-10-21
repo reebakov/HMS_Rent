@@ -233,7 +233,7 @@ async def test_digest_truncates_lists_to_30_but_counts_all(session, make_compute
     assert sum(ln.startswith("- ПК") for ln in lines) == 30 and sum(ln.startswith("- ВМ") for ln in lines) == 30
 
 
-# ---------- daily_reminders: письма заказчику о конце срока ----------
+# ---------- daily_reminders: уведомления заказчику о конце срока ----------
 
 @pytest.fixture
 def cal(monkeypatch):
@@ -324,7 +324,7 @@ async def test_reminders_term_ending_on_weekend_reminded_on_friday(session, make
     (date(2026, 6, 15), date(2026, 6, 16), True),   # срок вышел вчера
     (date(2026, 6, 12), date(2026, 6, 15), True),   # срок в пятницу, первый рабочий день после — понедельник
     (date(2026, 6, 13), date(2026, 6, 15), True),   # срок в субботу — понедельник
-    (date(2026, 6, 15), date(2026, 6, 17), False),  # второй рабочий день просрочки: письмо уже было
+    (date(2026, 6, 15), date(2026, 6, 17), False),  # второй рабочий день просрочки: уведомление уже было
     (date(2026, 6, 1), date(2026, 6, 16), False),   # давняя просрочка не будит заказчика снова
 ])
 async def test_reminders_overdue_notice_only_on_first_workday_after_term(
