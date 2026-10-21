@@ -63,18 +63,21 @@ export function CatalogPage() {
 
   return (
     <>
-      <PageHeader
-        title="Свободные компьютеры"
-        description="Выберите категорию мощности, затем подходящий компьютер или виртуальную машину"
-      />
+      {/* выбор категории — главный шаг, поэтому он в своей рамке; -mx-5 оставляет плашки вровень со списком ниже */}
+      <section className="-mx-5 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.09] via-primary/[0.03] to-transparent px-5 pb-5 pt-5 shadow-card">
+        <PageHeader
+          title="Свободные компьютеры"
+          description="Выберите категорию мощности, затем подходящий компьютер или виртуальную машину"
+        />
 
-      <CategoryCards
-        query={summary}
-        value={tier}
-        onChange={(t) => update({ tier: t })}
-        onBuildVm={() => setVmOpen(true)}
-        onOrderBuild={sdEnabled ? () => setBuildOpen(true) : undefined}
-      />
+        <CategoryCards
+          query={summary}
+          value={tier}
+          onChange={(t) => update({ tier: t })}
+          onBuildVm={() => setVmOpen(true)}
+          onOrderBuild={sdEnabled ? () => setBuildOpen(true) : undefined}
+        />
+      </section>
 
       <div className="mb-4 mt-8 flex flex-wrap items-center gap-3">
         <div className="mr-auto">
