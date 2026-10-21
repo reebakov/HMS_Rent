@@ -14,6 +14,8 @@ from app.models import (
     BookingExtension,
     Computer,
     EventType,
+    Notification,
+    NotificationKind,
     TermRequest,
     TermRequestStatus,
     User,
@@ -324,6 +326,37 @@ async def test_reject_keeps_granted_term(session, env):
     db = await session.get(Booking, b.id, populate_existing=True)
     assert db.expected_return_at == LIMIT and db.requested_return_at is None
     assert await extensions_of(booking_id=b.id) == []
+
+
+async def _notes() -> list[Notification]:
+    async with SessionLocal() as s:
+        return list((await s.scalars(select(Notification).order_by(Notification.id))).all())
+
+
+async def test_approve_notifies_requester(session, env):
+    await book(session, env, FAR)
+    [req] = await requests_of()
+    await term_requests.approve(session, env.admin, req.id, None)
+    (note,) = await _notes()
+    assert (note.user_id, note.kind) == (env.user.id, NotificationKind.term_decision)
+    assert note.title.startswith("Срок ПК ") and note.title.endswith(f"согласован до {FAR:%d.%m.%Y}")
+
+
+async def test_reject_notifies_requester(session, env):
+    await book(session, env, FAR)
+    [req] = await requests_of()
+    await term_requests.reject(session, env.admin, req.id)
+    (note,) = await _notes()
+    assert (note.user_id, note.kind) == (env.user.id, NotificationKind.term_decision)
+    assert note.title.endswith("не согласован") and f"до {LIMIT:%d.%m.%Y}" in note.body
+
+
+async def test_failed_approve_creates_no_notification(session, env):
+    await book(session, env, FAR)
+    [req] = await requests_of()
+    with pytest.raises(Conflict):
+        await term_requests.approve(session, env.admin, req.id, TODAY - timedelta(days=1))
+    assert await _notes() == []
 
 
 # ---------- список ----------

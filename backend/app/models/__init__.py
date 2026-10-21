@@ -6,6 +6,7 @@ from app.models.enums import (
     BookingStatus,
     ComputerStatus,
     EventType,
+    NotificationKind,
     ServiceRequestKind,
     SyncRunStatus,
     TermRequestStatus,
@@ -14,6 +15,7 @@ from app.models.enums import (
     VmStatus,
 )
 from app.models.event import AssetEvent, SyncRun
+from app.models.notification import Notification
 from app.models.pool import Pool, pool_departments
 from app.models.service_request import ServiceRequest
 from app.models.user import User
@@ -29,6 +31,8 @@ __all__ = [
     "ComputerStatus",
     "Department",
     "EventType",
+    "Notification",
+    "NotificationKind",
     "Pool",
     "ServiceRequest",
     "ServiceRequestKind",

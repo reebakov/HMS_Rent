@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations import servicedesk as real_sd
-from app.models import ServiceRequest, UserRole, VirtualMachine
+from app.models import Notification, NotificationKind, ServiceRequest, UserRole, VirtualMachine
 from app.schemas.service_request import BuildCreate
 from app.schemas.settings import default_pc_builds
 from app.services import service_requests as svc
@@ -413,6 +413,28 @@ async def test_refresh_open_only_open_and_stale(session, env, sd):
     assert (await fresh(fresh_open.id)).status_category == "new"
     assert (await fresh(done.id)).last_checked_at.replace(microsecond=0) == stale.replace(microsecond=0)
     assert (await fresh(no_key.id)).last_checked_at is None
+
+
+async def _notes() -> list[Notification]:
+    async with SessionLocal() as s:
+        return list((await s.scalars(select(Notification).order_by(Notification.id))).all())
+
+
+async def test_refresh_open_notifies_author_when_status_changes(session, env, sd):
+    await add_req(session, env.owner, key="HMS-7", status="Ожидает поддержки", status_category="new")
+    sd.status = real_sd.SdStatus("Решено", "done")
+    await svc.refresh_open(session)
+    (note,) = await _notes()
+    assert (note.user_id, note.kind, note.title) == (env.owner.id, NotificationKind.request_status, "Заявка HMS-7: Решено")
+    assert note.body == "s"  # тема заявки
+
+
+async def test_refresh_open_does_not_notify_on_first_status_or_same_status(session, env, sd):
+    await add_req(session, env.owner, key="HMS-1")  # статус ещё не был известен
+    await add_req(session, env.owner, key="HMS-2", status="В работе", status_category="indeterminate")
+    sd.status = real_sd.SdStatus("В работе", "indeterminate")
+    await svc.refresh_open(session)
+    assert await _notes() == []
 
 
 async def test_refresh_open_not_more_than_once_per_two_minutes(session, env, sd):

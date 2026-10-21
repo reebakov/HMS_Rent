@@ -11,7 +11,7 @@ from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
 from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
 from app.schemas.service_request import BuildCreate, RequestOut
-from app.services import departments, runtime, term_limit
+from app.services import departments, notifications, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number
 
@@ -242,7 +242,9 @@ async def refresh_open(session: AsyncSession, batch: int = 20) -> None:
     for req in rows:
         try:
             status = await sd.get_status(req.issue_key)
+            old = req.status
             req.status, req.status_category = status.status, status.category
+            notifications.request_status(session, req, old)
         except sd.ServiceDeskError as exc:
             log.warning("Статус %s не обновлён: %s", req.issue_key, exc)
         req.last_checked_at = datetime.now(timezone.utc)

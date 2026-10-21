@@ -1,8 +1,8 @@
 """Сроки аренды: просрочки ПК и виртуалок и продления ПК и ВМ.
 
 Видно в Админке → «Сроки аренды» (+ счётчик просрочек и непринятых продлений в меню). Раз в день worker шлёт в
-Mattermost (если задан MATTERMOST_WEBHOOK_URL) сводку просрочек для исполнителей, а заказчикам на почту (если задан
-SMTP_HOST) напоминания о скором конце срока и о том, что срок закончился.
+Mattermost (если задан MATTERMOST_WEBHOOK_URL) сводку просрочек для исполнителей, а заказчикам — уведомления в
+колокольчик о скором конце срока и о том, что срок закончился.
 """
 from datetime import date, datetime, timedelta, timezone
 
@@ -15,7 +15,7 @@ from app.core.errors import Conflict, NotFound
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingExtension, BookingStatus, User, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
-from app.services import customer_mail, runtime
+from app.services import notifications, runtime
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
 REMINDERS_KEY = "term_reminders_last"  # дата последних напоминаний о сроке (в app_settings)
@@ -100,8 +100,8 @@ def days_overdue(due: date | None) -> int:
     return (clock.today() - due).days if due else 0
 
 
-async def _unsent_today(session: AsyncSession, key: str, *, enabled: bool) -> date | None:
-    """Сегодняшний день, если пора слать `key` (канал или почта включены, уже DIGEST_HOUR, сегодня ещё не слали)."""
+async def _unsent_today(session: AsyncSession, key: str, *, enabled: bool = True) -> date | None:
+    """Сегодняшний день, если пора слать `key` (канал включён, уже DIGEST_HOUR, сегодня ещё не слали)."""
     if not enabled:
         return None
     now = clock.now()
@@ -136,10 +136,10 @@ async def daily_digest(session: AsyncSession) -> None:
 
 
 async def daily_reminders(session: AsyncSession) -> None:
-    """Раз в рабочий день письма заказчикам (DR-15060, «Окончание срока»): аренда кончается через 5 рабочих дней,
-    сегодня последний рабочий день срока, срок закончился (первый рабочий день после него). В выходные ничего не шлётся.
-    Адресат — автор заказа, почта из Bouncer; канал Mattermost остаётся для исполнителей."""
-    today = await _unsent_today(session, REMINDERS_KEY, enabled=settings.mail_enabled)
+    """Раз в рабочий день уведомления заказчикам (DR-15060, «Окончание срока»): аренда кончается через 5 рабочих дней,
+    сегодня последний рабочий день срока, срок закончился (первый рабочий день после него). В выходные ничего не
+    создаётся. Адресат — автор заказа; канал Mattermost остаётся для исполнителей."""
+    today = await _unsent_today(session, REMINDERS_KEY)
     if today is None:
         return
     cal = workdays.load()
@@ -160,9 +160,10 @@ async def daily_reminders(session: AsyncSession) -> None:
             due = order.expected_return_at
             if due < today:
                 if cal.first_workday_after(due) == today:
-                    await customer_mail.term_overdue(kind, name, order, today)
+                    notifications.term_overdue(session, kind, name, order)
             elif cal.workdays_before(due, REMIND_WORKDAYS) == today:
-                await customer_mail.term_ending(kind, name, order, last_day=False, days=REMIND_WORKDAYS)
+                notifications.term_ending(session, kind, name, order, last_day=False, days=REMIND_WORKDAYS)
             elif cal.last_workday(due) == today:
-                await customer_mail.term_ending(kind, name, order, last_day=True, days=0)
+                notifications.term_ending(session, kind, name, order, last_day=True, days=0)
+    await notifications.prune(session)
     await _mark_sent(session, REMINDERS_KEY, today)

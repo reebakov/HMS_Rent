@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.errors import Conflict, NotFound
 from app.models import BookingStatus, TermRequest, TermRequestStatus, User, VmStatus
-from app.services import bookings, vms
+from app.services import bookings, notifications, vms
 
 APPROVED_COMMENT = "Заявка на срок согласована администратором"
 
@@ -58,6 +58,7 @@ async def approve(session: AsyncSession, admin: User, request_id: int, until: da
     else:
         await bookings.apply_term(session, admin, req.booking_id, new, APPROVED_COMMENT)
     _decide(req, admin, TermRequestStatus.approved)
+    notifications.term_decision(session, req, new)
     await session.commit()
     return req
 
@@ -66,5 +67,6 @@ async def reject(session: AsyncSession, admin: User, request_id: int) -> TermReq
     """Отказ: заказ остаётся с тем сроком, который уже стоит."""
     req = await _lock_pending(session, request_id)
     _decide(req, admin, TermRequestStatus.rejected)
+    notifications.term_decision(session, req, None)
     await session.commit()
     return req

@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy import select
 
 from app.core import clock as app_clock
 from app.core import workdays
 from app.core.config import settings
 from app.core.workdays import WorkCalendar
 from app.db.session import SessionLocal
-from app.integrations import mail
-from app.models import AppSetting, VirtualMachine
-from app.services import customer_mail, overdue
+from app.models import AppSetting, Notification, NotificationKind, VirtualMachine
+from app.services import notifications, overdue
 from tests.sync_fakes import add_booking
 
 TODAY = date(2026, 6, 15)
@@ -244,19 +244,14 @@ def cal(monkeypatch):
     return _set
 
 
-@pytest.fixture
-def mails(monkeypatch):
-    """Почта включена; письма не уходят, а записываются как (получатель, тема, текст)."""
-    monkeypatch.setattr(settings, "smtp_host", "smtp.test")
-    monkeypatch.setattr(settings, "smtp_from", "hms-rent@corp.test")
-    sent: list[tuple[str | None, str, str]] = []
+async def notes() -> list[Notification]:
+    """Уведомления в БД, старые сверху (отдельной сессией, мимо кэша тестовой)."""
+    async with SessionLocal() as fresh:
+        return list((await fresh.scalars(select(Notification).order_by(Notification.id))).all())
 
-    async def fake_send(to, subject, body):
-        sent.append((to, subject, body))
-        return True
 
-    monkeypatch.setattr(customer_mail, "send_mail", fake_send)
-    return sent
+async def titles() -> list[str]:
+    return [n.title for n in await notes()]
 
 
 async def reminders_date() -> str | None:
@@ -268,41 +263,31 @@ async def reminders_date() -> str | None:
 MON_22 = date(2026, 6, 22)  # за 5 рабочих дней до него — TODAY (пн 15 июня)
 
 
-async def test_reminders_without_mail_do_nothing(session, make_computer, owner, clock, mails, cal, monkeypatch):
-    monkeypatch.setattr(settings, "smtp_host", "")
-    user, dept = owner
-    await add_booking(session, await make_computer(), user, dept, expected_return_at=MON_22)
-    clock(12)
-    await overdue.daily_reminders(session)
-    assert mails == [] and await reminders_date() is None
-
-
-async def test_reminders_before_hour_do_nothing(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_before_hour_do_nothing(session, make_computer, owner, clock, cal):
     user, dept = owner
     await add_booking(session, await make_computer(), user, dept, expected_return_at=MON_22)
     clock(overdue.DIGEST_HOUR - 1)
     await overdue.daily_reminders(session)
-    assert mails == []
+    assert await notes() == []
 
 
-async def test_reminders_go_to_author_by_email_and_not_to_channel(session, make_computer, owner, clock, mails, cal, mm):
+async def test_reminders_go_to_author_and_not_to_channel(session, make_computer, owner, clock, cal, mm):
     user, dept = owner
     soon = await add_booking(session, await make_computer("PC-005"), user, dept, expected_return_at=MON_22)
     vm = await add_vm(session, user, dept, name="A1005", expected_return_at=TODAY)
     clock(12)
     await overdue.daily_reminders(session)
-    assert [(to, subject) for to, subject, _ in mails] == [
-        ("ivanov@corp.test", "Скоро заканчивается аренда ПК PC-005 — HMS Rent"),
-        ("ivanov@corp.test", "Сегодня заканчивается аренда ВМ A1005 — HMS Rent"),
-    ]
-    ending, last = mails[0][2], mails[1][2]
-    assert f"заказ №{soon.order_number}" in ending and "Через 5 рабочих дней" in ending and "22.06.2026" in ending
-    assert f"заказ №{vm.order_number}" in last and "Сегодня последний рабочий день" in last
+    ending, last = await notes()
+    assert (ending.user_id, ending.kind) == (user.id, NotificationKind.term_ending)
+    assert ending.title == "Через 5 рабочих дней заканчивается аренда ПК PC-005"
+    assert f"Заказ №{soon.order_number}" in ending.body and "22.06.2026" in ending.body
+    assert (last.user_id, last.kind) == (user.id, NotificationKind.term_ending)
+    assert last.title == "Сегодня последний день аренды ВМ A1005" and f"Заказ №{vm.order_number}" in last.body
     mm.assert_not_called()  # канал только для исполнителей
     assert await reminders_date() == TODAY.isoformat()
 
 
-async def test_reminders_skip_closed_and_other_dates(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_skip_closed_and_other_dates(session, make_computer, owner, clock, cal):
     user, dept = owner
     # пт 19-го — до него 5 рабочих дней начались в пт 12-го; вт 23-го — с 16-го; вт 16-го — завтра, не последний день
     for due in (date(2026, 6, 19), MON_22 + timedelta(days=1), TODAY + timedelta(days=1)):
@@ -312,27 +297,27 @@ async def test_reminders_skip_closed_and_other_dates(session, make_computer, own
     await add_vm(session, user, dept, status="deleted", expected_return_at=TODAY)
     clock(12)
     await overdue.daily_reminders(session)
-    assert mails == []
-    assert await reminders_date() == TODAY.isoformat()  # день отработан, хоть и без писем
+    assert await notes() == []
+    assert await reminders_date() == TODAY.isoformat()  # день отработан, хоть и без уведомлений
 
 
-async def test_reminders_count_holidays_as_non_working(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_count_holidays_as_non_working(session, make_computer, owner, clock, cal):
     cal(date(2026, 6, 17))  # праздник в среду: пять рабочих дней до вт 23 июня начинаются сегодня
     user, dept = owner
     await add_booking(session, await make_computer("PC-023"), user, dept, expected_return_at=date(2026, 6, 23))
     await add_booking(session, await make_computer("PC-022"), user, dept, expected_return_at=MON_22)
     clock(12)
     await overdue.daily_reminders(session)
-    assert [subject for _, subject, _ in mails] == ["Скоро заканчивается аренда ПК PC-023 — HMS Rent"]
+    assert await titles() == ["Через 5 рабочих дней заканчивается аренда ПК PC-023"]
 
 
-async def test_reminders_term_ending_on_weekend_reminded_on_friday(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_term_ending_on_weekend_reminded_on_friday(session, make_computer, owner, clock, cal):
     friday = date(2026, 6, 19)
     user, dept = owner
     await add_booking(session, await make_computer("PC-SUN"), user, dept, expected_return_at=date(2026, 6, 21))
     clock(12, friday)
     await overdue.daily_reminders(session)
-    assert [subject for _, subject, _ in mails] == ["Сегодня заканчивается аренда ПК PC-SUN — HMS Rent"]
+    assert await titles() == ["Сегодня последний день аренды ПК PC-SUN"]
 
 
 @pytest.mark.parametrize("due, today, expected", [
@@ -343,52 +328,51 @@ async def test_reminders_term_ending_on_weekend_reminded_on_friday(session, make
     (date(2026, 6, 1), date(2026, 6, 16), False),   # давняя просрочка не будит заказчика снова
 ])
 async def test_reminders_overdue_notice_only_on_first_workday_after_term(
-        session, make_computer, owner, clock, mails, cal, due, today, expected):
+        session, make_computer, owner, clock, cal, due, today, expected):
     user, dept = owner
     await add_booking(session, await make_computer("PC-LATE"), user, dept, expected_return_at=due)
     clock(12, today)
     await overdue.daily_reminders(session)
-    assert [s for _, s, _ in mails if "закончился" in s] == (["Срок аренды ПК PC-LATE закончился — HMS Rent"] if expected else [])
+    assert [t for t in await titles() if "закончился" in t] == (["Срок аренды ПК PC-LATE закончился"] if expected else [])
 
 
-async def test_reminders_on_day_off_send_nothing_but_mark_day(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_on_day_off_send_nothing_but_mark_day(session, make_computer, owner, clock, cal):
     saturday = date(2026, 6, 13)
     user, dept = owner
     await add_booking(session, await make_computer(), user, dept, expected_return_at=saturday)
     clock(12, saturday)
     await overdue.daily_reminders(session)
-    assert mails == [] and await reminders_date() == saturday.isoformat()
+    assert await notes() == [] and await reminders_date() == saturday.isoformat()
 
 
-async def test_reminders_sent_once_per_day(session, make_computer, owner, clock, mails, cal):
+async def test_reminders_sent_once_per_day(session, make_computer, owner, clock, cal):
     user, dept = owner
     await add_booking(session, await make_computer(), user, dept, expected_return_at=MON_22)
     clock(11)
     await overdue.daily_reminders(session)
     clock(17)
     await overdue.daily_reminders(session)
-    assert len(mails) == 1
+    assert len(await notes()) == 1
 
 
-async def test_reminders_user_without_email_is_skipped_quietly(session, make_computer, make_department, make_user,
-                                                                 clock, cal, monkeypatch):
-    monkeypatch.setattr(settings, "smtp_host", "smtp.test")
-    monkeypatch.setattr(settings, "smtp_from", "hms-rent@corp.test")
-    smtp_calls: list = []
-    monkeypatch.setattr(mail, "_send_sync", lambda *args: smtp_calls.append(args))
-    ops = await make_department("Ops")
-    nomail = await make_user("nomail", department=ops)
-    await add_booking(session, await make_computer(), nomail, ops, expected_return_at=MON_22)
-    clock(12)
-    await overdue.daily_reminders(session)  # у автора нет почты: письма нет, цикл не падает
-    assert smtp_calls == [] and await reminders_date() == TODAY.isoformat()
-
-
-async def test_digest_and_reminders_are_marked_separately(session, make_computer, owner, clock, mm, mails, cal):
+async def test_digest_and_reminders_are_marked_separately(session, make_computer, owner, clock, mm, cal):
     user, dept = owner
     await add_booking(session, await make_computer(), user, dept, expected_return_at=OVERDUE)
     await add_booking(session, await make_computer(), user, dept, expected_return_at=MON_22)
     clock(12)
     await overdue.daily_digest(session)
     await overdue.daily_reminders(session)
-    assert mm.await_count == 1 and len(mails) == 1  # сводка в канал, напоминание на почту
+    assert mm.await_count == 1 and len(await notes()) == 1  # сводка в канал, напоминание в колокольчик
+
+
+async def test_reminders_prune_old_notifications(session, make_computer, owner, clock, cal):
+    user, _ = owner
+    old = Notification(user_id=user.id, kind=NotificationKind.vm_ready.value, title="старое")
+    fresh = Notification(user_id=user.id, kind=NotificationKind.vm_ready.value, title="свежее")
+    session.add_all([old, fresh])
+    await session.commit()
+    old.created_at = app_clock.now() - timedelta(days=notifications.KEEP_DAYS + 1)
+    await session.commit()
+    clock(12)
+    await overdue.daily_reminders(session)
+    assert await titles() == ["свежее"]

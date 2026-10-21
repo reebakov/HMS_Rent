@@ -67,6 +67,17 @@ class EventType(StrEnum):
     writeback_failed = "writeback_failed"
 
 
+class NotificationKind(StrEnum):
+    """Что случилось с заказом заказчика; по виду фронтенд выбирает значок и цвет."""
+
+    vm_ready = "vm_ready"
+    vm_failed = "vm_failed"
+    request_status = "request_status"  # сменился статус заявки в Service Desk
+    term_decision = "term_decision"    # админ согласовал или отклонил срок дольше лимита
+    term_ending = "term_ending"        # срок аренды скоро закончится
+    term_overdue = "term_overdue"      # срок аренды закончился
+
+
 class UserRole(StrEnum):
     user = "user"
     admin = "admin"
