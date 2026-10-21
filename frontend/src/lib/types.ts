@@ -207,6 +207,13 @@ export interface ClusterCapacity {
   storage_free_gb: number
 }
 
+export interface VmNumbers {
+  ok: boolean
+  error: string | null
+  free: number
+  low: boolean // номеров мало или нет совсем
+}
+
 export interface InventoryRow extends Computer {
   serial_number: string | null
   is_archived: boolean

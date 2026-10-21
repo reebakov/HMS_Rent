@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { DataState } from '@/components/ui/data-state'
 import { ClusterCapacityCard } from '@/features/admin/ClusterCapacityCard'
 import { IdleServersCard } from '@/features/admin/IdleServersCard'
+import { VmNumbersCard } from '@/features/admin/VmNumbersCard'
 import { BarList, EventTimeline, StatCard } from '@/features/admin/widgets'
 import { useDepartmentUsage, useEvents, useStats } from '@/lib/queries'
 import { TIERS } from '@/lib/dictionaries'
@@ -154,9 +155,10 @@ export function AdminOverviewPage() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-3">
         <IdleServersCard />
         <ClusterCapacityCard />
+        <VmNumbersCard />
       </div>
 
       <Card className="mt-6">

@@ -261,6 +261,43 @@ async def test_insight_unavailable_rejects_order_without_leaking_details(session
     assert await vms.list_vms(session) == []
 
 
+# ---------- остаток номеров ВМ (индикатор в «Обзоре парка») ----------
+
+@pytest.mark.parametrize("taken, free, low", [(0, 8, False), (2, 6, False), (3, 5, True), (8, 0, True)])
+async def test_numbers_summary_counts_free_and_flags_low(session, vm_on, ctx, insight, taken, free, low):
+    insight([f"A{4000 + i}" for i in range(8)])
+    await runtime.update(session, {"vm_max_per_user": 10})
+    for _ in range(taken):
+        await request(session, ctx)
+    result = await vms.numbers_summary(session)
+    assert (result.ok, result.error, result.free, result.low) == (True, None, free, low)
+
+
+async def test_numbers_summary_returns_number_after_vm_deleted(session, vm_on, ctx, insight):
+    insight(["A4001", "A4002"])
+    vm = await request(session, ctx)
+    assert (await vms.numbers_summary(session)).free == 1
+    await vms.release(session, ctx.user, vm.id)
+    assert (await vms.numbers_summary(session)).free == 2
+
+
+async def test_numbers_summary_insight_unavailable_is_reported_without_details(session, vm_on, insight):
+    insight(error=InsightError("Insight недоступен (GET /iql): секретная деталь"))
+    result = await vms.numbers_summary(session)
+    assert (result.ok, result.free) == (False, 0)
+    assert result.error == "Insight недоступен, свободные номера не проверить" and "секретная" not in result.error
+
+
+async def test_vm_numbers_endpoint_admin_only(client, login, api, make_user, vm_on, insight):
+    insight(["A4001", "A4002", "A4003"])
+    assert (await client.get(api("/admin/vm-numbers"))).status_code == 401
+    login(await make_user("worker"))
+    assert (await client.get(api("/admin/vm-numbers"))).status_code == 403
+    login(await make_user("boss", role="admin"))
+    r = await client.get(api("/admin/vm-numbers"))
+    assert r.status_code == 200 and r.json() == {"ok": True, "error": None, "free": 3, "low": True}
+
+
 async def test_object_cannot_belong_to_two_live_vms(session, vm_on, ctx):
     """Уникальный индекс в БД: даже при гонке один объект Insight не достанется двум живым ВМ."""
     first = await request(session, ctx)

@@ -3,8 +3,16 @@ from fastapi import APIRouter, BackgroundTasks
 
 from app.api.deps import DB, AdminUser
 from app.models import BookingExtension, TermRequest
-from app.schemas.admin import ClusterCapacity, ExtensionOut, IdleServers, OverdueItem, TermApprove, TermRequestOut
-from app.services import bookings, capacity, idle, overdue, sync_runs, term_requests
+from app.schemas.admin import (
+    ClusterCapacity,
+    ExtensionOut,
+    IdleServers,
+    OverdueItem,
+    TermApprove,
+    TermRequestOut,
+    VmNumbers,
+)
+from app.services import bookings, capacity, idle, overdue, sync_runs, term_requests, vms
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -57,3 +65,8 @@ async def idle_servers(_: AdminUser, session: DB) -> IdleServers:
 @router.get("/cluster", response_model=ClusterCapacity)
 async def cluster_capacity(_: AdminUser) -> ClusterCapacity:
     return await capacity.summary()
+
+
+@router.get("/vm-numbers", response_model=VmNumbers)
+async def vm_numbers(_: AdminUser, session: DB) -> VmNumbers:
+    return await vms.numbers_summary(session)

@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers,
+  ClusterCapacity, IdleServers, VmNumbers,
 } from './types'
 
 export interface ComputerFilters {
@@ -127,6 +127,10 @@ export const useIdleServers = () =>
 // vCenter опрашивается на каждый запрос, поэтому обновляем редко
 export const useClusterCapacity = () =>
   useQuery({ queryKey: ['admin', 'cluster'], queryFn: () => api.get<ClusterCapacity>('/admin/cluster'), refetchInterval: 300_000 })
+
+// Insight опрашивается на каждый запрос, поэтому обновляем редко
+export const useVmNumbers = () =>
+  useQuery({ queryKey: ['admin', 'vm-numbers'], queryFn: () => api.get<VmNumbers>('/admin/vm-numbers'), refetchInterval: 300_000 })
 
 export const useInventory = (filters: InventoryFilters) =>
   useQuery({

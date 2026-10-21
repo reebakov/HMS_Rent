@@ -13,6 +13,7 @@ from app.integrations.insight.base import InsightError, InsightObject
 from app.integrations.insight.factory import create_insight_source
 from app.integrations.vsphere import client as vsphere
 from app.models import User, VirtualMachine, VmStatus
+from app.schemas.admin import VmNumbers
 from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmTemplateOption
 from app.services import departments, overdue, runtime, term_limit
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 
 ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
 VM_LIMIT_LOCK_KEY = 73010002  # пространство ключей advisory-lock для лимита ВМ на пользователя (свой ключ у sync.py)
+LOW_VM_NUMBERS = 5  # столько номеров и меньше — в «Обзоре парка» предупреждение
 VM_NUMBER_LOCK_KEY = 73010003  # выбор свободного номера ВМ: заказы разных людей не должны взять один объект
 
 
@@ -77,24 +79,47 @@ async def check_vcenter() -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-async def _take_free_number(session: AsyncSession) -> InsightObject:
-    """Свободный объект ВМ из Insight («На складе»), не занятый живой ВМ портала; его имя (A1###) станет именем ВМ."""
+async def _insight_free_objects() -> list[InsightObject]:
+    """Объекты ВМ «На складе» из Insight (InsightError — если он недоступен)."""
     source = create_insight_source()
     try:
-        objects = await source.fetch_free_vm_objects()
-    except InsightError as exc:
-        log.warning("Не удалось получить свободные номера ВМ из Insight: %s", exc)
-        raise Conflict("Insight сейчас недоступен, номер для ВМ выдать нельзя. Попробуйте позже") from exc
+        return await source.fetch_free_vm_objects()
     finally:
         await source.close()
-    # lock держится до commit заказа: сеть к Insight уже позади, под ним только запросы к своей БД
-    await session.execute(select(func.pg_advisory_xact_lock(VM_NUMBER_LOCK_KEY)))
-    busy = set(await session.scalars(
+
+
+async def _busy_object_ids(session: AsyncSession) -> set[int]:
+    """Объекты Insight, номера которых заняты живыми ВМ портала."""
+    return set(await session.scalars(
         select(VirtualMachine.insight_object_id).where(
             VirtualMachine.insight_object_id.is_not(None),
             VirtualMachine.status.notin_((VmStatus.deleted, VmStatus.failed)),
         )
     ))
+
+
+async def numbers_summary(session: AsyncSession) -> VmNumbers:
+    """Сколько номеров ВМ ещё можно выдать (для «Обзора парка»): когда они кончатся, заказы ВМ отклоняются."""
+    try:
+        objects = await _insight_free_objects()
+    except InsightError as exc:
+        log.warning("Не удалось получить свободные номера ВМ из Insight: %s", exc)
+        return VmNumbers(ok=False, error="Insight недоступен, свободные номера не проверить")
+    busy = await _busy_object_ids(session)
+    free = sum(1 for o in objects if o.id not in busy)
+    return VmNumbers(ok=True, free=free, low=free <= LOW_VM_NUMBERS)
+
+
+async def _take_free_number(session: AsyncSession) -> InsightObject:
+    """Свободный объект ВМ из Insight («На складе»), не занятый живой ВМ портала; его имя (A1###) станет именем ВМ."""
+    try:
+        objects = await _insight_free_objects()
+    except InsightError as exc:
+        log.warning("Не удалось получить свободные номера ВМ из Insight: %s", exc)
+        raise Conflict("Insight сейчас недоступен, номер для ВМ выдать нельзя. Попробуйте позже") from exc
+    # lock держится до commit заказа: сеть к Insight уже позади, под ним только запросы к своей БД
+    await session.execute(select(func.pg_advisory_xact_lock(VM_NUMBER_LOCK_KEY)))
+    busy = await _busy_object_ids(session)
     free = sorted((o for o in objects if o.id not in busy), key=lambda o: (len(o.label), o.label))
     if not free:
         raise Conflict("Нет свободных номеров ВМ в Insight. Обратитесь к администратору")

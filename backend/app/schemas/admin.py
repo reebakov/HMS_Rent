@@ -237,3 +237,11 @@ class ClusterCapacity(BaseModel):
     ram_free_gb: float = 0
     storage_total_gb: float = 0
     storage_free_gb: float = 0
+
+
+class VmNumbers(BaseModel):
+    """Свободные номера ВМ в Insight: сколько заказов ВМ ещё примет конструктор."""
+    ok: bool
+    error: str | None = None
+    free: int = 0
+    low: bool = False  # номеров мало или нет совсем
