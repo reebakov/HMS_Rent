@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, X, Activity } from 'lucide-react'
 import { useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
+import { NotificationBell } from './NotificationBell'
 import { ShortcutsButton } from './Shortcuts'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
@@ -195,6 +196,7 @@ export function AppShell() {
               Dev-вход
             </span>
           )}
+          <NotificationBell />
           <ShortcutsButton />
           <ThemeToggle />
         </header>

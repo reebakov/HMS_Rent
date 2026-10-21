@@ -61,6 +61,7 @@ beforeEach(() => {
     if (path === '/admin/overdue') return overdue
     if (path === '/admin/extensions') return extensions
     if (path === '/admin/term-requests') return termRequests
+    if (path === '/notifications') return { items: [], unread: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
   document.documentElement.classList.remove('dark')
@@ -369,6 +370,8 @@ describe('AppShell: «Сроки аренды»', () => {
     mountShell()
     await screen.findByText('страница-каталог')
     expect(screen.queryByRole('link', { name: /Сроки аренды/ })).not.toBeInTheDocument()
-    expect(api.get).not.toHaveBeenCalled()
+    expect(api.get).not.toHaveBeenCalledWith('/admin/overdue')
+    expect(api.get).not.toHaveBeenCalledWith('/admin/term-requests')
+    expect(api.get).not.toHaveBeenCalledWith('/admin/extensions')
   })
 })

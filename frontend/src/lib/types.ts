@@ -522,3 +522,21 @@ export type VsphereCheck =
       templates: Record<string, boolean>
     }
   | { ok: false; error: string }
+
+// ---------- Уведомления (колокольчик) ----------
+
+export type NotificationKind = 'vm_ready' | 'vm_failed' | 'request_status' | 'term_decision' | 'term_ending' | 'term_overdue'
+
+export interface UserNotification {
+  id: number
+  kind: NotificationKind
+  title: string
+  body: string
+  created_at: string
+  read_at: string | null
+}
+
+export interface NotificationList {
+  items: UserNotification[]
+  unread: number // всего непрочитанных, а не только в items
+}

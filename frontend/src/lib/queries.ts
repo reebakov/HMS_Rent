@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList,
 } from './types'
 
 export interface ComputerFilters {
@@ -401,3 +401,17 @@ export const useSyncRunDetails = (id: number | null) =>
     queryFn: () => api.get<SyncRunDetails>(`/admin/sync/runs/${id}`),
     enabled: id !== null,
   })
+
+// ---------- Уведомления (колокольчик) ----------
+
+export const useNotifications = () =>
+  useQuery({ queryKey: ['notifications'], queryFn: () => api.get<NotificationList>('/notifications'), refetchInterval: 60_000 })
+
+/** Прочитать одно уведомление, а без id — все */
+export function useReadNotifications() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id?: number) => api.post<void>(id === undefined ? '/notifications/read-all' : `/notifications/${id}/read`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
