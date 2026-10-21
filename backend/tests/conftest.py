@@ -2,6 +2,7 @@
 
 Настройки приложения читаются при импорте, поэтому DATABASE_URL выставляется до любого `import app`.
 """
+import functools
 import os
 import subprocess
 import sys
@@ -25,6 +26,12 @@ from app.services import runtime  # noqa: E402
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+@functools.cache
+def _password_hash(password: str) -> str:
+    """scrypt стоит десятки миллисекунд, а тестовых пользователей тысячи: хэш одного и того же пароля считается один раз."""
+    return hash_password(password)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _migrated_db():
     """Один раз за сессию: чистая схема через настоящие миграции (заодно проверяет, что они применяются)."""
@@ -36,14 +43,26 @@ def _migrated_db():
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_db(_migrated_db):
-    """Перед каждым тестом: пустые таблицы, свежий кэш runtime-настроек."""
+    """Перед каждым тестом: пустые таблицы и счётчики, свежий кэш runtime-настроек.
+
+    TRUNCATE дорог, поэтому чистятся только таблицы, в которые писали: в них есть строки или продвинулась их
+    последовательность id (строки могли успеть удалить). В большинстве тестов это несколько таблиц из ~16.
+    """
     async with engine.begin() as conn:
         tables = (await conn.execute(text(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
         ))).scalars().all()
-        if tables:
-            await conn.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE"))
-        await conn.execute(text("ALTER SEQUENCE rental_order_seq RESTART WITH 1"))
+        used_sequences = set((await conn.execute(text(
+            "SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND last_value IS NOT NULL"
+        ))).scalars().all())
+        with_rows = (await conn.execute(text(
+            " UNION ALL ".join(f"SELECT '{t}' WHERE EXISTS (SELECT 1 FROM \"{t}\")" for t in tables)
+        ))).scalars().all() if tables else []
+        dirty = [t for t in tables if t in with_rows or f"{t}_id_seq" in used_sequences]
+        if dirty:
+            await conn.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in dirty) + " RESTART IDENTITY CASCADE"))
+        if "rental_order_seq" in used_sequences:
+            await conn.execute(text("ALTER SEQUENCE rental_order_seq RESTART WITH 1"))
     runtime._cache = (0.0, runtime._defaults())
     yield
 
@@ -72,7 +91,7 @@ async def make_user(session):
                     department: Department | None = None, password: str | None = "pass12345", **kw) -> User:
         obj = User(username=username, display_name=kw.pop("display_name", username), role=role,
                    auth_source=auth_source, department_id=department.id if department else None,
-                   password_hash=hash_password(password) if password else None, **kw)
+                   password_hash=_password_hash(password) if password else None, **kw)
         session.add(obj)
         await session.commit()
         return obj
