@@ -5,6 +5,14 @@ import { cn, plural } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/card'
 import { DataState, type QueryLike } from '@/components/ui/data-state'
 
+// Плитки компактные и идут в одну строку: категории и карточки-действия — до пяти штук
+const CARD = cn(
+  'group flex min-w-0 items-center gap-3 rounded-xl border bg-card px-3.5 py-3 text-left shadow-card transition-all',
+  'hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+)
+const ICON_BOX = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg'
+const GRID = 'grid gap-3 sm:grid-cols-2 xl:grid-flow-col xl:auto-cols-fr'
+
 /** Карточка-действие рядом с категориями: открывает конструктор или форму заказа */
 function ActionCard({ icon: Icon, accent, title, hint, action, onClick }: {
   icon: LucideIcon
@@ -17,20 +25,17 @@ function ActionCard({ icon: Icon, accent, title, hint, action, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={cn(
-        'group relative rounded-xl border border-dashed bg-card p-5 text-left shadow-card transition-all',
-        'hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-      )}
+      className={cn(CARD, 'border-dashed hover:border-primary/60')}
     >
-      <div className="flex items-start justify-between">
-        <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', accent)}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <Plus className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" />
+      <div className={cn(ICON_BOX, accent)}>
+        <Icon className="h-[18px] w-[18px]" />
       </div>
-      <p className="mt-4 font-semibold">{title}</p>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">{hint}</p>
-      <p className="mt-3 text-xs font-medium text-primary">{action}</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{title}</p>
+        <p className="truncate text-xs text-muted-foreground" title={hint}>{hint}</p>
+        <p className="truncate text-[11px] font-medium text-primary">{action}</p>
+      </div>
+      <Plus className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
     </button>
   )
 }
@@ -55,9 +60,9 @@ export function CategoryCards({
       errorTitle="Не удалось загрузить категории"
       errorCardClass=""
       loading={
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={GRID}>
           {TIER_ORDER.map((t) => (
-            <Skeleton key={t} className="h-[132px] rounded-xl" />
+            <Skeleton key={t} className="h-[68px] rounded-xl" />
           ))}
         </div>
       }
@@ -67,10 +72,9 @@ export function CategoryCards({
         // категории, в которых нет ни одного ПК (например, виртуалки — пока не подключены), не показываем
         const tiers = TIER_ORDER.filter((t) => (byTier[t]?.total ?? 0) > 0)
         const visible = tiers.length ? tiers : TIER_ORDER
-        const cards = visible.length + (onBuildVm ? 1 : 0) + (onOrderBuild ? 1 : 0)
 
         return (
-          <div className={cn('grid gap-4 sm:grid-cols-2', cards >= 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3')}>
+          <div className={GRID}>
             {visible.map((tier) => {
               const meta = TIERS[tier]
               const s = byTier[tier]
@@ -86,26 +90,22 @@ export function CategoryCards({
                 <button
                   key={tier}
                   onClick={() => onChange(tier)}
-                  className={cn(
-                    'group relative rounded-xl border bg-card p-5 text-left shadow-card transition-all',
-                    'hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    active && 'border-primary ring-1 ring-primary',
-                  )}
+                  className={cn(CARD, active && 'border-primary ring-1 ring-primary')}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', meta.accent)}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-semibold tabular leading-none">{s?.available ?? 0}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {plural(s?.available ?? 0, ['свободен', 'свободно', 'свободно'])} из {s?.total ?? 0}
-                      </p>
-                    </div>
+                  <div className={cn(ICON_BOX, meta.accent)}>
+                    <Icon className="h-[18px] w-[18px]" />
                   </div>
-                  <p className="mt-4 font-semibold">{meta.label}</p>
-                  <p className="mt-0.5 text-[13px] text-muted-foreground">{meta.hint}</p>
-                  {ram && <p className="mt-3 text-xs font-medium text-muted-foreground">{ram}</p>}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{meta.label}</p>
+                    <p className="truncate text-xs text-muted-foreground" title={meta.hint}>{meta.hint}</p>
+                    {ram && <p className="truncate text-[11px] font-medium text-muted-foreground">{ram}</p>}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xl font-semibold tabular leading-none">{s?.available ?? 0}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {plural(s?.available ?? 0, ['свободен', 'свободно', 'свободно'])} из {s?.total ?? 0}
+                    </p>
+                  </div>
                 </button>
               )
             })}
