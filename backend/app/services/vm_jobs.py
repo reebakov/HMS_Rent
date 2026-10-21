@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import VirtualMachine, VmStatus
-from app.services import capacity, runtime
+from app.services import capacity, customer_mail, runtime
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ async def _fail(session: AsyncSession, vm: VirtualMachine, error: str) -> bool:
     vm.status, vm.error, vm.insight_pending = VmStatus.failed.value, error, True  # номер вернётся в Insight
     await session.commit()
     await _notify_failed(vm)
+    await customer_mail.vm_failed(vm)
     return True
 
 
@@ -101,11 +102,10 @@ async def create_next(session: AsyncSession) -> bool:
         vm.vsphere_moid, vm.ip_address, vm.power_state = info.moid, info.ip_address, info.power_state
         vm.ready_at = datetime.now(timezone.utc)
         await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
-        break
-    else:
-        return await _fail(session, vm, vm.error or "Не удалось создать ВМ")  # error — ошибка последней попытки
-    await session.commit()
-    return True
+        await session.commit()  # письмо уходит после фиксации, а не пока ВМ «creating»
+        await customer_mail.vm_ready(vm)
+        return True
+    return await _fail(session, vm, vm.error or "Не удалось создать ВМ")  # error — ошибка последней попытки
 
 
 async def delete_next(session: AsyncSession) -> bool:

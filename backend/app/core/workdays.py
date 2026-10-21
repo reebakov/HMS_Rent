@@ -27,6 +27,13 @@ class WorkCalendar:
             day -= timedelta(days=1)
         return day
 
+    def first_workday_after(self, day: date) -> date:
+        """Первый рабочий день строго после `day`."""
+        day += timedelta(days=1)
+        while not self.is_workday(day):
+            day += timedelta(days=1)
+        return day
+
     def workdays_before(self, day: date, count: int) -> date:
         """Рабочий день, с которого до `day` остаётся `count` рабочих дней (сам `day` не считается)."""
         while count:

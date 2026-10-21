@@ -97,7 +97,16 @@ class Settings(BaseSettings):
     sd_prepare_on_booking: bool = True  # бронь ПК создаёт заявку «подготовить ПК» (ОС, первичная настройка)
 
     # --- Уведомления ---
-    mattermost_webhook_url: str = ""
+    mattermost_webhook_url: str = ""  # канал исполнителей: бронь, возврат, ВМ, сводка просрочек
+    # Почта заказчикам (по адресу из Bouncer): ВМ готова или не создана, срок заканчивается, срок закончился.
+    # Выключена, пока не заданы smtp_host и smtp_from.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""  # пусто — без авторизации (внутренний relay)
+    smtp_password: str = ""
+    smtp_from: str = ""  # адрес отправителя, например hms-rent@deeplay.io
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
+    smtp_timeout: int = 15
 
     # --- Справочник отделов по умолчанию (создаётся, если таблица пустая) ---
     default_departments: str = "Разработка,Тестирование (QA),Аналитика,Дизайн,Маркетинг,Поддержка"
@@ -109,6 +118,10 @@ class Settings(BaseSettings):
     @property
     def service_desk_configured(self) -> bool:
         return bool(self.sd_jira_url and (self.sd_token or self.sd_username))
+
+    @property
+    def mail_enabled(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from)
 
     @property
     def vsphere_configured(self) -> bool:

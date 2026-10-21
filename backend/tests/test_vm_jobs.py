@@ -17,7 +17,7 @@ from app.integrations.insight.mock import MOCK_VM_ID_BASE
 from app.integrations.vsphere.client import ClusterUsage, VmInfo, VSphereError
 from app.models import BookingExtension, VirtualMachine
 from app.schemas.vm import VmCreate, VmExtend, VmOut
-from app.services import runtime, vm_jobs, vms
+from app.services import customer_mail, runtime, vm_jobs, vms
 
 TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел запросов
 
@@ -88,6 +88,19 @@ def pauses(monkeypatch):
 
 
 @pytest.fixture
+def mails(monkeypatch):
+    """Письма заказчику не уходят, а записываются как (получатель, тема, текст)."""
+    sent: list[tuple[str | None, str, str]] = []
+
+    async def fake_send(to, subject, body):
+        sent.append((to, subject, body))
+        return True
+
+    monkeypatch.setattr(customer_mail, "send_mail", fake_send)
+    return sent
+
+
+@pytest.fixture
 def notify(monkeypatch):
     mock = AsyncMock()
     monkeypatch.setattr(vm_jobs, "notify", mock)
@@ -112,7 +125,7 @@ def payload(dept_id: int, **kw) -> VmCreate:
 @pytest.fixture
 async def ctx(make_user, make_department):
     dept = await make_department("QA")
-    return SimpleNamespace(dept=dept, user=await make_user("ivanov", department=dept))
+    return SimpleNamespace(dept=dept, user=await make_user("ivanov", department=dept, email="ivanov@corp.test"))
 
 
 async def request(session, ctx, **kw) -> VirtualMachine:
@@ -376,6 +389,38 @@ async def test_create_next_success(session, vm_on, ctx, vsphere, notify):
     assert "Иван Иванов" in annotation and "QA" in annotation and "проверка" in annotation
     notify.assert_awaited_once()
     assert "A1001" in notify.await_args.args[0]
+
+
+async def test_ready_vm_emails_author_connection_data(session, vm_on, ctx, vsphere, notify, mails):
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    (to, subject, body), = mails
+    assert (to, subject) == ("ivanov@corp.test", "ВМ A1001 готова — HMS Rent")
+    assert "IP: 10.0.0.5" in body and "Логин: user (RDP)" in body and "заказ №1" in body
+    assert "Пароль" in body and "password" not in body.lower().replace("пароль", "")  # пароля в письме нет
+
+
+async def test_failed_vm_emails_author_without_technical_details(session, vm_on, ctx, vsphere, notify, mails):
+    vsphere.create_errors = [RuntimeError("datastore full на host-17")] * 2
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    (to, subject, body), = mails
+    assert (to, subject) == ("ivanov@corp.test", "ВМ A1001 не создана — HMS Rent")
+    assert "datastore" not in body and "host-17" not in body and "Исполнители уведомлены" in body
+
+
+async def test_capacity_failure_emails_author_once(session, vm_on, ctx, vsphere, notify, mails):
+    vsphere.free_ram_gb = 1
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    assert [subject for _, subject, _ in mails] == ["ВМ A1001 не создана — HMS Rent"]
+
+
+async def test_retry_success_sends_only_ready_mail(session, vm_on, ctx, vsphere, notify, mails, pauses):
+    vsphere.create_errors = [RuntimeError("временный сбой")]
+    await request(session, ctx)
+    await vm_jobs.create_next(session)
+    assert [subject for _, subject, _ in mails] == ["ВМ A1001 готова — HMS Rent"]
 
 
 async def test_create_next_empty_queue(session, vm_on, vsphere, notify):
