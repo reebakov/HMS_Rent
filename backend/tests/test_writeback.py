@@ -3,7 +3,8 @@ from datetime import date
 
 import pytest
 
-from app.models import EventType
+from app.db.session import SessionLocal
+from app.models import Computer, EventType
 from app.services import runtime
 from app.services.writeback import push_pending
 from tests.sync_fakes import FakeInsight, add_booking, events_of, patch_source, reload_computers
@@ -147,3 +148,33 @@ async def test_extras_failure_still_writes_status(session, fake, wb_on, make_com
     assert c.writeback_pending is False
     assert "Статус записан" in c.writeback_error and "Номер заказа" in c.writeback_error
     assert len(await events_of(session, c, EventType.writeback_failed)) == 1
+
+
+async def test_change_during_write_keeps_flag_for_next_round(session, fake, wb_on, make_computer):
+    """Новая бронь пришла, пока состояние уходило в Insight: флаг не снимается, следующий круг отправит свежее."""
+    comp = await pending(make_computer)
+
+    async def booking_arrives():
+        async with SessionLocal() as other:  # отдельная транзакция портала, как запрос бронирования
+            row = await other.get(Computer, comp.id)
+            row.status, row.writeback_pending = "booked", True
+            await other.commit()
+
+    fake.on_write = booking_arrives
+    await push_pending(session)
+    assert (await reload_computers(session))["A001"].writeback_pending is True
+
+    fake.on_write = None
+    await push_pending(session)  # повторный круг без вмешательства снимает флаг
+    assert (await reload_computers(session))["A001"].writeback_pending is False
+
+
+async def test_computers_are_sent_in_id_order_even_after_updates(session, fake, wb_on, make_computer):
+    """Без ORDER BY строка после UPDATE уходит в конец выборки: пакет и ошибки раздавались бы в случайном порядке."""
+    first = await pending(make_computer, "A001", 1)
+    await pending(make_computer, "A002", 2)
+    first.pool_id = None
+    first.hostname = "pc-1"  # UPDATE строки: версия строки переезжает в конец таблицы
+    await session.commit()
+    await push_pending(session)
+    assert [c["id"] for c in fake.calls] == [1, 2]

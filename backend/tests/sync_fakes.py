@@ -35,6 +35,7 @@ class FakeInsight:
         self.mapping = get_mapping()
         self.calls: list[dict] = []
         self.closed = False
+        self.on_write = None  # async-хук: что происходит в портале, пока идёт запись в Insight
 
     async def fetch_objects(self, limit: int = 0) -> list[InsightObject]:
         if self.fetch_error:
@@ -44,6 +45,8 @@ class FakeInsight:
     async def update_object(self, object_id, object_type_id, values, optional=None) -> None:
         self.calls.append({"id": object_id, "type_id": object_type_id, "values": dict(values),
                            "optional": set(optional or ())})
+        if self.on_write:
+            await self.on_write()
         if self.write_errors:
             err = self.write_errors.pop(0)
             if err:

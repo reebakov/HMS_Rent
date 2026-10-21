@@ -3,7 +3,9 @@ from datetime import date
 
 import pytest
 
+from app.db.session import SessionLocal
 from app.integrations.insight.mapping import InsightMapping, WritebackMapping
+from app.models import VirtualMachine
 from app.services import runtime, vm_insight
 from tests.test_overdue import add_vm
 
@@ -21,8 +23,11 @@ class FakeSource:
         self.updates: list[tuple[int, int | None, dict, set | None]] = []
         self.errors: list[Exception | None] = []
         self.closed = False
+        self.on_write = None  # async-хук: что происходит в портале, пока идёт запись
 
     async def update_object(self, object_id, object_type_id, values, optional=None):
+        if self.on_write:
+            await self.on_write()
         if self.errors and (err := self.errors.pop(0)):
             raise err
         self.updates.append((object_id, object_type_id, dict(values), optional))
@@ -116,3 +121,24 @@ async def test_extra_fields_failure_still_writes_status(session, writeback_on, s
     await vm_insight.push_pending(session)
     (_, _, values, _), = source.updates
     assert values == {"Status": "Используется"}  # статус записан отдельно, как у ПК
+
+
+async def test_change_during_write_keeps_pending_for_next_round(session, writeback_on, source, ctx):
+    """Продление пришло, пока состояние уходило в Insight: флаг не снимается, следующий круг отправит новый срок."""
+    vm = await vm_with_object(session, ctx)
+    vm_id = vm.id
+
+    async def extension_arrives():
+        async with SessionLocal() as other:  # отдельная транзакция портала, как запрос продления
+            row = await other.get(VirtualMachine, vm_id)
+            row.expected_return_at, row.insight_pending = date(2027, 1, 15), True
+            await other.commit()
+
+    source.on_write = extension_arrives
+    await vm_insight.push_pending(session)
+    assert (await session.get(VirtualMachine, vm_id, populate_existing=True)).insight_pending is True
+
+    source.on_write = None
+    await vm_insight.push_pending(session)
+    assert (await session.get(VirtualMachine, vm_id, populate_existing=True)).insight_pending is False
+    assert source.updates[-1][2]["Срок использования"] == "2027-01-15"

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.insight.factory import create_insight_source
 from app.models import VirtualMachine, VmStatus
 from app.services import runtime
-from app.services.writeback import write_object
+from app.services.writeback import clear_pending, write_object
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def push_pending(session: AsyncSession, batch: int = 20) -> int:
         for vm in vms:
             released = vm.status in RELEASED
             if released and await _object_in_use(session, vm):
-                vm.insight_pending = False  # объект уже у другой ВМ: этой записи делать нельзя
+                await clear_pending(session, vm, "insight_pending")  # объект уже у другой ВМ: этой записи делать нельзя
                 continue
             status = wb.vm_status_values["free" if released else "taken"]
             extras = {
@@ -64,7 +64,7 @@ async def push_pending(session: AsyncSession, batch: int = 20) -> int:
                 continue
             if warning:
                 log.warning("ВМ %s: %s", vm.name, warning)
-            vm.insight_pending = False
+            await clear_pending(session, vm, "insight_pending")
             done += 1
         await session.commit()
     finally:

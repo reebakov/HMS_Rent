@@ -13,23 +13,37 @@
 """
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType
+from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, VirtualMachine
 from app.services import runtime
 from app.services.events import add_event
 
 log = logging.getLogger(__name__)
 
 
+async def clear_pending(session: AsyncSession, row: Computer | VirtualMachine, flag: str) -> None:
+    """Снять флаг очереди, только если строку не меняли с момента чтения.
+
+    Пока состояние уходило в Insight, могла прийти новая бронь или продление и снова поставить флаг: безусловное
+    снятие потеряло бы эту правку. Любое изменение строки сдвигает `updated_at`, и тогда флаг остаётся до следующего
+    круга. Вызывать до изменения других полей строки: автосброс сессии тоже сдвигает `updated_at`.
+    """
+    model = type(row)
+    await session.execute(
+        update(model).where(model.id == row.id, model.updated_at == row.updated_at).values({flag: False})
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def push_pending(session: AsyncSession, batch: int = 50) -> int:
     if not (await runtime.load(session)).insight_writeback:
         return 0
     computers = (
-        await session.scalars(select(Computer).where(Computer.writeback_pending.is_(True)).limit(batch))
+        await session.scalars(select(Computer).where(Computer.writeback_pending.is_(True)).order_by(Computer.id).limit(batch))
     ).unique().all()
     if not computers:
         return 0
@@ -66,7 +80,7 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
                 if values and comp.insight_object_id:
                     warning = await write_object(source, comp.insight_object_id, comp.insight_object_type_id,
                                                  values, extras, wb.status_attribute)
-                comp.writeback_pending = False
+                await clear_pending(session, comp, "writeback_pending")
                 if warning and warning != comp.writeback_error:  # не спамим журнал одной и той же ошибкой
                     add_event(session, computer_id=comp.id, event_type=EventType.writeback_failed, message=warning)
                 comp.writeback_error = warning
