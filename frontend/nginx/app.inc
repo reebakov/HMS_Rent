@@ -2,9 +2,15 @@
 # из deploy/nginx/tls.conf (HTTPS, монтируется docker-compose.tls.yml). Единственный источник locations и gzip.
 root /usr/share/nginx/html;
 
+# Адрес backend ищется через DNS Docker при запросе, а не при старте nginx: иначе `nginx -t` (проверка в deploy.sh) и
+# запуск frontend падают с «host not found», пока контейнер backend не запущен, а после пересоздания backend nginx
+# держал бы его старый адрес. Переменная в proxy_pass без URI передаёт путь запроса как есть, как и раньше.
+resolver 127.0.0.11 valid=10s ipv6=off;
+set $backend http://backend:8000;
+
 # API и Swagger — на backend
 location /api/ {
-    proxy_pass http://backend:8000;
+    proxy_pass $backend;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     # последним элементом nginx дописывает реальный адрес клиента — на нём держится блокировка перебора пароля
