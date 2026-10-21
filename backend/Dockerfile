@@ -11,6 +11,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# версия сборки (sha коммита): CI передаёт её build-arg'ом, /api/health отдаёт её интерфейсу
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 EXPOSE 8000
 
 # Миграции применяются при каждом старте (идемпотентно), затем поднимается API

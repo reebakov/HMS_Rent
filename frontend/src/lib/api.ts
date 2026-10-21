@@ -42,7 +42,15 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
 }
 
+/** Версия backend из /api/health (sha коммита, «dev» в разработке; пусто у старого backend) */
+async function serverVersion(): Promise<string | undefined> {
+  const res = await fetch('/api/health', { cache: 'no-store' })
+  if (!res.ok) throw new ApiError(res.status, `Ошибка ${res.status}`)
+  return ((await res.json()) as { version?: string }).version
+}
+
 export const api = {
+  serverVersion,
   get: <T>(path: string, query?: Query) => request<T>('GET', path, undefined, query),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),

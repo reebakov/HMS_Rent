@@ -49,7 +49,7 @@ async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
 
 @app.get("/api/health", tags=["system"])
 async def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.app_version}
 
 
 app.include_router(api_router, prefix=settings.api_prefix)

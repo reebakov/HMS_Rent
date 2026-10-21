@@ -7,15 +7,17 @@ import '@fontsource-variable/inter'
 import './index.css'
 import App from './App'
 import { AuthProvider } from './auth/AuthProvider'
-import { ApiError } from './lib/api'
+import { UpdateNotice } from './components/layout/UpdateNotice'
+import { retryDelay, shouldRetry } from './lib/queryRetry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: true,
-      // 4xx не повторяем — это не сетевой сбой
-      retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
+      // 4xx не повторяем; при перезапуске сервера (502, 503, 504, нет связи) пробуем около минуты
+      retry: shouldRetry,
+      retryDelay,
     },
   },
 })
@@ -26,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <App />
+          <UpdateNotice />
           <Toaster position="top-right" richColors closeButton />
         </AuthProvider>
       </BrowserRouter>

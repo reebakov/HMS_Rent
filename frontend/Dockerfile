@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --no-audit --no-fund
 COPY . .
+# версия сборки (sha коммита) вшивается в бандл: по ней интерфейс сверяет себя с /api/health и замечает обновление
+ARG APP_VERSION=dev
+ENV VITE_APP_VERSION=$APP_VERSION
 RUN npm run build
 
 # --- раздача статики + прокси на API ---

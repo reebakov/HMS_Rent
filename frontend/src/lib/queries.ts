@@ -119,6 +119,17 @@ export interface EventFilters {
   offset?: number
 }
 
+// Сверка версии с сервером: после выкатки backend уже новый, а открытая страница ещё старая
+export const useServerVersion = () =>
+  useQuery({
+    queryKey: ['server-version'],
+    queryFn: api.serverVersion,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    retry: false,
+  })
+
 export const useStats = () => useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api.get<Stats>('/admin/stats') })
 
 export const useIdleServers = () =>

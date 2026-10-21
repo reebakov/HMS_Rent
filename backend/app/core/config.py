@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # --- Общее ---
     app_name: str = "HMS Rent"
+    app_version: str = "dev"  # версия сборки (sha коммита): задаёт образ при сборке в CI; по ней интерфейс замечает обновление
     app_subtitle: str = "Аренда техники"  # подпись под названием в сайдбаре (APP_SUBTITLE в .env)
     environment: Literal["dev", "prod"] = "dev"
     public_url: str = "http://localhost:8080"  # адрес портала в браузере (из него собирается redirect URI для Bouncer)
