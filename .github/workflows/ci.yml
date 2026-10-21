@@ -95,7 +95,9 @@ jobs:
           POSTGRES_PASSWORD: hmsrent
         ports:
           - 5432:5432
+        # БД в памяти, как в docker-compose.test.yml: тесты чистят таблицы перед каждым тестом, диск и fsync тут только тормозят
         options: >-
+          --tmpfs /var/lib/postgresql/data
           --health-cmd "pg_isready -U hmsrent -d hmsrent_test"
           --health-interval 5s
           --health-timeout 5s
