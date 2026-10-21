@@ -63,7 +63,6 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const [disk, setDisk] = useState(50)
   const [templateKey, setTemplateKey] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [person, setPerson] = useState('')
   const [nick, setNick] = useState('')
   const [until, setUntil] = useState('')
 
@@ -74,7 +73,6 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     setDisk(o.min_disk_gb)
     setTemplateKey(o.templates.find((t) => t.available)?.key ?? '')
     setDepartmentId(initialOrderDepartment(session))
-    setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
     create.reset()
@@ -84,7 +82,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
   const minDisk = Math.max(o?.min_disk_gb ?? 0, tmpl?.min_disk_gb ?? 0)
   // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
   const valid =
-    o?.enabled && tmpl?.available && departmentId && person.trim().length >= 2 && nick.trim() && until >= todayLocal()
+    o?.enabled && tmpl?.available && departmentId && nick.trim() && until >= todayLocal()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -92,7 +90,7 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
     try {
       const vm = await create.mutateAsync({
         cpu, ram_gb: ram, disk_gb: Math.max(disk, minDisk), department_id: Number(departmentId), template_key: templateKey,
-        requester_name: person, requester_nick: nick, expected_return_at: until,
+        requester_nick: nick, expected_return_at: until,
       })
       toastTerm(`Заказ №${vm.order_number}: виртуалка ${vm.name} создаётся — примерно 10 минут`, vm)
       onClose()
@@ -203,16 +201,13 @@ export function VmBuilderDialog({ open, onClose }: { open: boolean; onClose: () 
                 <Amount icon={HardDrive} label="Диск" unit="ГБ" value={Math.max(disk, minDisk)} range={{ min: minDisk, max: o.max_disk_gb, step: 10 }} onChange={setDisk} />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
-                <Field label="Вернуть до" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
-                  <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
-                </Field>
-                <Field label="Имя и фамилия" required>
-                  <Input value={person} onChange={(e) => setPerson(e.target.value)} />
-                </Field>
                 <Field label="Ник" required>
                   <Input value={nick} onChange={(e) => setNick(e.target.value)} />
+                </Field>
+                <Field label="Вернуть до" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
+                  <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
                 </Field>
               </div>
 

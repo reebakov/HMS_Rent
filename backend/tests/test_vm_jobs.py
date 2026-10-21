@@ -111,7 +111,7 @@ async def vm_on(session, monkeypatch):
 
 def payload(dept_id: int, **kw) -> VmCreate:
     data = {"cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan", "purpose": "тесты",
+            "requester_nick": "ivan", "purpose": "тесты",
             "expected_return_at": clock.today() + timedelta(days=30)}
     return VmCreate(**(data | kw))
 
@@ -119,7 +119,8 @@ def payload(dept_id: int, **kw) -> VmCreate:
 @pytest.fixture
 async def ctx(make_user, make_department):
     dept = await make_department("QA")
-    return SimpleNamespace(dept=dept, user=await make_user("ivanov", department=dept, email="ivanov@corp.test"))
+    return SimpleNamespace(dept=dept, user=await make_user("ivanov", department=dept, email="ivanov@corp.test",
+                                                           display_name="Иван Иванов"))
 
 
 async def request(session, ctx, **kw) -> VirtualMachine:
@@ -346,7 +347,7 @@ async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
     opts = (await client.get(api("/vms/options"))).json()
     assert opts["enabled"] and "name_prefix" not in opts and opts["used_by_me"] == 0
     body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
+            "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body)
     assert r.status_code == 201 and r.json()["name"] == "A1001" and r.json()["status"] == "queued"
     assert (await client.post(api("/vms"), json=body | {"cpu": 64})).status_code == 400
@@ -355,11 +356,10 @@ async def test_options_api_and_create_api(client, login, api, vm_on, ctx):
     assert (await client.post(api("/vms"), json=body)).status_code == 409  # лимит ВМ на человека (2)
 
 
-@pytest.mark.parametrize("patch", [{"requester_name": "     "}, {"requester_nick": "   "}], ids=["name", "nick"])
-async def test_create_api_whitespace_only_requester_is_422(client, login, api, vm_on, ctx, patch):
+async def test_create_api_whitespace_only_nick_is_422(client, login, api, vm_on, ctx):
     login(ctx.user)
     body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW} | patch
+            "requester_nick": "   ", "expected_return_at": TOMORROW}
     assert (await client.post(api("/vms"), json=body)).status_code == 422
 
 
@@ -368,7 +368,7 @@ async def test_create_api_return_date_is_required_422(client, login, api, vm_on,
     """Срок использования обязателен для ВМ, как и для ПК: без него, пустой или в прошлом — 422, заказ не создаётся."""
     login(ctx.user)
     body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv"}
+            "requester_nick": "iv"}
     if value != "missing":
         body["expected_return_at"] = value
     assert (await client.post(api("/vms"), json=body)).status_code == 422
@@ -378,7 +378,7 @@ async def test_create_api_return_date_is_required_422(client, login, api, vm_on,
 async def test_create_api_saves_return_date(client, login, api, vm_on, ctx):
     login(ctx.user)
     body = {"cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
+            "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body)
     assert r.status_code == 201 and r.json()["expected_return_at"] == TOMORROW
 

@@ -17,7 +17,7 @@ from app.schemas.booking import BookingCreate, BookingExtend
 from app.services import departments, overdue, runtime, service_requests, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.events import add_event
-from app.services.orders import next_order_number
+from app.services.orders import next_order_number, requester_name
 from app.services.pools import pool_visible
 from app.services.writeback import push_pending
 
@@ -86,7 +86,7 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         department_id=dept.id,
         user_id=user.id,
         order_number=order_number,
-        requester_name=data.requester_name,
+        requester_name=requester_name(user),
         requester_nick=data.requester_nick,
         purpose=data.purpose or None,
         os_label=data.os_label or None,

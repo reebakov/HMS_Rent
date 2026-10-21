@@ -61,7 +61,7 @@ describe('BuildOrderDialog', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
     expect(api.post).toHaveBeenCalledWith('/requests/build', {
-      build: BUILD_A, custom: undefined, os_label: 'Ubuntu 24.04', department_id: 2, requester_name: 'Иван Иванов',
+      build: BUILD_A, custom: undefined, os_label: 'Ubuntu 24.04', department_id: 2,
       requester_nick: 'i.ivanov', expected_return_at: UNTIL, wanted_by: undefined, purpose: undefined,
     })
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('HMS-42'), expect.objectContaining({ action: expect.anything() }))

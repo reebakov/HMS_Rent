@@ -169,7 +169,7 @@ async def test_departments_only_active_sorted(client, login, make_user, make_dep
 # ---------- Бронирование ----------
 
 def _payload(comp, dept, **kw):
-    return {"computer_id": comp.id, "department_id": dept.id, "requester_name": "Иван Иванов",
+    return {"computer_id": comp.id, "department_id": dept.id,
             "requester_nick": "ivanov", "expected_return_at": clock.today().isoformat(), **kw}
 
 
@@ -256,6 +256,11 @@ async def test_user_booking_for_foreign_department_is_403_and_without_department
     assert r.status_code == 409 and "не назначен отдел" in r.json()["detail"]
 
 
+async def test_booking_requester_name_is_profile_name_not_body(client, shop, api):
+    r = await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]) | {"requester_name": "Самозванец"})
+    assert r.status_code == 201 and r.json()["requester_name"] == "emp"  # display_name сотрудника
+
+
 async def test_booking_without_department_in_body_uses_own(client, shop, api):
     body = {k: v for k, v in _payload(shop["comp"], shop["dept"]).items() if k != "department_id"}
     r = await client.post(api("/bookings"), json=body)
@@ -263,8 +268,8 @@ async def test_booking_without_department_in_body_uses_own(client, shop, api):
 
 
 @pytest.mark.parametrize("patch", [
-    {"requester_name": "И"}, {"requester_nick": ""}, {"purpose": "x" * 2001},
-    {"requester_name": "     "}, {"requester_nick": "   "},  # одни пробелы — это пустое значение
+    {"requester_nick": ""}, {"purpose": "x" * 2001},
+    {"requester_nick": "   "},  # одни пробелы — это пустое значение
     {"expected_return_at": (clock.today() - timedelta(days=1)).isoformat()}, {"expected_return_at": "not-a-date"},
     {"expected_return_at": None}, {"expected_return_at": ""},  # срок возврата обязателен
 ])

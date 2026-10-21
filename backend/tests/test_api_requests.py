@@ -311,7 +311,7 @@ async def test_order_options_follow_settings(client, login, api, env, session):
 
 def _build_body(env, **kw) -> dict:
     return {"build": default_pc_builds()[1], "os_label": "Ubuntu 24.04", "department_id": env.qa.id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "requester_nick": "ivan",
             "expected_return_at": (clock.today() + timedelta(days=20)).isoformat()} | kw
 
 
@@ -346,7 +346,7 @@ async def test_booking_with_os_creates_prepare_request(client, login, api, env, 
     comp = await make_computer("A002", await make_pool("Second"), insight_status="Свободен")
     login(env.owner)
     r = await client.post(api("/bookings"), json={
-        "computer_id": comp.id, "department_id": env.qa.id, "requester_name": "Иван Иванов", "requester_nick": "ivan",
+        "computer_id": comp.id, "department_id": env.qa.id, "requester_nick": "ivan",
         "expected_return_at": (clock.today() + timedelta(days=10)).isoformat(), "os_label": "Windows Server 2025"})
     assert r.status_code == 201, r.text
     assert r.json()["os_label"] == "Windows Server 2025"
@@ -361,7 +361,7 @@ async def test_booking_with_unknown_os_400(client, login, api, env, sd, make_poo
     comp = await make_computer("A002", await make_pool("Second"), insight_status="Свободен")
     login(env.owner)
     r = await client.post(api("/bookings"), json={
-        "computer_id": comp.id, "department_id": env.qa.id, "requester_name": "Иван Иванов", "requester_nick": "ivan",
+        "computer_id": comp.id, "department_id": env.qa.id, "requester_nick": "ivan",
         "expected_return_at": (clock.today() + timedelta(days=10)).isoformat(), "os_label": "MS-DOS"})
     assert r.status_code == 400
     assert await rows() == [] and sd.created == []

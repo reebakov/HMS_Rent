@@ -525,7 +525,7 @@ async def test_create_prepare_jira_error_is_stored_not_raised(session, env, sd):
 
 def build_data(env, **kw) -> BuildCreate:
     data = {"build": default_pc_builds()[0], "os_label": "Debian 12", "department_id": env.qa.id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "requester_nick": "ivan",
             "expected_return_at": clock.today() + timedelta(days=30)}
     return BuildCreate(**(data | kw))
 

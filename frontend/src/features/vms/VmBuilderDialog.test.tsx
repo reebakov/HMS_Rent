@@ -58,7 +58,7 @@ const Where = () => <span data-testid="path">{useLocation().pathname}</span>
 async function setup(onClose = vi.fn()) {
   renderWithProviders(<><VmBuilderDialog open onClose={onClose} /><Where /></>, { route: '/' })
   await screen.findAllByText('Аналитика')
-  await waitFor(() => expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue(session.user.display_name))
+  await waitFor(() => expect(screen.getByLabelText(/Ник/)).toHaveValue(session.user.username.split('@')[0]))
   return { onClose, user: userEvent.setup() }
 }
 
@@ -145,7 +145,7 @@ describe('VmBuilderDialog', () => {
     expect(screen.getByRole('slider', { name: 'Ядра' })).toHaveValue('2')
     expect(screen.getByRole('slider', { name: 'Память' })).toHaveValue('4')
     expect(screen.getByRole('slider', { name: 'Диск' })).toHaveValue('50')
-    expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue('Иван Иванов')
+    expect(screen.queryByLabelText(/Имя и фамилия/)).not.toBeInTheDocument() // имя берётся из профиля на сервере
     // ник — часть логина до «@»
     expect(screen.getByLabelText(/Ник/)).toHaveValue('i.ivanov')
     // отдел из профиля
@@ -212,7 +212,6 @@ describe('VmBuilderDialog', () => {
         disk_gb: 120,
         department_id: 2,
         template_key: 'win10-tpl', // <-- Добавлена эта строка
-        requester_name: 'Иван Иванов',
         requester_nick: 'i.ivanov',
         expected_return_at: '2099-12-31',
       })
@@ -223,7 +222,7 @@ describe('VmBuilderDialog', () => {
     it('Enter в поле формы отправляет валидную форму', async () => {
       const { onClose, user } = await setup()
       await fillValid(user)
-      await user.type(screen.getByLabelText(/Имя и фамилия/), '{Enter}')
+      await user.type(screen.getByLabelText(/Ник/), '{Enter}')
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
       expect(api.post).toHaveBeenCalledWith('/vms', expect.objectContaining({ department_id: 2 }))
       expect(vi.mocked(api.post).mock.calls[0][1]).not.toHaveProperty('name')
@@ -231,7 +230,7 @@ describe('VmBuilderDialog', () => {
 
     it('Enter в невалидной форме (нет отдела и срока) ничего не отправляет', async () => {
       const { user } = await setup()
-      await user.type(screen.getByLabelText(/Имя и фамилия/), '{Enter}')
+      await user.type(screen.getByLabelText(/Ник/), '{Enter}')
       expect(api.post).not.toHaveBeenCalled()
     })
 

@@ -118,7 +118,6 @@ export interface Booking {
 export interface BookingCreate {
   computer_id: number
   department_id: number
-  requester_name: string
   requester_nick: string
   purpose?: string
   expected_return_at: string
@@ -137,7 +136,6 @@ export interface BuildCreate {
   custom?: string
   os_label: string
   department_id: number
-  requester_name: string
   requester_nick: string
   expected_return_at: string
   wanted_by?: string
@@ -381,7 +379,6 @@ export interface VmCreate {
   ram_gb: number
   disk_gb: number
   department_id: number
-  requester_name: string
   requester_nick: string
   purpose?: string
   expected_return_at: string

@@ -48,7 +48,7 @@ async def env(make_department, make_pool, make_user, make_computer):
 async def book(session, env, until: date, user: User | None = None) -> Booking:
     comp = await env.make_computer(pool=env.pool, insight_status="Свободен")
     return await bookings.create_booking(session, user or env.user, BookingCreate(
-        computer_id=comp.id, department_id=env.dept.id, requester_name="Иван Иванов", requester_nick="ivan",
+        computer_id=comp.id, department_id=env.dept.id, requester_nick="ivan",
         expected_return_at=until))
 
 
@@ -384,7 +384,7 @@ async def test_api_booking_over_limit_exposes_requested_term(client, login, api,
     comp = await env.make_computer(pool=env.pool, insight_status="Свободен")
     login(env.user)
     r = await client.post(api("/bookings"), json={
-        "computer_id": comp.id, "department_id": env.dept.id, "requester_name": "Иван Иванов",
+        "computer_id": comp.id, "department_id": env.dept.id,
         "requester_nick": "ivan", "expected_return_at": FAR.isoformat()})
     assert r.status_code == 201, r.text
     assert (r.json()["expected_return_at"], r.json()["requested_return_at"]) == (LIMIT.isoformat(), FAR.isoformat())

@@ -28,7 +28,6 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
   const [custom, setCustom] = useState('')
   const [os, setOs] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [person, setPerson] = useState('')
   const [nick, setNick] = useState('')
   const [until, setUntil] = useState('')
   const [wantedBy, setWantedBy] = useState('')
@@ -41,7 +40,6 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
     setCustom('')
     setOs('')
     setDepartmentId(initialOrderDepartment(session))
-    setPerson(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
     setWantedBy('')
@@ -58,7 +56,6 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
     (typical ? !!build : custom.trim().length >= 5) &&
     !!os &&
     !!departmentId &&
-    person.trim().length >= 2 &&
     !!nick.trim() &&
     until >= today &&
     (!wantedBy || wantedBy >= tomorrow)
@@ -72,7 +69,6 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
         custom: typical ? undefined : custom,
         os_label: os,
         department_id: Number(departmentId),
-        requester_name: person,
         requester_nick: nick,
         expected_return_at: until,
         wanted_by: wantedBy || undefined,
@@ -144,9 +140,6 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
                 </Select>
               </Field>
               <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
-              <Field label="Имя и фамилия" required>
-                <Input value={person} onChange={(e) => setPerson(e.target.value)} />
-              </Field>
               <Field label="Ник" required>
                 <Input value={nick} onChange={(e) => setNick(e.target.value)} />
               </Field>
@@ -156,10 +149,10 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
               <Field label="Нужен к" hint="Необязательно: не раньше завтрашнего дня">
                 <Input type="date" min={tomorrow} value={wantedBy} onChange={(e) => setWantedBy(e.target.value)} />
               </Field>
+              <Field label="Для чего нужен" hint="Необязательно">
+                <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый проект, нагрузочные тесты…" />
+              </Field>
             </div>
-            <Field label="Для чего нужен" hint="Необязательно">
-              <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый проект, нагрузочные тесты…" />
-            </Field>
 
             <QueryError query={departments} title="Не удалось загрузить отделы" />
             {create.error && <FormError>{create.error.message}</FormError>}

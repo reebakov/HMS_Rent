@@ -89,7 +89,7 @@ TOMORROW = (clock.today() + timedelta(days=1)).isoformat()  # для JSON-тел
 
 def payload(dept_id: int, **kw) -> VmCreate:
     data = {"name": "dev-box", "cpu": 4, "ram_gb": 8, "disk_gb": 100, "department_id": dept_id,
-            "requester_name": "Иван Иванов", "requester_nick": "ivan",
+            "requester_nick": "ivan",
             "expected_return_at": clock.today() + timedelta(days=30)}
     return VmCreate(**(data | kw))
 
@@ -510,7 +510,7 @@ async def test_create_api_saves_template_and_returns_it(client, login, api, sess
     login(ctx.user)
     await set_templates(session, tpl("win10", "T10", label="Windows 10"))
     body = {"name": "api-box", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": ctx.dept.id,
-            "requester_name": "Иван", "requester_nick": "iv", "expected_return_at": TOMORROW}
+            "requester_nick": "iv", "expected_return_at": TOMORROW}
     r = await client.post(api("/vms"), json=body | {"template_key": "win10"})
     assert r.status_code == 201
     assert (r.json()["template_key"], r.json()["os_label"]) == ("win10", "Windows 10")

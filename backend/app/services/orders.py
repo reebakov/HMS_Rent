@@ -6,6 +6,13 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import User
+
 
 async def next_order_number(session: AsyncSession) -> int:
     return int(await session.scalar(text("SELECT nextval('rental_order_seq')")))
+
+
+def requester_name(user: User) -> str:
+    """Имя заказчика для журналов и заявок: из профиля, форма заказа спрашивает только ник."""
+    return user.display_name or user.username

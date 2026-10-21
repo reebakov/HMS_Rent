@@ -40,7 +40,7 @@ export function OrderDepartmentField({
   }
   if (session.user.department_id == null) {
     return (
-      <p role="alert" className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-[13px] text-warning">
+      <p role="alert" className="flex items-start gap-2 sm:col-span-full rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-[13px] text-warning">
         <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
         Вам не назначен отдел, поэтому заказ оформить нельзя. Обратитесь к администратору.
       </p>

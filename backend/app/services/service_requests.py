@@ -13,7 +13,7 @@ from app.models import Booking, ServiceRequest, ServiceRequestKind, User, Virtua
 from app.schemas.service_request import BuildCreate, RequestOut
 from app.services import departments, notifications, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
-from app.services.orders import next_order_number
+from app.services.orders import next_order_number, requester_name
 
 log = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> 
         f"ОС: {data.os_label}",
         f"Заказ №{order_number}",
         f"Команда-получатель: {dept.name}",
-        f"Арендатор: {data.requester_name} ({data.requester_nick}), {user.email or user.username}",
+        f"Арендатор: {requester_name(user)} ({data.requester_nick}), {user.email or user.username}",
         f"Срок аренды: до {data.expected_return_at:%d.%m.%Y}"
         + (" — дольше 3 месяцев, нужно согласование администратора" if longer else ""),
         *([f"Желаемый срок готовности: {data.wanted_by:%d.%m.%Y}"] if data.wanted_by else []),

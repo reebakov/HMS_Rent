@@ -424,7 +424,7 @@ describe('просрочки и детали синхронизации', () => 
   it('useCreateBuild: POST /requests/build и обновление моих заявок', async () => {
     const spy = vi.spyOn(client, 'invalidateQueries')
     const { result } = hook(() => q.useCreateBuild())
-    const body = { custom: 'Ryzen 9', os_label: 'Debian 12', department_id: 1, requester_name: 'Иван',
+    const body = { custom: 'Ryzen 9', os_label: 'Debian 12', department_id: 1,
                    requester_nick: 'ivan', expected_return_at: '2099-01-01' }
     await act(() => result.current.mutateAsync(body))
     expect(api.post).toHaveBeenCalledWith('/requests/build', body)

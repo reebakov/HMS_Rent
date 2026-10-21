@@ -22,7 +22,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   const osList = useOrderOptions(!!computer).data?.os ?? []
 
   const [departmentId, setDepartmentId] = useState('')
-  const [name, setName] = useState('')
   const [nick, setNick] = useState('')
   const [until, setUntil] = useState('')
   const [purpose, setPurpose] = useState('')
@@ -32,7 +31,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   useEffect(() => {
     if (!computer) return
     setDepartmentId(initialOrderDepartment(session))
-    setName(session.user.display_name)
     setNick(session.user.username.split('@')[0])
     setUntil('')
     setPurpose('')
@@ -43,7 +41,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   const knownDepartment = departments.data?.some((d) => String(d.id) === departmentId)
   // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
   const canBook =
-    !!departmentId && name.trim().length >= 2 && !!nick.trim() && !!knownDepartment && until >= todayLocal() &&
+    !!departmentId && !!nick.trim() && !!knownDepartment && until >= todayLocal() &&
     (!osList.length || !!os) // ОС ставит исполнитель по заявке «подготовить ПК»
 
   const submit = async (e: FormEvent) => {
@@ -53,7 +51,6 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
       const booking = await create.mutateAsync({
         computer_id: computer.id,
         department_id: Number(departmentId),
-        requester_name: name,
         requester_nick: nick,
         purpose: purpose || undefined,
         expected_return_at: until,
@@ -100,19 +97,11 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
             <SpecGrid computer={computer} className="xl:grid-cols-2" />
           </div>
 
-          <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
-          <QueryError query={departments} title="Не удалось загрузить отделы" />
-
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Имя и фамилия" required>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Иван Иванов" />
-            </Field>
+            <OrderDepartmentField session={session} value={departmentId} onChange={setDepartmentId} departments={departments} />
             <Field label="Ник / логин" required>
               <Input value={nick} onChange={(e) => setNick(e.target.value)} placeholder="i.ivanov" />
             </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Планирую вернуть" required hint={`Без согласования — до ${formatDate(termLimit(todayLocal()))}`}>
               <Input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} />
             </Field>
@@ -120,6 +109,7 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
               <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый сотрудник, тесты…" />
             </Field>
           </div>
+          <QueryError query={departments} title="Не удалось загрузить отделы" />
 
           <TermLimitNote until={until} base={todayLocal()} verb="оформится" />
 

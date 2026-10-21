@@ -81,7 +81,7 @@ describe('BookingDialog', () => {
     setup()
     await waitForDepartments()
     expect(screen.getByRole('dialog', { name: 'Бронирование PC-042' })).toBeInTheDocument()
-    expect(screen.getByLabelText(/Имя и фамилия/)).toHaveValue('Иван Иванов')
+    expect(screen.queryByLabelText(/Имя и фамилия/)).not.toBeInTheDocument() // имя берётся из профиля на сервере
     expect(screen.getByLabelText(/Ник \/ логин/)).toHaveValue('i.ivanov')
     expect(screen.getByText('Intel Core i5 · 6 ядер')).toBeInTheDocument()
   })
@@ -133,13 +133,6 @@ describe('BookingDialog', () => {
     await fillReturnDate(user)
     expect(submitButton()).toBeEnabled()
 
-    const name = screen.getByLabelText(/Имя и фамилия/)
-    await user.clear(name)
-    await user.type(name, 'И')
-    expect(submitButton()).toBeDisabled()
-    await user.type(name, 'в')
-    expect(submitButton()).toBeEnabled()
-
     const nick = screen.getByLabelText(/Ник \/ логин/)
     await user.clear(nick)
     await user.type(nick, '   ')
@@ -158,7 +151,6 @@ describe('BookingDialog', () => {
     expect(api.post).toHaveBeenCalledWith('/bookings', {
       computer_id: 42,
       department_id: 2,
-      requester_name: 'Иван Иванов',
       requester_nick: 'i.ivanov',
       purpose: 'Тесты',
       expected_return_at: '2099-12-31',

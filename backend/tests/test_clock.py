@@ -37,8 +37,8 @@ def test_today_follows_display_timezone(at_instant, tz, expected):
     assert clock.now().tzinfo is not None and clock.now().date() == expected
 
 
-BOOKING = {"computer_id": 1, "department_id": 1, "requester_name": "Иван", "requester_nick": "iv"}
-VM = {"name": "box-1", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": 1, "requester_name": "Иван",
+BOOKING = {"computer_id": 1, "department_id": 1, "requester_nick": "iv"}
+VM = {"name": "box-1", "cpu": 2, "ram_gb": 4, "disk_gb": 50, "department_id": 1,
       "requester_nick": "iv"}
 
 

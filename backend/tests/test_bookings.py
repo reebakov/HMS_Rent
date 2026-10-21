@@ -51,7 +51,6 @@ async def env(session, make_department, make_user, make_pool, make_computer):
 
 
 def payload(comp, dept, **kw) -> BookingCreate:
-    kw.setdefault("requester_name", "Иван Иванов")
     kw.setdefault("requester_nick", "ivan")
     kw.setdefault("expected_return_at", clock.today())
     return BookingCreate(computer_id=comp.id, department_id=dept.id, **kw)
@@ -125,8 +124,20 @@ async def test_order_numbers_sequential(session, env, make_computer):
 async def test_create_booking_trims_fields(session, env):
     b = await bookings.create_booking(
         session, env.user,
-        payload(env.comp, env.dept, requester_name="  Иван Иванов  ", requester_nick="  ivan  ", purpose="  тест  "))
-    assert (b.requester_name, b.requester_nick, b.purpose) == ("Иван Иванов", "ivan", "тест")
+        payload(env.comp, env.dept, requester_nick="  ivan  ", purpose="  тест  "))
+    assert (b.requester_nick, b.purpose) == ("ivan", "тест")
+
+
+async def test_booking_requester_name_comes_from_profile(session, env, make_user):
+    user = await make_user("petrov", department=env.dept, display_name="Пётр Петров")
+    b = await bookings.create_booking(session, user, payload(env.comp, env.dept, requester_nick="pete"))
+    assert b.requester_name == "Пётр Петров"
+
+
+async def test_booking_requester_name_falls_back_to_login(session, env, make_user):
+    user = await make_user("nameless", department=env.dept, display_name="")
+    b = await bookings.create_booking(session, user, payload(env.comp, env.dept, requester_nick="nl"))
+    assert b.requester_name == "nameless"
 
 
 @pytest.mark.parametrize("purpose", [None, "", "   "])
@@ -158,7 +169,7 @@ async def test_already_booked_conflict(session, env, make_user):
 async def test_missing_computer_not_found(session, env, notify_mock):
     with pytest.raises(NotFound):
         await bookings.create_booking(session, env.user, BookingCreate(
-            computer_id=9999, department_id=env.dept.id, requester_name="Иван", requester_nick="i",
+            computer_id=9999, department_id=env.dept.id, requester_nick="i",
             expected_return_at=clock.today()))
     notify_mock.assert_not_awaited()
 
@@ -206,7 +217,7 @@ async def test_admin_unknown_department_not_found(session, env, make_user):
     admin = await make_user("root", role=UserRole.admin.value)
     with pytest.raises(NotFound):
         await bookings.create_booking(session, admin, BookingCreate(
-            computer_id=env.comp.id, department_id=9999, requester_name="Иван", requester_nick="i",
+            computer_id=env.comp.id, department_id=9999, requester_nick="i",
             expected_return_at=clock.today()))
 
 
@@ -214,7 +225,7 @@ async def test_admin_unknown_department_not_found(session, env, make_user):
 
 async def test_order_department_defaults_to_own_when_not_given(session, env):
     booking = await bookings.create_booking(session, env.user, BookingCreate(
-        computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
+        computer_id=env.comp.id, requester_nick="i", expected_return_at=clock.today()))
     assert booking.department_id == env.dept.id
 
 
@@ -237,7 +248,7 @@ async def test_user_with_inactive_own_department_cannot_order(session, env, make
     user = await make_user("offuser", department=off)
     with pytest.raises(Conflict, match="отдел отключён"):
         await bookings.create_booking(session, user, BookingCreate(
-            computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
+            computer_id=env.comp.id, requester_nick="i", expected_return_at=clock.today()))
 
 
 async def test_admin_orders_for_any_department_or_own(session, env, make_user, make_department, make_computer):
@@ -246,7 +257,7 @@ async def test_admin_orders_for_any_department_or_own(session, env, make_user, m
     for_other = await bookings.create_booking(session, admin, payload(env.comp, other))
     assert for_other.department_id == other.id
     own = await bookings.create_booking(session, admin, BookingCreate(
-        computer_id=(await make_computer(pool=env.pool)).id, requester_name="Иван", requester_nick="i",
+        computer_id=(await make_computer(pool=env.pool)).id, requester_nick="i",
         expected_return_at=clock.today()))
     assert own.department_id == admin.department_id
 
@@ -255,7 +266,7 @@ async def test_admin_without_department_must_name_one(session, env, make_user):
     admin = await make_user("root", role=UserRole.admin.value)
     with pytest.raises(DomainError, match="Укажите отдел"):
         await bookings.create_booking(session, admin, BookingCreate(
-            computer_id=env.comp.id, requester_name="Иван", requester_nick="i", expected_return_at=clock.today()))
+            computer_id=env.comp.id, requester_nick="i", expected_return_at=clock.today()))
 
 
 # ---------- Проверка Insight «прямо сейчас» ----------

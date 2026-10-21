@@ -18,7 +18,7 @@ from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmTemplateOption
 from app.services import departments, overdue, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
-from app.services.orders import next_order_number
+from app.services.orders import next_order_number, requester_name
 
 log = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ async def create_request(session: AsyncSession, user: User, data: VmCreate) -> V
         insight_object_type_id=number.object_type_id, insight_pending=True,
         name=number.label, cpu=data.cpu, ram_gb=data.ram_gb, disk_gb=data.disk_gb,
         status=VmStatus.queued.value, user_id=user.id, department_id=dept.id, template_key=tmpl.key, os_label=tmpl.label, os=tmpl.os,
-        requester_name=data.requester_name, requester_nick=data.requester_nick,
+        requester_name=requester_name(user), requester_nick=data.requester_nick,
         purpose=data.purpose or None, expected_return_at=until, attrs={},
     )
     session.add(vm)
