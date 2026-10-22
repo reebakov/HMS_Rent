@@ -164,8 +164,9 @@ async def get_comments(issue_key: str) -> list[SdComment]:
     return comments
 
 
-STATUS_IN_PROGRESS = "In Progress"
-STATUS_DONE = "Done"
+# Названия статусов у Jira переведены (переход «Done» ведёт в статус «Готово»), а перевод зависит от учётки
+STATUSES_IN_PROGRESS = ("In Progress", "В работе")
+DONE_STATUSES = ("Done", "Готово")
 PORTAL_PREFIX = "[HMS Rent] "
 COMMENT_PAGE_SIZE = 100
 COMMENT_PAGES = 10  # потолок: переписка длиннее 1000 комментариев не нужна, а цикл не должен быть бесконечным
@@ -204,7 +205,7 @@ class SdDetails:
 def _history_taken(issue: dict) -> bool:
     for entry in (issue.get("changelog") or {}).get("histories") or []:
         for item in entry.get("items") or []:
-            if item.get("field") == "status" and item.get("toString") == STATUS_IN_PROGRESS:
+            if item.get("field") == "status" and item.get("toString") in STATUSES_IN_PROGRESS:
                 return True
     return False
 
@@ -236,6 +237,12 @@ async def transitions(issue_key: str) -> list[dict]:
         return _json_object(resp).get("transitions") or []
 
 
+def is_done_transition(transition: dict) -> bool:
+    """Переход в закрытый статус: по категории целевого статуса, а не по названию (оно переведено и зависит от учётки)."""
+    target = transition.get("to") or {}
+    return (target.get("statusCategory") or {}).get("key") == "done" or target.get("name") in DONE_STATUSES
+
+
 async def close_issue(issue_key: str, resolution: str) -> bool:
     """Закрывает задачу переходом в Done с резолюцией. False — задача уже закрыта (повтор безопасен).
 
@@ -248,9 +255,9 @@ async def close_issue(issue_key: str, resolution: str) -> bool:
         status = ((_json_object(resp).get("fields") or {}).get("status") or {})
         if (status.get("statusCategory") or {}).get("key") == "done":
             return False
-    found = [t for t in await transitions(issue_key) if (t.get("to") or {}).get("name") == STATUS_DONE]
+    found = [t for t in await transitions(issue_key) if is_done_transition(t)]
     if not found:
-        raise ServiceDeskError(f"Из статуса «{status.get('name')}» нет перехода в {STATUS_DONE}")
+        raise ServiceDeskError(f"Из статуса «{status.get('name')}» нет перехода в Done")
     async with _client(JIRA_API) as http:
         resp = await _send(http, "POST", f"/issue/{issue_key}/transitions",
                            json={"transition": {"id": found[0]["id"]}, "fields": {"resolution": {"name": resolution}}})

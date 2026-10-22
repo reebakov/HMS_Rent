@@ -366,6 +366,38 @@ async def test_close_issue_moves_to_done_with_resolution(jira, resolution):
     assert sent(post) == {"transition": {"id": "151"}, "fields": {"resolution": {"name": resolution}}}
 
 
+REAL_TRANSITIONS = [  # как отвечает Jira проекта DR: названия целевых статусов переведены
+    {"id": "141", "name": "Backlog", "to": {"name": "Backlog", "statusCategory": {"key": "new"}}},
+    {"id": "151", "name": "Done", "to": {"name": "Готово", "statusCategory": {"key": "done"}}},
+    {"id": "161", "name": "In Progress", "to": {"name": "В работе", "statusCategory": {"key": "indeterminate"}}},
+]
+
+
+async def test_close_issue_finds_done_by_status_category_when_names_are_translated(jira):
+    open_issue(jira)
+    jira.get(f"{REST}/issue/DR-1/transitions").respond(200, json={"transitions": REAL_TRANSITIONS})
+    post = jira.post(f"{REST}/issue/DR-1/transitions").respond(204)
+    assert await sd.close_issue("DR-1", sd.RESOLUTION_DONE) is True
+    assert sent(post)["transition"] == {"id": "151"}
+
+
+@pytest.mark.parametrize("target, expected", [
+    ({"name": "Готово", "statusCategory": {"key": "done"}}, True),
+    ({"name": "Готово"}, True),  # категории в ответе нет — по переведённому названию
+    ({"name": "Done"}, True),
+    ({"name": "Закрыто", "statusCategory": {"key": "done"}}, True),  # любое название, главное — категория
+    ({"name": "В работе", "statusCategory": {"key": "indeterminate"}}, False),
+    ({}, False),
+])
+def test_is_done_transition(target, expected):
+    assert sd.is_done_transition({"id": "1", "to": target}) is expected
+
+
+async def test_get_details_sees_translated_in_progress(jira):
+    jira.get(f"{REST}/issue/DR-1").respond(200, json={"fields": {"resolution": None}, "changelog": history("В работе")})
+    assert (await sd.get_details("DR-1")).taken is True
+
+
 async def test_close_issue_already_done_is_noop(jira):
     open_issue(jira, "Done", "done")
     post = jira.post(f"{REST}/issue/DR-1/transitions").respond(204)

@@ -185,8 +185,8 @@ async def sd_transitions(issue_key: str) -> None:
         print("\nПереходы из текущего статуса:")
         for t in found:
             print(f"  {t.get('id'):>4}  {t.get('name')} -> {(t.get('to') or {}).get('name')}")
-        if not any((t.get("to") or {}).get("name") == sd.STATUS_DONE for t in found):
-            print(f"  (перехода в {sd.STATUS_DONE} нет: портал не сможет закрыть задачу из этого статуса)")
+        if not any(sd.is_done_transition(t) for t in found):
+            print("  (перехода в Done нет: портал не сможет закрыть задачу из этого статуса)")
     try:
         details = await sd.get_details(issue_key)
     except sd.ServiceDeskError as exc:

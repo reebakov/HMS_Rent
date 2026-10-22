@@ -505,6 +505,20 @@ async def test_customer_status_from_jira_status():
     assert ServiceRequest(status=None).customer_status is None
 
 
+@pytest.mark.parametrize("jira, shown", [
+    ("Сделать", "Принят"), ("В работе", "В работе"), ("Заморожено", "Заморожено"), ("Готово", "Выполнен"),
+    ("Передано в разработку", "В работе"), ("Backlog", "Принят"), ("Validation", "В работе"),
+])
+async def test_customer_status_understands_translated_jira_names(jira, shown):
+    """Сервисная учётка может получать названия статусов проекта DR по-русски."""
+    assert ServiceRequest(status=jira).customer_status == shown
+
+
+async def test_translated_names_keep_taken_back_note_and_cancel_rules():
+    assert ServiceRequest(status="Заморожено", status_note="Ждём SSD").customer_note == "Ждём SSD"
+    assert ServiceRequest(status="Сделать", was_taken=True).customer_status == "Снято с исполнителя"
+
+
 @pytest.mark.parametrize("status, category, taken, resolution, shown", [
     ("Backlog", "new", True, None, "Снято с исполнителя"),
     ("To Do", "new", True, None, "Снято с исполнителя"),

@@ -119,6 +119,16 @@ async def test_sd_transitions_prints_transitions_and_history(sd_issue, capsys):
     assert "История читается: брали в работу — да, резолюция — Rejected" in out
 
 
+async def test_sd_transitions_translated_done_target_is_found(sd_issue, capsys):
+    """Переход 151 «Done» ведёт в статус «Готово»: предупреждения про отсутствие перехода быть не должно."""
+    sd_issue([{"id": "141", "name": "Backlog", "to": {"name": "Backlog"}},
+              {"id": "151", "name": "Done", "to": {"name": "Готово", "statusCategory": {"key": "done"}}}],
+             servicedesk.SdDetails(taken=False, resolution=None))
+    await cli.sd_transitions("DR-1")
+    out = capsys.readouterr().out
+    assert "151  Done -> Готово" in out and "перехода в Done нет" not in out
+
+
 async def test_sd_transitions_warns_when_done_is_unavailable(sd_issue, capsys):
     sd_issue([{"id": "171", "name": "Hold", "to": {"name": "To Do"}}], servicedesk.SdDetails(taken=False, resolution=None))
     await cli.sd_transitions("DR-1")

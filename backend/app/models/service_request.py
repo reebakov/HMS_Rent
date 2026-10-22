@@ -11,6 +11,11 @@ CUSTOMER_STATUS = {
     "Backlog": "Принят", "To Do": "Принят", "In Progress": "В работе", "Validation": "В работе",
     "Escalated": "В работе", "Frozen": "Заморожено", "Done": "Выполнен",
 }
+# Те же статусы в переводе Jira (названия из переходов проекта DR): сервисная учётка может получать их по-русски
+STATUS_ALIASES = {
+    "Сделать": "To Do", "В работе": "In Progress", "Заморожено": "Frozen", "Готово": "Done",
+    "Передано в разработку": "Escalated",
+}
 TAKEN_BACK = "Снято с исполнителя"
 REJECTED = "Отклонён"
 
@@ -45,19 +50,24 @@ class ServiceRequest(Base, TimestampMixin):
     user: Mapped[User] = relationship(lazy="joined")
 
     @property
+    def workflow_status(self) -> str | None:
+        """Статус Jira под исходным (английским) названием из workflow."""
+        return STATUS_ALIASES.get(self.status, self.status)
+
+    @property
     def customer_status(self) -> str | None:
         """Статус для заказчика: без внутренних названий workflow и без имени исполнителя."""
         if self.status is None:
             return None
         if self.status_category == "done" and self.resolution == "Rejected":
             return REJECTED
-        if self.status in ("Backlog", "To Do") and self.was_taken:
+        if self.workflow_status in ("Backlog", "To Do") and self.was_taken:
             return TAKEN_BACK
-        return CUSTOMER_STATUS.get(self.status, self.status)
+        return CUSTOMER_STATUS.get(self.workflow_status, self.status)
 
     @property
     def customer_note(self) -> str | None:
-        return self.status_note if self.status == "Frozen" else None
+        return self.status_note if self.workflow_status == "Frozen" else None
 
     @property
     def is_open(self) -> bool:
