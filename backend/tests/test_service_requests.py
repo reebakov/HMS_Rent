@@ -154,7 +154,7 @@ async def fresh(req_id: int) -> ServiceRequest:
 
 # ---------- шапка задачи после создания ----------
 
-HEADER = {"components": [{"name": "HMS"}], "customfield_14625": [{"key": "OTP-124158"}]}
+HEADER = {"components": [{"name": "HMS"}], "customfield_10002": "DR-69"}
 
 
 async def _all_kinds(session, env, sd):
@@ -172,7 +172,7 @@ async def test_all_requests_go_through_one_type_and_get_the_same_header(session,
     monkeypatch.setattr(settings, "sd_request_type", 1252)
     await _all_kinds(session, env, sd)
     assert {c[0] for c in sd.created} == {1252} and len(sd.created) == 5
-    assert sd.updated == [(f"HMS-{i}", HEADER) for i in range(1, 6)]  # «Типовой запрос» и компонент — у каждой задачи
+    assert sd.updated == [(f"HMS-{i}", HEADER) for i in range(1, 6)]  # компонент и эпик — у каждой задачи
 
 
 async def test_header_is_left_alone_when_not_configured(session, env, sd):
@@ -182,7 +182,7 @@ async def test_header_is_left_alone_when_not_configured(session, env, sd):
 
 async def test_header_failure_does_not_cancel_request(session, env, sd, monkeypatch, caplog):
     monkeypatch.setattr(settings, "sd_issue_fields", HEADER)
-    sd.update_error = boom("Service Desk 400: customfield_14625: не найден")
+    sd.update_error = boom("Service Desk 400: components: не найден")
     req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
     assert (req.issue_key, req.error) == ("HMS-1", None)  # задача создана и сохранена
     assert "Шапка задачи HMS-1 не изменена" in caplog.text
