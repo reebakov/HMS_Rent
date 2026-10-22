@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
-import { useExecutorOrders, useExecutorReturns, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
-import { canExecute, ROLE_LABELS } from '@/lib/dictionaries'
+import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, LifeBuoy, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
+import { useExecutorOrders, useExecutorProblems, useExecutorReturns, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
+import { canExecute, isOpenProblem, ROLE_LABELS } from '@/lib/dictionaries'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { NotificationBell } from './NotificationBell'
 import { ShortcutsButton } from './Shortcuts'
@@ -21,7 +21,10 @@ const userNav: NavItem[] = [
   { to: '/my', label: 'Моя аренда', icon: ClipboardList },
 ]
 
-const executorNav: NavItem[] = [{ to: '/executor', label: 'Заказы на подготовку', icon: Wrench }]
+const executorNav: NavItem[] = [
+  { to: '/executor', label: 'Заказы на подготовку', icon: Wrench },
+  { to: '/problems', label: 'Проблемы по заказам', icon: LifeBuoy },
+]
 
 const adminNav: NavItem[] = [
   { to: '/admin', label: 'Обзор', icon: BarChart3 },
@@ -74,6 +77,8 @@ export function AppShell() {
   // заказы, ждущие подготовки, и вернувшиеся ПК, ждущие очистки диска
   const waitingCount =
     (useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0) + (useExecutorReturns(isExecutor).data?.length ?? 0)
+  // открытые проблемы по заказам: задачи Jira, которые ещё не закрыты
+  const problemsCount = useExecutorProblems(isExecutor).data?.filter(isOpenProblem).length ?? 0
   // «Сроки аренды» требуют внимания: просрочки, заявки на срок и продления, которые ещё не отметили «Принято»
   const deadlinesCount =
     (useOverdue(isAdmin).data?.length ?? 0) +
@@ -126,7 +131,7 @@ export function AppShell() {
       <nav className="flex-1">
         <NavGroup items={userNav} onNavigate={closeMenu} />
         {isExecutor && (
-          <NavGroup title="Исполнитель" items={executorNav.map((i) => ({ ...i, badge: waitingCount }))} onNavigate={closeMenu} />
+          <NavGroup title="Исполнитель" items={executorNav.map((i) => ({ ...i, badge: i.to === '/executor' ? waitingCount : problemsCount }))} onNavigate={closeMenu} />
         )}
         {isAdmin && (
           <NavGroup

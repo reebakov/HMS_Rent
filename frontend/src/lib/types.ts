@@ -135,6 +135,24 @@ export interface ExecutorOrder extends Booking {
   request_error: string | null
 }
 
+/** Проблема по заказу: заявка «Сообщить о проблеме» от заказчика и её задача в Jira */
+export interface ExecutorProblem {
+  id: number
+  issue_key: string | null
+  issue_url: string | null
+  status: string | null // статус Jira как есть
+  status_category: string | null
+  error: string | null // задача в Jira не создалась
+  message: string
+  created_at: string
+  reporter: UserShort
+  department: { id: number; name: string }
+  order_number: number
+  target_name: string
+  is_vm: boolean
+  booking_id: number | null // у ПК — заказ со страницей исполнителя
+}
+
 export interface ExecutorReject {
   reason: string
   comment: string

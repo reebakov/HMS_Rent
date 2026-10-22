@@ -51,6 +51,7 @@ let termRequests: TermRequestOut[]
 const order = (id: number, prepared: boolean) => ({ id, prepared_at: prepared ? '2026-10-02T10:00:00Z' : null }) as ExecutorOrder
 let executorOrders: ExecutorOrder[]
 let executorReturns: ExecutorOrder[]
+let executorProblems: { status_category: string | null }[]
 
 beforeEach(() => {
   session = makeSession()
@@ -59,6 +60,7 @@ beforeEach(() => {
   termRequests = []
   executorOrders = []
   executorReturns = []
+  executorProblems = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
   // меню админа запрашивает просрочки, заявки на срок и продления для счётчика
@@ -68,6 +70,7 @@ beforeEach(() => {
     if (path === '/admin/term-requests') return termRequests
     if (path === '/executor/orders') return executorOrders
     if (path === '/executor/returns') return executorReturns
+    if (path === '/executor/problems') return executorProblems
     if (path === '/notifications') return { items: [], unread: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
@@ -120,6 +123,17 @@ describe('AppShell: меню по роли', () => {
     expect(screen.queryByRole('link', { name: /Заказы на подготовку/ })).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/executor/orders')
     expect(api.get).not.toHaveBeenCalledWith('/executor/returns')
+    expect(api.get).not.toHaveBeenCalledWith('/executor/problems')
+    expect(screen.queryByRole('link', { name: /Проблемы по заказам/ })).not.toBeInTheDocument()
+  })
+
+  it('«Проблемы по заказам» у исполнителя: ссылка и счётчик открытых проблем (закрытые не считаются)', async () => {
+    session = makeSession({ role: 'executor' })
+    executorProblems = [{ status_category: 'new' }, { status_category: null }, { status_category: 'indeterminate' }, { status_category: 'done' }]
+    mountShell()
+    const link = screen.getByRole('link', { name: /Проблемы по заказам/ })
+    expect(link).toHaveAttribute('href', '/problems')
+    await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
   })
 
   it('админу раздел исполнителя тоже доступен', () => {
