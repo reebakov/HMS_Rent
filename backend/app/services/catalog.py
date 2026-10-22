@@ -2,7 +2,7 @@
 import re
 from typing import Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -16,12 +16,16 @@ Sort = Literal["name", "ram_desc", "ram_asc"]
 
 AVAILABLE = Computer.status == ComputerStatus.available
 
-# В каталоге не показываем ПК слабее порога (по умолчанию 8 ГБ): «слабые» начинаются с 8 ГБ ОЗУ.
-# Виртуалки и ПК с неизвестной ОЗУ не трогаем. Админ видит все ПК в «Инвентаризации».
-RAM_FLOOR = or_(
+# В каталоге только ПК с описанным железом (процессор, ОЗУ, диск; видеокарта необязательна) и не слабее порога
+# (по умолчанию 8 ГБ): «слабые» начинаются с 8 ГБ ОЗУ. Без описания заказчику нечего выбирать. Виртуалки не трогаем.
+# Админ видит все ПК в «Инвентаризации».
+HARDWARE_SHOWN = or_(
     Computer.is_virtual.is_(True),
-    Computer.ram_gb.is_(None),
-    Computer.ram_gb >= settings.tier_weak_min_ram_gb,
+    and_(
+        Computer.ram_gb >= settings.tier_weak_min_ram_gb,
+        Computer.cpu.is_not(None), Computer.cpu != "",
+        Computer.storage.is_not(None), Computer.storage != "",
+    ),
 )
 
 
@@ -31,7 +35,7 @@ def natural_key(name: str) -> list:
 
 
 def _visible(user: User):
-    return (Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)), RAM_FLOOR)
+    return (Computer.is_archived.is_(False), Computer.pool_id.in_(visible_pool_ids(user)), HARDWARE_SHOWN)
 
 
 async def tier_summary(session: AsyncSession, user: User) -> list[TierSummary]:

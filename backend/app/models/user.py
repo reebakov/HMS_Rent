@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.db.base import Base, TimestampMixin
 from app.models.department import Department
 from app.models.enums import UserRole
@@ -35,6 +36,12 @@ class User(Base, TimestampMixin):
     @property
     def is_admin(self) -> bool:
         return self.role == UserRole.admin
+
+    @property
+    def sees_all_pools(self) -> bool:
+        """Все опубликованные пулы видят администраторы и отдел исполнителей (по коду, `EXECUTORS_DEPARTMENT_CODE`)."""
+        code = settings.executors_department_code.strip().lower()
+        return self.is_admin or bool(code and self.department and (self.department.code or "").strip().lower() == code)
 
     @property
     def is_executor(self) -> bool:

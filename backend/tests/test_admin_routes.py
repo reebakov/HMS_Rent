@@ -101,7 +101,7 @@ async def test_inventory_row_shape_and_booking(client, boss, api, session, make_
 async def test_inventory_filters_via_query(client, boss, api, make_computer, make_pool, make_department):
     dept, pool = await make_department("QA"), await make_pool("Main")
     await make_computer("A1", pool, tier="weak", cpu="Intel")
-    await make_computer("A2", status="maintenance", tier="powerful", department_id=dept.id)
+    await make_computer("A2", status="maintenance", tier="powerful", department_id=dept.id, cpu="Ryzen")
     await make_computer("A3", is_archived=True)
 
     async def names(**params):
