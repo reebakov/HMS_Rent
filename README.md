@@ -66,6 +66,8 @@ hms-rent/
 │   ├── BOUNCER_SSO.md        # вход через Bouncer (OIDC) и учётки администраторов
 │   ├── VSPHERE.md            # конструктор ВМ: подключение к vCenter
 │   ├── SERVICE_DESK.md       # заявки в Jira Service Desk
+│   ├── INSTRUCTION_CUSTOMER.md  # инструкция заказчикам: заказ, продление, возврат
+│   ├── INSTRUCTION_EXECUTOR.md  # инструкция исполнителям: раздел «Заказы на подготовку»
 │   ├── DOMAIN_TLS.md         # домен и HTTPS
 │   └── SECRETS.md            # секреты: где лежат, права, ротация
 ├── backend/                  # Python 3.12 · FastAPI · SQLAlchemy 2 (async) · PostgreSQL
