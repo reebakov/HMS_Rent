@@ -41,6 +41,9 @@ class FakeSd:
         self.status_calls: list[str] = []
         self.comments = [real_sd.SdComment("Админ", "Привет", "2026-01-01T10:00:00+0000", False)]
         self.comments_error: Exception | None = None
+        self.details = real_sd.SdDetails(taken=False, resolution=None)
+        self.details_error: Exception | None = None
+        self.details_calls: list[str] = []
         self.sent: list[tuple] = []
         self.send_error: Exception | None = None
 
@@ -55,6 +58,12 @@ class FakeSd:
         if key in self.status_errors:
             raise self.status_errors[key]
         return self.status
+
+    async def get_details(self, key):
+        self.details_calls.append(key)
+        if self.details_error:
+            raise self.details_error
+        return self.details
 
     async def get_comments(self, key):
         if self.comments_error:
@@ -413,6 +422,92 @@ async def test_refresh_open_only_open_and_stale(session, env, sd):
     assert (await fresh(fresh_open.id)).status_category == "new"
     assert (await fresh(done.id)).last_checked_at.replace(microsecond=0) == stale.replace(microsecond=0)
     assert (await fresh(no_key.id)).last_checked_at is None
+
+
+async def test_customer_status_from_jira_status():
+    """Статусы workflow DR переводятся в слова для заказчика; чужие статусы остаются как есть."""
+    expected = {
+        "Backlog": "Принят", "To Do": "Принят", "In Progress": "В работе", "Validation": "В работе",
+        "Escalated": "В работе", "Frozen": "Заморожено", "Done": "Выполнен", "Ожидает поддержки": "Ожидает поддержки",
+    }
+    for jira, shown in expected.items():
+        assert ServiceRequest(status=jira).customer_status == shown, jira
+    assert ServiceRequest(status=None).customer_status is None
+
+
+@pytest.mark.parametrize("status, category, taken, resolution, shown", [
+    ("Backlog", "new", True, None, "Снято с исполнителя"),
+    ("To Do", "new", True, None, "Снято с исполнителя"),
+    ("In Progress", "indeterminate", True, None, "В работе"),  # снова взяли — прежнее «снято» не мешает
+    ("Done", "done", True, "Done", "Выполнен"),
+    ("Done", "done", True, "Rejected", "Отклонён"),
+])
+async def test_customer_status_uses_history_and_resolution(status, category, taken, resolution, shown):
+    req = ServiceRequest(status=status, status_category=category, was_taken=taken, resolution=resolution)
+    assert req.customer_status == shown
+
+
+async def test_customer_note_only_for_frozen():
+    assert ServiceRequest(status="Frozen", status_note="Ждём SSD").customer_note == "Ждём SSD"
+    assert ServiceRequest(status="In Progress", status_note="Ждём SSD").customer_note is None
+
+
+async def test_refresh_open_backlog_after_work_is_taken_back(session, env, sd):
+    """Задачу брали и вернули в Backlog между опросами: это видно только по истории Jira."""
+    req = await add_req(session, env.owner, key="HMS-7", status="Backlog", status_category="new")
+    sd.status = real_sd.SdStatus("Backlog", "new")
+    sd.details = real_sd.SdDetails(taken=True, resolution=None)
+    await svc.refresh_open(session)
+    assert (await fresh(req.id)).was_taken is True
+    (note,) = await _notes()
+    assert note.title == "Заявка HMS-7: Снято с исполнителя"
+
+
+async def test_refresh_open_taken_flag_is_kept(session, env, sd):
+    req = await add_req(session, env.owner, key="HMS-7", status="Backlog", status_category="new", was_taken=True)
+    sd.status = real_sd.SdStatus("Backlog", "new")
+    await svc.refresh_open(session)
+    assert sd.details_calls == []  # уже известно: историю не читаем
+    assert (await fresh(req.id)).was_taken is True
+
+
+async def test_refresh_open_frozen_keeps_last_staff_comment(session, env, sd):
+    req = await add_req(session, env.owner, key="HMS-7", status="In Progress", status_category="indeterminate")
+    sd.status = real_sd.SdStatus("Frozen", "indeterminate")
+    sd.comments = [real_sd.SdComment("Олег", "Первый", None, False), real_sd.SdComment("Олег", "Ждём SSD", None, False),
+                   real_sd.SdComment("Иван", "Когда?", None, True)]  # свой комментарий с портала не берём
+    await svc.refresh_open(session)
+    saved = await fresh(req.id)
+    assert (saved.status_note, saved.customer_note) == ("Ждём SSD", "Ждём SSD")
+    (note,) = await _notes()
+    assert (note.title, note.body) == ("Заявка HMS-7: Заморожено", "Ждём SSD")
+
+    sd.status = real_sd.SdStatus("In Progress", "indeterminate")
+    async with SessionLocal() as other:  # снова «устарела» — worker опросит заявку ещё раз
+        (await other.get(ServiceRequest, req.id)).last_checked_at = None
+        await other.commit()
+    await svc.refresh_open(session)
+    assert (await fresh(req.id)).status_note is None  # разморозили — комментарий больше не показывается
+
+
+async def test_refresh_open_reads_resolution_of_closed_task(session, env, sd):
+    req = await add_req(session, env.owner, key="HMS-7", status="In Progress", status_category="indeterminate")
+    sd.status = real_sd.SdStatus("Done", "done")
+    sd.details = real_sd.SdDetails(taken=True, resolution="Rejected")
+    await svc.refresh_open(session)
+    saved = await fresh(req.id)
+    assert (saved.resolution, saved.customer_status) == ("Rejected", "Отклонён")
+
+
+async def test_refresh_open_without_history_access_still_updates_status(session, env, sd, caplog):
+    """У сервисной учётки нет прав на REST Jira: статус обновляется, заказчик видит название из Jira."""
+    req = await add_req(session, env.owner, key="HMS-7", status="Backlog", status_category="new")
+    sd.status = real_sd.SdStatus("Backlog", "new")
+    sd.details_error = boom("Service Desk 403: нет прав")
+    await svc.refresh_open(session)
+    saved = await fresh(req.id)
+    assert (saved.status, saved.was_taken, saved.customer_status) == ("Backlog", False, "Принят")
+    assert saved.last_checked_at is not None and "история и комментарий не получены" in caplog.text
 
 
 async def _notes() -> list[Notification]:

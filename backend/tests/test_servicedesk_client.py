@@ -319,3 +319,83 @@ async def test_error_body_json_array(jira):
     jira.get(f"{API}/request/HMS-5").respond(500, json=["boom"])
     with pytest.raises(sd.ServiceDeskError):
         await sd.get_status("HMS-5")
+
+
+# ---------- Jira REST: история, переходы, закрытие ----------
+
+REST = BASE + "/rest/api/2"
+
+
+def history(*statuses: str) -> dict:
+    return {"histories": [{"items": [{"field": "status", "toString": st}]} for st in statuses]}
+
+
+async def test_get_details_reads_history_and_resolution(jira):
+    route = jira.get(f"{REST}/issue/DR-1").respond(200, json={
+        "fields": {"resolution": {"name": "Rejected"}},
+        "changelog": {"histories": [{"items": [{"field": "assignee", "toString": "In Progress"}]},
+                                    *history("In Progress", "Backlog")["histories"]]},
+    })
+    assert await sd.get_details("DR-1") == sd.SdDetails(taken=True, resolution="Rejected")
+    assert dict(route.calls[0].request.url.params) == {"fields": "resolution", "expand": "changelog"}
+
+
+async def test_get_details_never_taken_and_open(jira):
+    jira.get(f"{REST}/issue/DR-1").respond(200, json={"fields": {"resolution": None}, "changelog": history("To Do")})
+    assert await sd.get_details("DR-1") == sd.SdDetails(taken=False, resolution=None)
+
+
+async def test_get_details_error_is_service_desk_error(jira):
+    jira.get(f"{REST}/issue/DR-1").respond(403, json={"errorMessages": ["нет доступа"]})
+    with pytest.raises(sd.ServiceDeskError, match="403: нет доступа"):
+        await sd.get_details("DR-1")
+
+
+async def test_transitions_lists_available(jira):
+    jira.get(f"{REST}/issue/DR-1/transitions").respond(200, json={"transitions": [
+        {"id": "151", "name": "Done", "to": {"name": "Done"}}]})
+    assert (await sd.transitions("DR-1"))[0]["id"] == "151"
+
+
+def open_issue(jira, status="Backlog", category="new"):
+    jira.get(f"{REST}/issue/DR-1", params={"fields": "status"}).respond(
+        200, json={"fields": {"status": {"name": status, "statusCategory": {"key": category}}}})
+
+
+@pytest.mark.parametrize("resolution", [sd.RESOLUTION_DONE, sd.RESOLUTION_REJECTED])
+async def test_close_issue_moves_to_done_with_resolution(jira, resolution):
+    open_issue(jira)
+    jira.get(f"{REST}/issue/DR-1/transitions").respond(200, json={"transitions": [
+        {"id": "141", "name": "Backlog", "to": {"name": "Backlog"}}, {"id": "151", "name": "Done", "to": {"name": "Done"}}]})
+    post = jira.post(f"{REST}/issue/DR-1/transitions").respond(204)
+    assert await sd.close_issue("DR-1", resolution) is True
+    assert sent(post) == {"transition": {"id": "151"}, "fields": {"resolution": {"name": resolution}}}
+
+
+async def test_close_issue_already_done_is_noop(jira):
+    open_issue(jira, "Done", "done")
+    post = jira.post(f"{REST}/issue/DR-1/transitions").respond(204)
+    assert await sd.close_issue("DR-1", sd.RESOLUTION_DONE) is False
+    assert post.call_count == 0
+
+
+async def test_close_issue_without_done_transition(jira):
+    open_issue(jira, "Frozen", "indeterminate")
+    jira.get(f"{REST}/issue/DR-1/transitions").respond(200, json={"transitions": []})
+    with pytest.raises(sd.ServiceDeskError, match="Из статуса «Frozen» нет перехода в Done"):
+        await sd.close_issue("DR-1", sd.RESOLUTION_DONE)
+
+
+async def test_close_issue_transition_rejected_by_jira(jira):
+    open_issue(jira)
+    jira.get(f"{REST}/issue/DR-1/transitions").respond(200, json={"transitions": [
+        {"id": "151", "name": "Done", "to": {"name": "Done"}}]})
+    jira.post(f"{REST}/issue/DR-1/transitions").respond(400, json={"errors": {"resolution": "не задана"}})
+    with pytest.raises(sd.ServiceDeskError, match="resolution: не задана"):
+        await sd.close_issue("DR-1", sd.RESOLUTION_REJECTED)
+
+
+async def test_close_issue_status_read_error(jira):
+    jira.get(f"{REST}/issue/DR-1").respond(404, json={"errorMessages": ["нет задачи"]})
+    with pytest.raises(sd.ServiceDeskError, match="404"):
+        await sd.close_issue("DR-1", sd.RESOLUTION_DONE)

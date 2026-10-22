@@ -461,6 +461,8 @@ export interface ServiceRequest {
   summary: string
   status: string | null
   status_category: string | null // new / indeterminate / done
+  customer_status: string | null // «Принят», «В работе», «Заморожено», «Снято с исполнителя», «Выполнен», «Отклонён»
+  customer_note: string | null // для «Заморожено» — комментарий исполнителя
   error: string | null
   created_at: string
   url: string | null

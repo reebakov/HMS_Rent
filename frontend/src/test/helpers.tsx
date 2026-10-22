@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
 import type { QueryLike } from '@/components/ui/data-state'
-import type { Booking, Computer, ExecutorOrder, Session } from '@/lib/types'
+import type { Booking, Computer, ExecutorOrder, ServiceRequest, Session } from '@/lib/types'
 
 export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?: string } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -110,5 +110,24 @@ export const makeExecutorOrder = (over: Partial<ExecutorOrder> = {}): ExecutorOr
   request_url: null,
   request_status: null,
   request_error: null,
+  ...over,
+})
+
+/** Заявка Service Desk; статус для заказчика по умолчанию совпадает со статусом из Jira */
+export const makeServiceRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
+  id: 5,
+  kind: 'problem',
+  booking_id: 1,
+  vm_id: null,
+  department_id: null,
+  issue_key: 'HMS-101',
+  summary: 'Не включается',
+  status: 'В работе',
+  status_category: 'indeterminate',
+  customer_status: over.status === undefined ? 'В работе' : over.status,
+  customer_note: null,
+  error: null,
+  created_at: '2024-01-10T09:00:00Z',
+  url: null,
   ...over,
 })

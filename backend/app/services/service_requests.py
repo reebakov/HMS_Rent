@@ -227,14 +227,36 @@ async def _get_accessible(session: AsyncSession, user: User, request_id: int) ->
     return req
 
 
+async def _sync_status(req: ServiceRequest) -> None:
+    """Статус заявки из Jira и то, что нужно для статуса заказчику; ошибка самого статуса — наружу.
+
+    История, резолюция и комментарий — дополнительные чтения REST Jira: если у сервисной учётки нет прав, статус
+    всё равно обновляется, а заказчик видит название из Jira.
+    """
+    status = await sd.get_status(req.issue_key)
+    req.status, req.status_category = status.status, status.category
+    req.last_checked_at = datetime.now(timezone.utc)
+    try:
+        if req.status in ("Backlog", "To Do") and not req.was_taken or req.status_category == "done" and req.resolution is None:
+            details = await sd.get_details(req.issue_key)
+            req.was_taken = req.was_taken or details.taken
+            req.resolution = details.resolution
+        req.status_note = await _last_staff_comment(req.issue_key) if req.status == "Frozen" else None
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: история и комментарий не получены: %s", req.issue_key, exc)
+
+
+async def _last_staff_comment(issue_key: str) -> str | None:
+    comments = [c for c in await sd.get_comments(issue_key) if not c.from_portal]
+    return comments[-1].body if comments else None
+
+
 async def get_with_comments(session: AsyncSession, user: User, request_id: int) -> tuple[ServiceRequest, list]:
     req = await _get_accessible(session, user, request_id)
     if not req.issue_key:
         return req, []
     try:
-        status = await sd.get_status(req.issue_key)
-        req.status, req.status_category = status.status, status.category
-        req.last_checked_at = datetime.now(timezone.utc)
+        await _sync_status(req)
         await session.commit()
         comments = await sd.get_comments(req.issue_key)
     except sd.ServiceDeskError as exc:
@@ -267,12 +289,11 @@ async def refresh_open(session: AsyncSession, batch: int = 20) -> None:
         .order_by(ServiceRequest.last_checked_at.nulls_first()).limit(batch)
     )).unique().all()
     for req in rows:
+        old = req.customer_status
         try:
-            status = await sd.get_status(req.issue_key)
-            old = req.status
-            req.status, req.status_category = status.status, status.category
+            await _sync_status(req)
             notifications.request_status(session, req, old)
         except sd.ServiceDeskError as exc:
             log.warning("Статус %s не обновлён: %s", req.issue_key, exc)
-        req.last_checked_at = datetime.now(timezone.utc)
+            req.last_checked_at = datetime.now(timezone.utc)
     await session.commit()

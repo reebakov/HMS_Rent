@@ -57,6 +57,7 @@ async def test_refresh_open_survives_failure_of_one_request(session, env, jira):
     healthy = await add_req(session, env.owner, booking=env.booking, key="HMS-2")
     jira.get(f"{API}/request/HMS-1").mock(side_effect=httpx.ConnectError("refused"))
     jira.get(f"{API}/request/HMS-2").respond(200, json={"currentStatus": {"status": "Решено", "statusCategory": "DONE"}})
+    jira.get("https://jira.test/rest/api/2/issue/HMS-2").respond(200, json={"fields": {"resolution": {"name": "Done"}}})
     await svc.refresh_open(session)  # не бросает: одна недоступная заявка не мешает остальным
     assert (await fresh(healthy.id)).status == "Решено"
     saved = await fresh(broken.id)
@@ -107,3 +108,13 @@ async def test_return_request_jira_error_hides_details_from_user(session, env, j
     # error показывается сотруднику в карточке заявки: тело ответа Jira туда не попадает, остаётся в логе
     assert req.error == "Service Desk отклонил запрос, попробуйте позже" and SECRET_BODY not in req.error
     assert SECRET_BODY in caplog.text
+
+
+async def test_refresh_open_without_rest_access_keeps_status_of_closed_task(session, env, jira):  # noqa: F811
+    """REST Jira закрыт для сервисной учётки (403): статус из Service Desk API всё равно сохраняется."""
+    req = await add_req(session, env.owner, booking=env.booking, key="HMS-3")
+    jira.get(f"{API}/request/HMS-3").respond(200, json={"currentStatus": {"status": "Решено", "statusCategory": "DONE"}})
+    jira.get("https://jira.test/rest/api/2/issue/HMS-3").respond(403, json={"errorMessages": ["нет прав"]})
+    await svc.refresh_open(session)
+    saved = await fresh(req.id)
+    assert (saved.status, saved.resolution, saved.customer_status) == ("Решено", None, "Решено")

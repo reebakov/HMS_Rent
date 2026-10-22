@@ -13,7 +13,11 @@ import { errorMessage, formatDateTime } from '@/lib/utils'
 const KIND_LABEL: Record<ServiceRequest['kind'], string> = { problem: 'Заявка', return: 'Возврат', prepare: 'Подготовка', build: 'Сборка', diagnose: 'Диагностика' }
 
 const tone = (r: ServiceRequest): Tone =>
-  r.error ? 'danger' : r.status_category === 'done' ? 'success' : r.status_category === 'indeterminate' ? 'primary' : 'warning'
+  r.error || r.customer_status === 'Отклонён'
+    ? 'danger'
+    : r.status_category === 'done' ? 'success' : r.status_category === 'indeterminate' ? 'primary' : 'warning'
+
+const statusLabel = (r: ServiceRequest) => (r.error ? 'не создана' : r.customer_status ?? '…')
 
 /** Бейджи заявок по одному ПК/ВМ: номер задачи и статус из Jira */
 export function RequestBadges({ requests, onOpen }: { requests: ServiceRequest[]; onOpen: (id: number) => void }) {
@@ -23,7 +27,7 @@ export function RequestBadges({ requests, onOpen }: { requests: ServiceRequest[]
       {requests.map((r) => (
         <button key={r.id} onClick={() => onOpen(r.id)} title={r.summary} className="transition-opacity hover:opacity-80">
           <Badge tone={tone(r)}>
-            {KIND_LABEL[r.kind]} {r.issue_key ?? '—'} · {r.error ? 'не создана' : r.status ?? '…'}
+            {KIND_LABEL[r.kind]} {r.issue_key ?? '—'} · {statusLabel(r)}
           </Badge>
         </button>
       ))}
@@ -119,7 +123,7 @@ export function RequestSheet({ id, onClose }: { id: number | null; onClose: () =
       description={
         r && (
           <span className="flex flex-wrap items-center gap-2">
-            <Badge tone={tone(r)}>{r.error ? 'не создана' : r.status ?? '…'}</Badge>
+            <Badge tone={tone(r)}>{statusLabel(r)}</Badge>
             {r.url && (
               <a href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                 Открыть в Service Desk <ExternalLink className="h-3 w-3" />
@@ -158,6 +162,12 @@ export function RequestSheet({ id, onClose }: { id: number | null; onClose: () =
           <div className="space-y-4">
             <p className="text-[13px] font-medium">{d.request.summary}</p>
             {d.request.error && <p className="rounded-lg bg-danger/5 px-3 py-2 text-[13px] text-danger">{d.request.error}</p>}
+            {d.request.customer_note && (
+              <p className="rounded-lg bg-warning/10 px-3 py-2 text-[13px]">
+                <span className="font-medium">Исполнитель: </span>
+                {d.request.customer_note}
+              </p>
+            )}
             {!d.comments.length ? (
               <p className="py-6 text-center text-[13px] text-muted-foreground">Администраторы ещё не ответили</p>
             ) : (

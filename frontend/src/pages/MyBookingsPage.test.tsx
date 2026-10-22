@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { failGetOnce, makeSession, renderWithProviders, unprepared } from '@/test/helpers'
+import { failGetOnce, makeServiceRequest, makeSession, renderWithProviders, unprepared } from '@/test/helpers'
 import { formatDate } from '@/lib/utils'
 import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
@@ -67,21 +67,7 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   ...over,
 })
 
-const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
-  id: 5,
-  kind: 'problem',
-  booking_id: 1,
-  vm_id: null,
-  department_id: null,
-  issue_key: 'HMS-101',
-  summary: 'Не включается',
-  status: 'В работе',
-  status_category: 'indeterminate',
-  error: null,
-  created_at: '2024-01-10T09:00:00Z',
-  url: null,
-  ...over,
-})
+const makeRequest = makeServiceRequest
 
 let bookings: Booking[]
 let vms: Vm[]

@@ -63,6 +63,8 @@ class RequestOut(ORMModel):
     summary: str
     status: str | None
     status_category: str | None
+    customer_status: str | None  # статус для заказчика: «Принят», «В работе», «Заморожено», «Выполнен»…
+    customer_note: str | None  # для «Заморожено» — комментарий исполнителя
     error: str | None
     created_at: datetime
     url: str | None = None
