@@ -54,8 +54,8 @@ class FakeSd:
         self.sent: list[tuple] = []
         self.send_error: Exception | None = None
 
-    async def create_request(self, type_id, summary, description, on_behalf_of=None):
-        self.created.append((type_id, summary, description, on_behalf_of))
+    async def create_request(self, type_id, description, on_behalf_of=None):
+        self.created.append((type_id, None, description, on_behalf_of))  # тема появится после update_issue
         if self.create_error:
             raise self.create_error
         return f"HMS-{len(self.created)}", self.status
@@ -64,6 +64,10 @@ class FakeSd:
         if self.update_error:
             raise self.update_error
         self.updated.append((key, fields))
+        if "summary" in fields:  # Jira хранит тему: подставляем её в запись о созданной заявке
+            i = int(key.split("-")[1]) - 1
+            type_id, _, description, behalf = self.created[i]
+            self.created[i] = (type_id, fields["summary"], description, behalf)
 
     async def get_status(self, key):
         self.status_calls.append(key)
@@ -172,12 +176,23 @@ async def test_all_requests_go_through_one_type_and_get_the_same_header(session,
     monkeypatch.setattr(settings, "sd_request_type", 1252)
     await _all_kinds(session, env, sd)
     assert {c[0] for c in sd.created} == {1252} and len(sd.created) == 5
-    assert sd.updated == [(f"HMS-{i}", HEADER) for i in range(1, 6)]  # компонент и эпик — у каждой задачи
+    assert [key for key, _ in sd.updated] == [f"HMS-{i}" for i in range(1, 6)]
+    for (_, fields), (_, summary, _, _) in zip(sd.updated, sd.created, strict=True):
+        assert fields == {"summary": summary, **HEADER}  # тема заявки, компонент и эпик — у каждой задачи
+        assert summary.startswith("HMS Rent: ")
 
 
-async def test_header_is_left_alone_when_not_configured(session, env, sd):
+async def test_summary_is_set_after_creation_not_in_the_form(session, env, sd, monkeypatch):
+    """В форме «Прочее» темы нет: создаётся только описание, тема уходит отдельной правкой (с префиксом ТЕСТ, если задан)."""
+    monkeypatch.setattr(settings, "sd_summary_prefix", "ТЕСТ")
+    await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
+    assert sd.updated[0][1]["summary"].startswith("ТЕСТ HMS Rent: проблема с ПК A001")
+    assert len(sd.updated[0][1]["summary"]) <= 255
+
+
+async def test_header_without_configured_fields_still_sets_summary(session, env, sd):
     await _all_kinds(session, env, sd)
-    assert sd.updated == []
+    assert all(set(fields) == {"summary"} for _, fields in sd.updated)
 
 
 async def test_header_failure_does_not_cancel_request(session, env, sd, monkeypatch, caplog):
