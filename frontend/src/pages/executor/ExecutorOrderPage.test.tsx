@@ -65,6 +65,12 @@ describe('ExecutorOrderPage: заказ', () => {
     expect(await screen.findByText('Заявки нет')).toBeInTheDocument()
   })
 
+  it('задача закрыта в Jira, а данных нет — подсказка внести данные', async () => {
+    order = makeExecutorOrder({ request_done: true })
+    mount()
+    expect(await screen.findByText('Задача закрыта в Jira — внесите данные подключения')).toBeInTheDocument()
+  })
+
   it('«Все заказы» ведёт в очередь', async () => {
     mount()
     await userEvent.click(await screen.findByRole('link', { name: 'Все заказы' }))

@@ -334,6 +334,27 @@ async def test_get_details_reads_history_and_resolution(jira):
     assert dict(route.calls[0].request.url.params) == {"fields": "resolution", "expand": "changelog"}
 
 
+async def test_get_details_returns_who_closed_the_task_last(jira):
+    def entry(created, to, name, email):
+        return {"created": created, "author": {"name": name, "emailAddress": email},
+                "items": [{"field": "status", "toString": to}]}
+    jira.get(f"{REST}/issue/DR-1").respond(200, json={"fields": {"resolution": {"name": "Done"}}, "changelog": {"histories": [
+        entry("2026-10-20T10:00:00.000+0600", "Готово", "first", "first@corp.test"),
+        entry("2026-10-21T10:00:00.000+0600", "Backlog", "reopener", "r@corp.test"),
+        entry("2026-10-22T10:00:00.000+0600", "Done", "oleg", "oleg@corp.test"),
+        {"created": "2026-10-23T10:00:00.000+0600", "author": {"name": "bot"}, "items": [{"field": "assignee", "toString": "Done"}]},
+    ]}})
+    assert (await sd.get_details("DR-1")).closed_by == ("oleg", "oleg@corp.test")
+
+
+async def test_get_details_closed_by_is_none_without_closing_or_author(jira):
+    jira.get(f"{REST}/issue/DR-1").respond(200, json={"fields": {}, "changelog": history("In Progress")})
+    assert (await sd.get_details("DR-1")).closed_by is None
+    jira.get(f"{REST}/issue/DR-2").respond(200, json={"fields": {}, "changelog": {"histories": [
+        {"created": "2026-10-22T10:00:00.000+0600", "items": [{"field": "status", "toString": "Done"}]}]}})
+    assert (await sd.get_details("DR-2")).closed_by is None  # автор в истории не указан
+
+
 async def test_get_details_never_taken_and_open(jira):
     jira.get(f"{REST}/issue/DR-1").respond(200, json={"fields": {"resolution": None}, "changelog": history("To Do")})
     assert await sd.get_details("DR-1") == sd.SdDetails(taken=False, resolution=None)

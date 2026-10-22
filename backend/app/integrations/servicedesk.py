@@ -200,6 +200,7 @@ RESOLUTION_REJECTED = "Rejected"
 class SdDetails:
     taken: bool  # задача хоть раз была «В работе»: нужно, чтобы отличить «Принят» от «Снято с исполнителя»
     resolution: str | None
+    closed_by: tuple[str, str] | None = None  # (логин, почта) того, кто последним перевёл задачу в закрытый статус
 
 
 def _history_taken(issue: dict) -> bool:
@@ -210,6 +211,18 @@ def _history_taken(issue: dict) -> bool:
     return False
 
 
+def _history_closed_by(issue: dict) -> tuple[str, str] | None:
+    """Автор последнего перехода в закрытый статус: заказ портал закрывает от его имени, если он есть в портале."""
+    closed = [
+        entry for entry in (issue.get("changelog") or {}).get("histories") or []
+        if any(i.get("field") == "status" and i.get("toString") in DONE_STATUSES for i in entry.get("items") or [])
+    ]
+    if not closed:
+        return None
+    author = max(closed, key=lambda e: e.get("created") or "").get("author") or {}
+    return (author.get("name") or "", author.get("emailAddress") or "") if author else None
+
+
 async def get_details(issue_key: str) -> SdDetails:
     """Резолюция и история статусов задачи (REST Jira, не Service Desk API: там истории нет)."""
     async with _client(JIRA_API) as http:
@@ -217,7 +230,8 @@ async def get_details(issue_key: str) -> SdDetails:
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
         issue = _json_object(resp)
-    return SdDetails(taken=_history_taken(issue), resolution=((issue.get("fields") or {}).get("resolution") or {}).get("name"))
+    return SdDetails(taken=_history_taken(issue), resolution=((issue.get("fields") or {}).get("resolution") or {}).get("name"),
+                     closed_by=_history_closed_by(issue))
 
 
 async def update_issue(issue_key: str, fields: dict) -> None:

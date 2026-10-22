@@ -9,7 +9,16 @@ from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
-from app.models import Booking, BookingStatus, ServiceRequest, ServiceRequestKind, User, VirtualMachine
+from app.models import (
+    AssetEvent,
+    Booking,
+    BookingStatus,
+    EventType,
+    ServiceRequest,
+    ServiceRequestKind,
+    User,
+    VirtualMachine,
+)
 from app.schemas.service_request import BuildCreate, RequestOut
 from app.services import departments, notifications, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
@@ -246,21 +255,29 @@ async def _sync_status(req: ServiceRequest) -> None:
             details = await sd.get_details(req.issue_key)
             req.was_taken = req.was_taken or details.taken
             req.resolution = details.resolution
-        req.status_note = await _last_staff_comment(req.issue_key) if req.workflow_status == "Frozen" else None
+        req.status_note = await last_staff_comment(req.issue_key) if req.workflow_status == "Frozen" else None
     except sd.ServiceDeskError as exc:
         log.warning("Заявка %s: история и комментарий не получены: %s", req.issue_key, exc)
 
 
 async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
-    """Задачу «подготовить ПК» закрывает портал: Done, когда исполнитель внёс данные подключения, Rejected, когда
-    заказ отклонён или отменён до подготовки. Закрытие вручную не мешает: уже закрытую задачу портал пропускает.
+    """Задачи по заказу закрывает портал: «подготовить ПК» — Done, когда исполнитель внёс данные подключения, и Rejected,
+    когда заказ отклонён или отменён до подготовки; «Возврат ПК» — Done, когда исполнитель подтвердил очистку диска.
+    Закрытие вручную не мешает: уже закрытую задачу портал пропускает (его реакция — `jira_closure`).
 
     Делает это worker, а не обработчики запросов: при недоступной Jira закрытие просто повторится в следующий круг.
     """
-    if req.kind != ServiceRequestKind.prepare.value or req.booking_id is None or req.status_category == "done":
+    if req.kind not in (ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value) or req.booking_id is None \
+            or req.status_category == "done":
         return
     booking = await session.get(Booking, req.booking_id)
-    if booking.prepared_at is not None:
+    if req.kind == ServiceRequestKind.return_.value:
+        cleaned = await session.scalar(select(AssetEvent.id).where(
+            AssetEvent.booking_id == booking.id, AssetEvent.event_type == EventType.cleaned).limit(1))
+        if cleaned is None:
+            return
+        resolution = sd.RESOLUTION_DONE
+    elif booking.prepared_at is not None:
         resolution = sd.RESOLUTION_DONE
     elif booking.status != BookingStatus.active:
         resolution = sd.RESOLUTION_REJECTED
@@ -273,7 +290,7 @@ async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
         log.warning("Задача %s не закрыта (%s): %s", req.issue_key, resolution, exc)
 
 
-async def _last_staff_comment(issue_key: str) -> str | None:
+async def last_staff_comment(issue_key: str) -> str | None:
     comments = [c for c in await sd.get_comments(issue_key) if not c.from_portal]
     return comments[-1].body if comments else None
 

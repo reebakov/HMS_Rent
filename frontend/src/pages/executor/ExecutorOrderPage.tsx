@@ -5,10 +5,10 @@ import { ArrowLeft } from 'lucide-react'
 import { Card, PageHeader } from '@/components/ui/card'
 import { DataState, FormError, RowsSkeleton } from '@/components/ui/data-state'
 import { Field, Input, Select, Textarea } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Button, buttonClass } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
+import { PreparationBadge } from '@/features/executor/PreparationBadge'
 import { FAULTY_REASON, REJECT_REASONS } from '@/lib/dictionaries'
 import { useExecutorOrder, useRejectExecutorOrder, useSaveExecutorResult } from '@/lib/queries'
 import type { ConnectionMethod, ExecutorOrder } from '@/lib/types'
@@ -64,7 +64,7 @@ function OrderDetails({ order: o }: { order: ExecutorOrder }) {
     <Card className="p-5">
       <div className="mb-4 flex items-center justify-between gap-2">
         <p className="font-semibold">Заказ</p>
-        {o.prepared_at ? <Badge tone="success">Подготовлен</Badge> : <Badge tone="warning" dot>Ждёт подготовки</Badge>}
+        <PreparationBadge order={o} />
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
         {rows.map(([label, value]) => (
