@@ -21,6 +21,7 @@ from app.models import (
     NotificationKind,
     ServiceRequest,
     UserRole,
+    VirtualMachine,
 )
 from app.services import cleaning, executor, runtime
 
@@ -76,6 +77,60 @@ async def test_order_suggests_ip_from_insight_only_when_valid(client, api, env, 
     assert (await client.get(api(f"/executor/orders/{env.early.id}"))).json()["insight_ip"] == expected
     rows = {r["id"]: r for r in (await client.get(api("/executor/orders"))).json()}
     assert rows[env.early.id]["insight_ip"] == expected
+
+
+# ---------- проблемы по заказам ----------
+
+async def _vm(session, env):
+    vm = VirtualMachine(name="A1007", cpu=4, ram_gb=8, disk_gb=100, os_label="Ubuntu 22.04", status="ready",
+                        order_number=555, user_id=env.owner.id, department_id=env.early.department_id,
+                        requester_name="Иван Иванов", requester_nick="ivan", attrs={})
+    session.add(vm)
+    await session.commit()
+    return vm
+
+
+def _problem(env, **kw) -> ServiceRequest:
+    kw.setdefault("description", "Не включается\n\n---\nКомпьютер: A001 (ITAM-1)\nЗаказ №1")
+    return ServiceRequest(kind="problem", user_id=env.owner.id, summary="s", **kw)
+
+
+async def test_problems_list_open_first_with_target_and_jira_link(client, api, env, session, monkeypatch):
+    monkeypatch.setattr(settings, "sd_jira_url", "https://jira.test")
+    vm = await _vm(session, env)
+    now = datetime.now(timezone.utc)
+    session.add_all([
+        _problem(env, booking_id=env.early.id, issue_key="DR-1", status="Done", status_category="done",
+                 created_at=now - timedelta(hours=3)),
+        _problem(env, booking_id=env.late.id, issue_key="DR-2", status="In Progress", status_category="indeterminate",
+                 created_at=now - timedelta(hours=2), description="Шумит кулер\n\n---\nКомпьютер: A002"),
+        _problem(env, vm_id=vm.id, issue_key="DR-3", status="Backlog", status_category="new",
+                 created_at=now - timedelta(hours=1)),
+        _problem(env, booking_id=env.early.id, issue_key=None, error="Service Desk недоступен", created_at=now),
+        ServiceRequest(kind="return", user_id=env.owner.id, booking_id=env.early.id, summary="r", description="d",
+                       issue_key="DR-9"),  # не проблема — в список не попадает
+    ])
+    await session.commit()
+    rows = (await client.get(api("/executor/problems"))).json()
+    # открытые выше (без категории тоже открыта), внутри — свежие выше; закрытая — в конце
+    assert [r["issue_key"] for r in rows] == [None, "DR-3", "DR-2", "DR-1"]
+    failed, on_vm, on_pc, closed = rows
+    assert (failed["error"], failed["issue_url"], failed["message"]) == ("Service Desk недоступен", None, "Не включается")
+    assert (on_vm["target_name"], on_vm["is_vm"], on_vm["booking_id"], on_vm["order_number"]) == ("A1007", True, None, 555)
+    assert on_pc["message"] == "Шумит кулер"  # данные ПК после «---» исполнитель видит в Jira
+    assert (on_pc["target_name"], on_pc["is_vm"], on_pc["booking_id"]) == ("A002", False, env.late.id)
+    assert on_pc["issue_url"] == "https://jira.test/browse/DR-2" and on_pc["status"] == "In Progress"
+    assert (on_pc["reporter"]["username"], on_pc["department"]["name"]) == ("owner", "QA")
+    assert closed["status_category"] == "done" and closed["order_number"] == env.early.order_number
+
+
+async def test_problems_empty(client, api, env):
+    assert (await client.get(api("/executor/problems"))).json() == []
+
+
+async def test_problems_hidden_from_customer(client, api, env, login):
+    login(env.owner)
+    assert (await client.get(api("/executor/problems"))).status_code == 403
 
 
 # ---------- результат подготовки ----------

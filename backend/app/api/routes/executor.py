@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks
 
 from app.api.deps import DB, ExecutorUser
 from app.models import ServiceRequestKind
-from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorReject, ExecutorResult
+from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorProblemOut, ExecutorReject, ExecutorResult
 from app.services import executor as service
 from app.services.bookings import get_booking, push_to_insight
 
@@ -33,6 +33,12 @@ async def reject_order(
     if data.reason == FAULTY_REASON:
         tasks.add_task(service.create_diagnose_request, booking.id, user.id, data.comment)
     return await service.order_out(session, booking)
+
+
+@router.get("/problems", response_model=list[ExecutorProblemOut])
+async def list_problems(_: ExecutorUser, session: DB) -> list[ExecutorProblemOut]:
+    """Проблемы по заказам: заявки «Сообщить о проблеме» от заказчиков, открытые выше."""
+    return await service.list_problems(session)
 
 
 @router.get("/returns", response_model=list[ExecutorOrderOut])

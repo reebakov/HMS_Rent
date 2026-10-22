@@ -61,6 +61,25 @@ class ExecutorOrderOut(BookingOut):
     request_error: str | None = None
 
 
+class ExecutorProblemOut(ORMModel):
+    """Проблема по заказу, о которой сообщил заказчик («Сообщить о проблеме»): задача в Jira и к чему она относится."""
+
+    id: int
+    issue_key: str | None
+    issue_url: str | None  # ссылка на задачу в Jira для сотрудника поддержки
+    status: str | None  # статус Jira как есть: исполнителю названия workflow видны
+    status_category: str | None
+    error: str | None  # заявка в Jira не создалась
+    message: str  # что написал заказчик
+    created_at: datetime
+    reporter: UserShort
+    department: DepartmentShort
+    order_number: int
+    target_name: str  # имя ПК или ВМ
+    is_vm: bool
+    booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя
+
+
 REJECT_REASONS = ("Сервер неисправен", "Заказчик не ответил", "Некорректный заказ")
 FAULTY_REASON = REJECT_REASONS[0]  # эта причина ещё и выводит ПК из пула
 

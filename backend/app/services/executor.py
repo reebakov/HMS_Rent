@@ -6,7 +6,7 @@
 from datetime import datetime, timezone
 from ipaddress import IPv4Address
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
@@ -22,8 +22,9 @@ from app.models import (
     ServiceRequest,
     ServiceRequestKind,
     User,
+    VirtualMachine,
 )
-from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorReject, ExecutorResult
+from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorProblemOut, ExecutorReject, ExecutorResult
 from app.services import cleaning, notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
 from app.services.events import add_event
@@ -61,6 +62,36 @@ async def orders_out(session: AsyncSession, bookings: list[Booking],
 async def order_out(session: AsyncSession, booking: Booking,
                     kind: ServiceRequestKind = ServiceRequestKind.prepare) -> ExecutorOrderOut:
     return (await orders_out(session, [booking], kind))[0]
+
+
+CONTEXT_SEPARATOR = "\n\n---\n"  # после него в описании заявки идут данные ПК/ВМ, их исполнитель видит в Jira
+
+
+async def list_problems(session: AsyncSession) -> list[ExecutorProblemOut]:
+    """Проблемы по заказам: сначала открытые, затем закрытые, внутри — свежие выше."""
+    requests = (await session.scalars(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.problem.value)
+        .order_by(func.coalesce(ServiceRequest.status_category, "") == "done", ServiceRequest.created_at.desc(),
+                  ServiceRequest.id.desc())
+        .limit(LIST_LIMIT)
+    )).unique().all()
+    bookings = {b.id: b for b in (await session.scalars(
+        select(Booking).where(Booking.id.in_([r.booking_id for r in requests if r.booking_id])))).unique()}
+    vms = {v.id: v for v in (await session.scalars(
+        select(VirtualMachine).where(VirtualMachine.id.in_([r.vm_id for r in requests if r.vm_id])))).unique()}
+    rows = []
+    for req in requests:
+        booking, vm = bookings.get(req.booking_id), vms.get(req.vm_id)
+        item = booking or vm
+        rows.append(ExecutorProblemOut(
+            id=req.id, issue_key=req.issue_key, issue_url=agent_url(req.issue_key) if req.issue_key else None,
+            status=req.status, status_category=req.status_category, error=req.error,
+            message=req.description.split(CONTEXT_SEPARATOR, 1)[0], created_at=req.created_at, reporter=req.user,
+            department=item.department, order_number=item.order_number,
+            target_name=booking.computer.name if booking else vm.name, is_vm=vm is not None,
+            booking_id=booking.id if booking else None,
+        ))
+    return rows
 
 
 async def list_orders(session: AsyncSession) -> list[Booking]:

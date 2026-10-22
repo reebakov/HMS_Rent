@@ -18,6 +18,7 @@ import { VmsPage } from '@/pages/admin/VmsPage'
 import { OverduePage } from '@/pages/admin/OverduePage'
 import { ExecutorOrdersPage } from '@/pages/executor/ExecutorOrdersPage'
 import { ExecutorOrderPage } from '@/pages/executor/ExecutorOrderPage'
+import { ExecutorProblemsPage } from '@/pages/executor/ExecutorProblemsPage'
 import { canExecute } from '@/lib/dictionaries'
 
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -59,6 +60,7 @@ export default function App() {
         <Route index element={<CatalogPage />} />
         <Route path="my" element={<MyBookingsPage />} />
         <Route path="executor" element={<RequireExecutor><ExecutorOrdersPage /></RequireExecutor>} />
+        <Route path="problems" element={<RequireExecutor><ExecutorProblemsPage /></RequireExecutor>} />
         <Route path="executor/orders/:id" element={<RequireExecutor><ExecutorOrderPage /></RequireExecutor>} />
         <Route path="admin" element={<RequireAdmin><AdminOverviewPage /></RequireAdmin>} />
         <Route path="admin/inventory" element={<RequireAdmin><InventoryPage /></RequireAdmin>} />

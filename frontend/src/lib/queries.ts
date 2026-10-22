@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorReject, ExecutorResult,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult,
 } from './types'
 
 export interface ComputerFilters {
@@ -423,6 +423,14 @@ export const useExecutorOrders = (enabled = true) =>
   useQuery({
     queryKey: ['executor', 'orders'],
     queryFn: () => api.get<ExecutorOrder[]>('/executor/orders'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+export const useExecutorProblems = (enabled = true) =>
+  useQuery({
+    queryKey: ['executor', 'problems'],
+    queryFn: () => api.get<ExecutorProblem[]>('/executor/problems'),
     enabled,
     refetchInterval: 60_000,
   })

@@ -1,6 +1,6 @@
 import { Cloud, Cpu, Monitor, Zap, type LucideIcon } from 'lucide-react'
 import type { Tone } from '@/components/ui/badge'
-import type { ComputerStatus, Tier, UserRole, VmStatus } from './types'
+import type { ComputerStatus, ExecutorProblem, Tier, UserRole, VmStatus } from './types'
 
 // Всё, что связано с подписью категорий и статусов, — в одном месте
 
@@ -86,6 +86,9 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   executor: 'исполнитель',
   admin: 'администратор',
 }
+
+/** Проблема открыта, пока её задача в Jira не закрыта (нет категории — тоже открыта: заявка не создалась) */
+export const isOpenProblem = (p: Pick<ExecutorProblem, 'status_category'>) => p.status_category !== 'done'
 
 /** Раздел «Исполнитель» видят исполнители и администраторы (как User.is_executor на backend) */
 export const canExecute = (role: UserRole) => role === 'executor' || role === 'admin'
