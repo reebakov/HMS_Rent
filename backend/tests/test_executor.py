@@ -64,6 +64,20 @@ async def test_order_page_shows_closed_order_and_404(client, api, env):
     assert (await client.get(api("/executor/orders/999999"))).status_code == 404
 
 
+@pytest.mark.parametrize("raw, expected", [
+    ("10.1.2.3", "10.1.2.3"), ("  10.1.2.3 ", "10.1.2.3"),
+    (None, None), ("", None), ("не назначен", None), ("10.1.2.3, 10.1.2.4", None), ("10.1.2", None), ("fe80::1", None),
+])
+async def test_order_suggests_ip_from_insight_only_when_valid(client, api, env, session, raw, expected):
+    """IP из Insight — подсказка для формы: берётся один корректный IPv4, остальное исполнитель вводит сам."""
+    comp = await session.get(Computer, env.early.computer_id)
+    comp.ip_address = raw
+    await session.commit()
+    assert (await client.get(api(f"/executor/orders/{env.early.id}"))).json()["insight_ip"] == expected
+    rows = {r["id"]: r for r in (await client.get(api("/executor/orders"))).json()}
+    assert rows[env.early.id]["insight_ip"] == expected
+
+
 # ---------- результат подготовки ----------
 
 async def test_result_saved_and_customer_sees_connection(client, api, env, login, session):

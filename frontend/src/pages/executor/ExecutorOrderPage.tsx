@@ -92,7 +92,8 @@ function OrderDetails({ order: o }: { order: ExecutorOrder }) {
 function ResultForm({ order: o }: { order: ExecutorOrder }) {
   const save = useSaveExecutorResult()
   const [host, setHost] = useState(o.connection_host ?? `${o.computer.name}.${PC_DOMAIN}`)
-  const [ip, setIp] = useState(o.connection_ip ?? '')
+  const fromInsight = !o.connection_ip && !!o.insight_ip
+  const [ip, setIp] = useState(o.connection_ip ?? o.insight_ip ?? '')
   const [method, setMethod] = useState<ConnectionMethod>(o.connection_method ?? defaultMethod(o.os_label))
 
   const submit = async (e: FormEvent) => {
@@ -112,7 +113,7 @@ function ResultForm({ order: o }: { order: ExecutorOrder }) {
         <Field label="Доменное имя" required hint="Имя хоста с доменом, как его увидит заказчик">
           <Input value={host} onChange={(e) => setHost(e.target.value)} required maxLength={255} />
         </Field>
-        <Field label="IP-адрес" required>
+        <Field label="IP-адрес" required hint={fromInsight && ip === o.insight_ip ? 'Подставлен из Insight' : undefined}>
           <Input value={ip} onChange={(e) => setIp(e.target.value)} required placeholder="10.1.2.3" inputMode="decimal" />
         </Field>
         <Field label="Способ подключения" required>

@@ -127,6 +127,7 @@ export type ConnectionMethod = 'RDP' | 'VNC'
 /** Заказ в разделе «Исполнитель»: заказчику имя исполнителя не показывается */
 export interface ExecutorOrder extends Booking {
   prepared_by: UserShort | null
+  insight_ip: string | null // IPv4 ПК из Insight, если записан: подставляется в форму результата
   // заявка Service Desk «подготовить ПК» по заказу (ссылка — для сотрудника поддержки в Jira)
   request_key: string | null
   request_url: string | null

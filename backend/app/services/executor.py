@@ -4,6 +4,7 @@
 и ведёт на страницу заказа, а результат вносится в портале, и заказчик видит его в «Моей аренде».
 """
 from datetime import datetime, timezone
+from ipaddress import IPv4Address
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,14 @@ from app.services.events import add_event
 LIST_LIMIT = 200
 
 
+def _insight_ip(raw: str | None) -> str | None:
+    """Адрес из Insight как подсказка: только один корректный IPv4, иначе исполнитель введёт сам."""
+    try:
+        return str(IPv4Address((raw or "").strip()))
+    except ValueError:
+        return None
+
+
 async def orders_out(session: AsyncSession, bookings: list[Booking],
                      kind: ServiceRequestKind = ServiceRequestKind.prepare) -> list[ExecutorOrderOut]:
     """Заказы со ссылкой на заявку Service Desk («подготовить ПК», для возвратов — «Возврат ПК»): из портала в Jira."""
@@ -41,6 +50,7 @@ async def orders_out(session: AsyncSession, bookings: list[Booking],
     rows = []
     for booking in bookings:
         row = ExecutorOrderOut.model_validate(booking)
+        row.insight_ip = _insight_ip(booking.computer.ip_address)
         if req := by_booking.get(booking.id):
             row.request_key, row.request_status, row.request_error = req.issue_key, req.status, req.error
             row.request_url = agent_url(req.issue_key) if req.issue_key else None
