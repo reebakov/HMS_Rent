@@ -68,6 +68,7 @@ hms-rent/
 │   ├── SERVICE_DESK.md       # заявки в Jira Service Desk
 │   ├── INSTRUCTION_CUSTOMER.md  # инструкция заказчикам: заказ, продление, возврат
 │   ├── INSTRUCTION_EXECUTOR.md  # инструкция исполнителям: раздел «Заказы на подготовку»
+│   ├── PILOT_CHECKLIST.md    # чек-лист готовности к пилоту, сквозная проверка, что смотреть в ходе пилота
 │   ├── DOMAIN_TLS.md         # домен и HTTPS
 │   └── SECRETS.md            # секреты: где лежат, права, ротация
 ├── backend/                  # Python 3.12 · FastAPI · SQLAlchemy 2 (async) · PostgreSQL
