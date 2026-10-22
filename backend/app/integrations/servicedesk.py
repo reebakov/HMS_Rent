@@ -217,7 +217,7 @@ async def get_details(issue_key: str) -> SdDetails:
 
 
 async def update_issue(issue_key: str, fields: dict) -> None:
-    """Меняет шапку задачи (компонент, «Типовой запрос»…): Service Desk при создании принимает только поля формы."""
+    """Меняет шапку задачи (компонент, эпик…): Service Desk при создании принимает только поля формы."""
     async with _client(JIRA_API) as http:
         resp = await _send(http, "PUT", f"/issue/{issue_key}", json={"fields": fields})
         if resp.status_code >= 400:

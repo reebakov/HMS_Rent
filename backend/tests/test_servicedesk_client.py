@@ -403,8 +403,7 @@ async def test_close_issue_status_read_error(jira):
 
 def test_issue_fields_default_and_env_override(monkeypatch):
     from app.core.config import Settings
-    assert Settings(_env_file=None).sd_issue_fields == {"components": [{"name": "HMS"}],
-                                                        "customfield_14625": [{"key": "OTP-124158"}]}
+    assert Settings(_env_file=None).sd_issue_fields == {"components": [{"name": "HMS"}], "customfield_10002": "DR-69"}
     monkeypatch.setenv("SD_ISSUE_FIELDS", '{"components": [{"name": "OPS"}]}')
     assert Settings(_env_file=None).sd_issue_fields == {"components": [{"name": "OPS"}]}
     monkeypatch.setenv("SD_ISSUE_FIELDS", "{}")
@@ -418,6 +417,6 @@ async def test_update_issue_puts_fields(jira):
 
 
 async def test_update_issue_error_is_service_desk_error(jira):
-    jira.put(f"{REST}/issue/DR-1").respond(400, json={"errors": {"customfield_14625": "не найден"}})
-    with pytest.raises(sd.ServiceDeskError, match="customfield_14625: не найден"):
-        await sd.update_issue("DR-1", {"customfield_14625": [{"key": "X"}]})
+    jira.put(f"{REST}/issue/DR-1").respond(400, json={"errors": {"components": "не найден"}})
+    with pytest.raises(sd.ServiceDeskError, match="components: не найден"):
+        await sd.update_issue("DR-1", {"components": [{"name": "X"}]})

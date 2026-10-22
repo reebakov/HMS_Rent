@@ -97,9 +97,9 @@ class Settings(BaseSettings):
     sd_request_type: int = 1252  # «Прочее»: все заявки портала, обязательное поле одно — описание: …/portal/54/create/1252
     sd_raise_on_behalf: bool = True  # создавать заявку от имени сотрудника (если он есть в Jira)
     sd_return_on_return: bool = True  # возврат ПК на сайте создаёт заявку «Возврат»
-    # Шапка задачи после создания (PUT /rest/api/2/issue): компонент HMS и «Типовой запрос» = «Подготовить комплект»
-    # (Assets-объект OTP-124158) для всех видов заявок. {"поле Jira": значение}; пусто — шапку не менять
-    sd_issue_fields: dict[str, Any] = {"components": [{"name": "HMS"}], "customfield_14625": [{"key": "OTP-124158"}]}
+    # Шапка задачи после создания (PUT /rest/api/2/issue) для всех видов заявок, как у DR-15373: компонент HMS и эпик
+    # DR-69 (Epic Link, от него считаются поля «Initiative …»). {"поле Jira": значение}; пусто — шапку не менять
+    sd_issue_fields: dict[str, Any] = {"components": [{"name": "HMS"}], "customfield_10002": "DR-69"}
     sd_prepare_on_booking: bool = True  # бронь ПК создаёт заявку «подготовить ПК» (ОС, первичная настройка)
     sd_summary_prefix: str = ""  # слово в начале темы заявки («ТЕСТ» для проверок), чтобы исполнители их не брали
 
