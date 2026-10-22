@@ -37,6 +37,7 @@ class FakeSd:
 
     def __init__(self):
         self.created: list[tuple] = []
+        self.extra_fields: list[dict | None] = []
         self.create_error: Exception | None = None
         self.status = real_sd.SdStatus("Ожидает поддержки", "new")
         self.status_errors: dict[str, Exception] = {}
@@ -52,8 +53,9 @@ class FakeSd:
         self.sent: list[tuple] = []
         self.send_error: Exception | None = None
 
-    async def create_request(self, type_id, summary, description, on_behalf_of=None):
+    async def create_request(self, type_id, summary, description, on_behalf_of=None, extra_fields=None):
         self.created.append((type_id, summary, description, on_behalf_of))
+        self.extra_fields.append(extra_fields)
         if self.create_error:
             raise self.create_error
         return f"HMS-{len(self.created)}", self.status
@@ -146,6 +148,14 @@ async def fresh(req_id: int) -> ServiceRequest:
 
 
 # ---------- create_problem ----------
+
+async def test_create_problem_sends_configured_required_fields(session, env, sd, monkeypatch):
+    fields = {"customfield_14625": ["OTP-124158"], "customfield_16513": ["OTP-121063"]}
+    monkeypatch.setattr(settings, "sd_problem_fields", fields)
+    await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
+    await svc.create_return(session, env.booking.id, env.owner)
+    assert sd.extra_fields == [fields, None]  # только заявка «Проблема»: у «Возврата» таких полей нет
+
 
 async def test_create_problem_for_booking(session, env, sd):
     req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")

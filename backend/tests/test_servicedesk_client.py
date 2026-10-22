@@ -52,6 +52,12 @@ async def test_create_request_success(jira):
                            "requestFieldValues": {"summary": "Тема", "description": "Описание"}}
 
 
+async def test_create_request_adds_extra_fields_but_keeps_summary(jira):
+    route = jira.post(f"{API}/request").respond(201, json=created())
+    await sd.create_request(1248, "Тема", "Описание", None, {"customfield_16513": ["OTP-121063"], "summary": "чужая"})
+    assert sent(route)["requestFieldValues"] == {"customfield_16513": ["OTP-121063"], "summary": "Тема", "description": "Описание"}
+
+
 async def test_create_request_truncates_summary(jira):
     route = jira.post(f"{API}/request").respond(201, json=created())
     await sd.create_request(1248, "я" * 400, "d", None)
@@ -399,3 +405,11 @@ async def test_close_issue_status_read_error(jira):
     jira.get(f"{REST}/issue/DR-1").respond(404, json={"errorMessages": ["нет задачи"]})
     with pytest.raises(sd.ServiceDeskError, match="404"):
         await sd.close_issue("DR-1", sd.RESOLUTION_DONE)
+
+
+def test_problem_fields_are_read_from_env_json(monkeypatch):
+    from app.core.config import Settings
+    monkeypatch.setenv("SD_PROBLEM_FIELDS", '{"customfield_16513": ["OTP-121063"]}')
+    assert Settings(_env_file=None).sd_problem_fields == {"customfield_16513": ["OTP-121063"]}
+    monkeypatch.delenv("SD_PROBLEM_FIELDS")
+    assert Settings(_env_file=None).sd_problem_fields == {}

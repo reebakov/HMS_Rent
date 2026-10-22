@@ -108,12 +108,12 @@ def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
 
 
 async def create_request(request_type_id: int, summary: str, description: str,
-                         on_behalf_of: str | None = None) -> tuple[str, SdStatus]:
+                         on_behalf_of: str | None = None, extra_fields: dict | None = None) -> tuple[str, SdStatus]:
     """Создаёт заявку. Если сотрудника нет в Jira, создаёт от сервисной учётки (автор — в описании)."""
     payload = {
         "serviceDeskId": str(settings.sd_service_desk_id),
         "requestTypeId": str(request_type_id),
-        "requestFieldValues": {"summary": summary[:250], "description": description},
+        "requestFieldValues": {**(extra_fields or {}), "summary": summary[:250], "description": description},
     }
     async with _client() as http:
         if on_behalf_of and settings.sd_raise_on_behalf:

@@ -1,7 +1,7 @@
 """Все настройки приложения. Читаются из переменных окружения / файла .env."""
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import field_validator
@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     sd_request_type_return: int = 1252  # «Возврат ПК»: …/portal/54/create/1252
     sd_raise_on_behalf: bool = True  # создавать заявку от имени сотрудника (если он есть в Jira)
     sd_return_on_return: bool = True  # возврат ПК на сайте создаёт заявку «Возврат»
+    # Обязательные поля типа «Проблема», которые портал не заполняет сам: {"идентификатор поля": значение}, например
+    # Assets-поле «Типовой запрос» — ключ объекта. Идентификаторы и обязательность — `app.cli sd-check`
+    sd_problem_fields: dict[str, Any] = {}
     sd_request_type_order: int = 1252  # «Прочее»: подготовка ПК после брони и сборка по запросу
     sd_prepare_on_booking: bool = True  # бронь ПК создаёт заявку «подготовить ПК» (ОС, первичная настройка)
     sd_summary_prefix: str = ""  # слово в начале темы заявки («ТЕСТ» для проверок), чтобы исполнители их не брали

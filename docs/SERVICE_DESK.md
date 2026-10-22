@@ -31,8 +31,11 @@ Service Desk»). Для «Снято с исполнителя» и резолю
    `sudo ./scripts/deploy.sh --redeploy`, при разработке `docker compose up -d --force-recreate backend worker`.
 2. Проверка: `docker compose exec backend python -m app.cli sd-check` (на проде — с `-f docker-compose.prod.yml`) —
    покажет поля обоих типов заявок.
-   Портал заполняет **Тему (summary)** и **Описание (description)**. Если другие поля обязательны —
-   сделайте их необязательными в настройках типа заявки (иначе Jira не примет заявку и покажет ошибку).
+   Портал заполняет **Тему (summary)** и **Описание (description)**. Если у типа «Проблема» есть другие обязательные
+   поля, их значения задаются в `SD_PROBLEM_FIELDS` (JSON `{"идентификатор поля": значение}`, идентификаторы покажет
+   `sd-check`; пример — в `.env.example`: Assets-поля «Типовой запрос» и «TRN Technology» передаются ключами объектов).
+   Иначе Jira не примет заявку, а сотрудник увидит «Service Desk отклонил запрос». Формат значения для Assets-поля
+   проверьте кнопкой «Сообщить о проблеме»: если Jira его не приняла, подробности в логе backend.
 3. От чьего имени создаётся заявка и как устроена переписка — `docs/ARCHITECTURE.md`, раздел «Заявки в Jira
    Service Desk» (`SD_RAISE_ON_BEHALF`, `SD_RETURN_ON_RETURN` отключают эти режимы).
 

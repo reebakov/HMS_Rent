@@ -169,7 +169,7 @@ async def sd_check() -> None:
         for f in fields:
             mark = "ОБЯЗАТЕЛЬНО" if f.get("required") else ""
             print(f"  {f.get('fieldId'):24} {f.get('name')} {mark}")
-    print("\nПортал заполняет summary и description. Если обязательны другие поля — сделайте их необязательными в Jira.")
+    print("\nПортал заполняет summary и description. Значения других обязательных полей типа «Проблема» задаются в SD_PROBLEM_FIELDS.")
 
 
 async def sd_transitions(issue_key: str) -> None:
