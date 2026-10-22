@@ -6,7 +6,7 @@ import { MyVms } from './MyVms'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
 import { formatDate } from '@/lib/utils'
-import { makeSession, renderWithProviders } from '@/test/helpers'
+import { makeServiceRequest, makeSession, renderWithProviders } from '@/test/helpers'
 import type { ServiceRequest, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -45,21 +45,8 @@ const makeVm = (over: Partial<Vm> = {}): Vm => ({
   ...over,
 })
 
-const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
-  id: 5,
-  kind: 'problem',
-  booking_id: null,
-  vm_id: 1,
-  department_id: null,
-  issue_key: 'HMS-101',
-  summary: 'Нет интернета',
-  status: 'В работе',
-  status_category: 'indeterminate',
-  error: null,
-  created_at: '2024-01-10T09:00:00Z',
-  url: null,
-  ...over,
-})
+const makeRequest = (over: Partial<ServiceRequest> = {}) =>
+  makeServiceRequest({ booking_id: null, vm_id: 1, summary: 'Нет интернета', ...over })
 
 let vms: Vm[]
 let sdEnabled = false // включается в блоке «ОС и заявки Service Desk»

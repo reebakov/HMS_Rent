@@ -48,7 +48,7 @@ def agent_url(issue_key: str) -> str:
     return f"{settings.sd_jira_url.rstrip('/')}/browse/{issue_key}"
 
 
-def _client() -> httpx.AsyncClient:
+def _client(api: str = "/rest/servicedeskapi") -> httpx.AsyncClient:
     if not settings.service_desk_configured:
         raise ServiceDeskUnavailable("Service Desk не настроен: задайте SD_TOKEN (или SD_USERNAME/SD_PASSWORD) в .env")
     headers = {"Accept": "application/json", "X-ExperimentalApi": "opt-in"}
@@ -57,7 +57,7 @@ def _client() -> httpx.AsyncClient:
         headers["Authorization"] = f"Bearer {settings.sd_token}"
     else:
         auth = (settings.sd_username, settings.sd_password)
-    return httpx.AsyncClient(base_url=settings.sd_jira_url.rstrip("/") + "/rest/servicedeskapi",
+    return httpx.AsyncClient(base_url=settings.sd_jira_url.rstrip("/") + api,
                              headers=headers, auth=auth, verify=settings.sd_verify_ssl, timeout=20)
 
 
@@ -161,6 +161,8 @@ async def get_comments(issue_key: str) -> list[SdComment]:
     return comments
 
 
+STATUS_IN_PROGRESS = "In Progress"
+STATUS_DONE = "Done"
 PORTAL_PREFIX = "[HMS Rent] "
 COMMENT_PAGE_SIZE = 100
 COMMENT_PAGES = 10  # потолок: переписка длиннее 1000 комментариев не нужна, а цикл не должен быть бесконечным
@@ -181,3 +183,66 @@ async def request_type_fields(request_type_id: int) -> list[dict]:
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
         return _json_object(resp).get("requestTypeFields") or []
+
+
+# ---------- Jira REST: история статусов и закрытие задач (DR-15072) ----------
+
+JIRA_API = "/rest/api/2"
+RESOLUTION_DONE = "Done"
+RESOLUTION_REJECTED = "Rejected"
+
+
+@dataclass
+class SdDetails:
+    taken: bool  # задача хоть раз была «В работе»: нужно, чтобы отличить «Принят» от «Снято с исполнителя»
+    resolution: str | None
+
+
+def _history_taken(issue: dict) -> bool:
+    for entry in (issue.get("changelog") or {}).get("histories") or []:
+        for item in entry.get("items") or []:
+            if item.get("field") == "status" and item.get("toString") == STATUS_IN_PROGRESS:
+                return True
+    return False
+
+
+async def get_details(issue_key: str) -> SdDetails:
+    """Резолюция и история статусов задачи (REST Jira, не Service Desk API: там истории нет)."""
+    async with _client(JIRA_API) as http:
+        resp = await _send(http, "GET", f"/issue/{issue_key}", params={"fields": "resolution", "expand": "changelog"})
+        if resp.status_code >= 400:
+            raise ServiceDeskError(_error(resp))
+        issue = _json_object(resp)
+    return SdDetails(taken=_history_taken(issue), resolution=((issue.get("fields") or {}).get("resolution") or {}).get("name"))
+
+
+async def transitions(issue_key: str) -> list[dict]:
+    """Переходы, доступные сервисной учётке из текущего статуса задачи: id, имя, целевой статус."""
+    async with _client(JIRA_API) as http:
+        resp = await _send(http, "GET", f"/issue/{issue_key}/transitions")
+        if resp.status_code >= 400:
+            raise ServiceDeskError(_error(resp))
+        return _json_object(resp).get("transitions") or []
+
+
+async def close_issue(issue_key: str, resolution: str) -> bool:
+    """Закрывает задачу переходом в Done с резолюцией. False — задача уже закрыта (повтор безопасен).
+
+    Переход ищется по целевому статусу, а не по id: id зависят от workflow проекта.
+    """
+    async with _client(JIRA_API) as http:
+        resp = await _send(http, "GET", f"/issue/{issue_key}", params={"fields": "status"})
+        if resp.status_code >= 400:
+            raise ServiceDeskError(_error(resp))
+        status = ((_json_object(resp).get("fields") or {}).get("status") or {})
+        if (status.get("statusCategory") or {}).get("key") == "done":
+            return False
+    found = [t for t in await transitions(issue_key) if (t.get("to") or {}).get("name") == STATUS_DONE]
+    if not found:
+        raise ServiceDeskError(f"Из статуса «{status.get('name')}» нет перехода в {STATUS_DONE}")
+    async with _client(JIRA_API) as http:
+        resp = await _send(http, "POST", f"/issue/{issue_key}/transitions",
+                           json={"transition": {"id": found[0]["id"]}, "fields": {"resolution": {"name": resolution}}})
+        if resp.status_code >= 400:
+            raise ServiceDeskError(_error(resp))
+    return True

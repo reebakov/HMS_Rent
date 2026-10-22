@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from './ServiceDesk'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { failGetOnce, renderWithProviders } from '@/test/helpers'
+import { failGetOnce, makeServiceRequest, renderWithProviders } from '@/test/helpers'
 import type { ServiceComment, ServiceRequest } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
@@ -15,21 +15,8 @@ vi.mock('@/lib/api', async (orig) => ({
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-const makeRequest = (over: Partial<ServiceRequest> = {}): ServiceRequest => ({
-  id: 5,
-  kind: 'problem',
-  booking_id: 1,
-  vm_id: null,
-  department_id: null,
-  issue_key: 'HMS-101',
-  summary: 'Не включается',
-  status: 'В работе',
-  status_category: 'indeterminate',
-  error: null,
-  created_at: '2024-01-10T09:00:00Z',
-  url: 'https://jira.example.com/browse/HMS-101',
-  ...over,
-})
+const makeRequest = (over: Partial<ServiceRequest> = {}) =>
+  makeServiceRequest({ summary: 'Не включается', url: 'https://jira.example.com/browse/HMS-101', ...over })
 
 let sdEnabled: boolean
 let request: ServiceRequest
@@ -126,6 +113,19 @@ describe('RequestBadges', () => {
     )
     const badge = screen.getByText('Заявка — · не создана')
     expect(badge).toHaveClass('text-danger')
+  })
+
+  it('показывает статус для заказчика, а не название из Jira', () => {
+    renderWithProviders(<RequestBadges requests={[makeRequest({ status: 'Escalated', customer_status: 'В работе' })]} onOpen={vi.fn()} />)
+    expect(screen.getByText('Заявка HMS-101 · В работе')).toBeInTheDocument()
+    expect(screen.queryByText(/Escalated/)).not.toBeInTheDocument()
+  })
+
+  it('«Отклонён» — красный бейдж, хотя задача закрыта', () => {
+    renderWithProviders(
+      <RequestBadges requests={[makeRequest({ status: 'Done', customer_status: 'Отклонён', status_category: 'done' })]} onOpen={vi.fn()} />,
+    )
+    expect(screen.getByText('Заявка HMS-101 · Отклонён')).toHaveClass('text-danger')
   })
 
   it('без статуса показывает многоточие', () => {
@@ -330,6 +330,13 @@ describe('RequestSheet', () => {
     expect(screen.getByText('не создана')).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Заявка' })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('Ответить администраторам…')).not.toBeInTheDocument()
+  })
+
+  it('«Заморожено»: комментарий исполнителя виден в заявке', async () => {
+    request = makeRequest({ status: 'Frozen', customer_status: 'Заморожено', customer_note: 'Ждём поставку SSD' })
+    renderSheet()
+    expect(await screen.findByText('Ждём поставку SSD')).toBeInTheDocument()
+    expect(screen.getByText('Заморожено')).toBeInTheDocument()
   })
 
   it('закрытая заявка (done) — поле ответа скрыто', async () => {

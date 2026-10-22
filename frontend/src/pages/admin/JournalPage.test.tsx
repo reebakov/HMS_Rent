@@ -60,6 +60,17 @@ describe('JournalPage', () => {
     expect(screen.getByText('2 записей')).toBeInTheDocument()
   })
 
+  it('закрытые заказы без выдачи: отклонённый исполнителем — «Отклонена», отменённый заказчиком — «Отменена»', async () => {
+    const who = { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' }
+    bookings = [
+      makeBooking({ id: 3, order_number: 102, status: 'cancelled', returned_at: '2024-01-12T09:00:00Z' }),
+      makeBooking({ id: 4, order_number: 103, status: 'cancelled', returned_at: '2024-01-12T09:00:00Z', returned_by: who }),
+    ]
+    renderWithProviders(<JournalPage />)
+    expect(await screen.findByText('Отклонена')).toBeInTheDocument()
+    expect(screen.getByText('Отменена')).toBeInTheDocument()
+  })
+
   it('пока грузится — скелетоны без пустого состояния', () => {
     vi.mocked(api.get).mockReturnValue(new Promise(() => undefined))
     renderWithProviders(<JournalPage />)

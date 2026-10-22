@@ -1,10 +1,18 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 from app.models.user import User
+
+# Статусы задач DR (workflow проекта) так, как их видит заказчик; остальные статусы Jira показываются как есть
+CUSTOMER_STATUS = {
+    "Backlog": "Принят", "To Do": "Принят", "In Progress": "В работе", "Validation": "В работе",
+    "Escalated": "В работе", "Frozen": "Заморожено", "Done": "Выполнен",
+}
+TAKEN_BACK = "Снято с исполнителя"
+REJECTED = "Отклонён"
 
 
 class ServiceRequest(Base, TimestampMixin):
@@ -28,10 +36,28 @@ class ServiceRequest(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(128))  # как в Jira: «Ожидает поддержки», «Решено»…
     status_category: Mapped[str | None] = mapped_column(String(32))  # new / indeterminate / done
+    was_taken: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())  # задачу брали в работу (по истории Jira)
+    resolution: Mapped[str | None] = mapped_column(String(64))  # резолюция закрытой задачи: Done, Rejected…
+    status_note: Mapped[str | None] = mapped_column(Text)  # для «Заморожено»: последний публичный комментарий исполнителя
     error: Mapped[str | None] = mapped_column(Text)  # короткая причина для сотрудника, если Jira не приняла заявку (подробности — в логе)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(lazy="joined")
+
+    @property
+    def customer_status(self) -> str | None:
+        """Статус для заказчика: без внутренних названий workflow и без имени исполнителя."""
+        if self.status is None:
+            return None
+        if self.status_category == "done" and self.resolution == "Rejected":
+            return REJECTED
+        if self.status in ("Backlog", "To Do") and self.was_taken:
+            return TAKEN_BACK
+        return CUSTOMER_STATUS.get(self.status, self.status)
+
+    @property
+    def customer_note(self) -> str | None:
+        return self.status_note if self.status == "Frozen" else None
 
     @property
     def is_open(self) -> bool:

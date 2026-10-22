@@ -216,6 +216,15 @@ describe('ComputerHistorySheet', () => {
       expect(screen.getByText(/по сей день/)).toBeInTheDocument()
     })
 
+    it('заказы без выдачи: отклонённый исполнителем — «Отклонён», отменённый заказчиком — «Отменён»', async () => {
+      const who = { id: 2, display_name: 'Пётр Петров', username: 'p.petrov' }
+      history.bookings = [makeBooking({ id: 1, status: 'cancelled' }), makeBooking({ id: 2, status: 'cancelled', returned_by: who })]
+      const { user } = open()
+      await user.click(await screen.findByRole('button', { name: 'История выдачи' }))
+      expect(screen.getByText('Отклонён')).toBeInTheDocument()
+      expect(screen.getByText('Отменён')).toBeInTheDocument()
+    })
+
     it('«События»: пустое состояние и лента без имени ПК', async () => {
       const { user } = open()
       await user.click(await screen.findByRole('button', { name: 'События' }))

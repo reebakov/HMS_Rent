@@ -135,15 +135,18 @@ export function BookingDialog({ computer, onClose }: { computer: Computer | null
   )
 }
 
+/** Возврат ПК; для заказа, который исполнитель ещё не подготовил (`cancel`), — отмена: ПК сразу свободен */
 export function ReturnDialog({
   open,
   title,
+  cancel = false,
   pending,
   onConfirm,
   onClose,
 }: {
   open: boolean
   title: string
+  cancel?: boolean
   pending: boolean
   onConfirm: (comment: string) => void
   onClose: () => void
@@ -155,14 +158,18 @@ export function ReturnDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={title}
-      description="Компьютер снова станет доступен для бронирования другим отделам."
+      description={
+        cancel
+          ? 'Исполнитель ещё не подготовил ПК. Если он не взял заказ в работу, заказ отменится и ПК сразу станет доступен другим отделам.'
+          : 'Компьютер снова станет доступен для бронирования другим отделам после очистки диска.'
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Отмена
           </Button>
           <Button variant="danger" loading={pending} onClick={() => onConfirm(comment)}>
-            Вернуть
+            {cancel ? 'Отменить заказ' : 'Вернуть'}
           </Button>
         </>
       }

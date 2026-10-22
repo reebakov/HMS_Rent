@@ -10,7 +10,16 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFound
-from app.models import Booking, Notification, NotificationKind, ServiceRequest, TermRequest, User, VirtualMachine
+from app.models import (
+    Booking,
+    Notification,
+    NotificationKind,
+    ServiceRequest,
+    ServiceRequestKind,
+    TermRequest,
+    User,
+    VirtualMachine,
+)
 
 LIST_LIMIT = 30  # сколько последних уведомлений отдаёт список
 KEEP_DAYS = 90  # старше — удаляются раз в день вместе с напоминаниями о сроке
@@ -88,10 +97,16 @@ def vm_failed(session: AsyncSession, vm: VirtualMachine) -> None:
 
 
 def request_status(session: AsyncSession, req: ServiceRequest, old: str | None) -> None:
-    """Статус заявки в Service Desk сменился; первое получение статуса (old пуст) — не событие."""
-    if old is None or old == req.status:
+    """Статус заявки для заказчика сменился; первое получение статуса (old пуст) — не событие.
+
+    Для «Заморожено» в тексте комментарий исполнителя: из него заказчик понимает, чего ждут.
+    """
+    if old is None or old == req.customer_status:
         return
-    add(session, req.user_id, NotificationKind.request_status, f"Заявка {req.issue_key}: {req.status}", req.summary)
+    if req.kind == ServiceRequestKind.prepare.value and req.status_category == "done":
+        return  # об итоге заказчик уже узнал: «ПК готов» или «Заказ отклонён»
+    add(session, req.user_id, NotificationKind.request_status, f"Заявка {req.issue_key}: {req.customer_status}",
+        req.customer_note or req.summary)
 
 
 def term_decision(session: AsyncSession, req: TermRequest, new: date | None) -> None:

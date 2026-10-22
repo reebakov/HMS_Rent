@@ -76,6 +76,17 @@ async def test_my_requests_with_portal_url(client, login, api, session, env, sd)
     assert by_id[failed.id]["url"] is None and by_id[failed.id]["error"] == "Jira лежит"
     assert by_id[mine.id]["url"] == "https://jira.test/plugins/servlet/desk/portal/54/HMS-5"
     assert by_id[mine.id]["status"] == "В работе" and by_id[mine.id]["kind"] == "problem"
+    assert by_id[mine.id]["customer_status"] == "В работе" and by_id[mine.id]["customer_note"] is None
+
+
+async def test_my_requests_show_customer_status_and_frozen_note(client, login, api, session, env, sd):
+    """Заказчику — слова из таблицы статусов, а не названия workflow Jira; «Заморожено» с комментарием исполнителя."""
+    frozen = await add_req(session, env.owner, key="DR-1", status="Frozen", status_note="Ждём SSD")
+    taken_back = await add_req(session, env.owner, key="DR-2", status="Backlog", was_taken=True)
+    login(env.owner)
+    by_id = {x["id"]: x for x in (await client.get(api("/requests/my"))).json()}
+    assert (by_id[frozen.id]["customer_status"], by_id[frozen.id]["customer_note"]) == ("Заморожено", "Ждём SSD")
+    assert by_id[taken_back.id]["customer_status"] == "Снято с исполнителя"
 
 
 async def test_my_requests_empty(client, login, api, env, sd):

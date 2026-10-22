@@ -6,10 +6,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.errors import DomainError, Forbidden, NotFound
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
-from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
+from app.models import Booking, BookingStatus, ServiceRequest, ServiceRequestKind, User, VirtualMachine
 from app.schemas.service_request import BuildCreate, RequestOut
 from app.services import departments, notifications, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
@@ -227,14 +227,88 @@ async def _get_accessible(session: AsyncSession, user: User, request_id: int) ->
     return req
 
 
+async def _sync_status(req: ServiceRequest) -> None:
+    """Статус заявки из Jira и то, что нужно для статуса заказчику; ошибка самого статуса — наружу.
+
+    История, резолюция и комментарий — дополнительные чтения REST Jira: если у сервисной учётки нет прав, статус
+    всё равно обновляется, а заказчик видит название из Jira.
+    """
+    status = await sd.get_status(req.issue_key)
+    req.status, req.status_category = status.status, status.category
+    req.last_checked_at = datetime.now(timezone.utc)
+    try:
+        if req.status in ("Backlog", "To Do") and not req.was_taken or req.status_category == "done" and req.resolution is None:
+            details = await sd.get_details(req.issue_key)
+            req.was_taken = req.was_taken or details.taken
+            req.resolution = details.resolution
+        req.status_note = await _last_staff_comment(req.issue_key) if req.status == "Frozen" else None
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: история и комментарий не получены: %s", req.issue_key, exc)
+
+
+async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
+    """Задачу «подготовить ПК» закрывает портал: Done, когда исполнитель внёс данные подключения, Rejected, когда
+    заказ отклонён или отменён до подготовки. Закрытие вручную не мешает: уже закрытую задачу портал пропускает.
+
+    Делает это worker, а не обработчики запросов: при недоступной Jira закрытие просто повторится в следующий круг.
+    """
+    if req.kind != ServiceRequestKind.prepare.value or req.booking_id is None or req.status_category == "done":
+        return
+    booking = await session.get(Booking, req.booking_id)
+    if booking.prepared_at is not None:
+        resolution = sd.RESOLUTION_DONE
+    elif booking.status != BookingStatus.active:
+        resolution = sd.RESOLUTION_REJECTED
+    else:
+        return
+    try:
+        await sd.close_issue(req.issue_key, resolution)
+        await _sync_status(req)
+    except sd.ServiceDeskError as exc:
+        log.warning("Задача %s не закрыта (%s): %s", req.issue_key, resolution, exc)
+
+
+async def _last_staff_comment(issue_key: str) -> str | None:
+    comments = [c for c in await sd.get_comments(issue_key) if not c.from_portal]
+    return comments[-1].body if comments else None
+
+
+async def is_untouched(session: AsyncSession, booking_id: int) -> bool:
+    """Задача «подготовить ПК» по заказу ещё в Backlog, значит, заказ можно отменить (DR-15072).
+
+    False — задачи нет (Service Desk выключен, заявка не создалась) или она закрыта: возврат обычный. Исполнитель уже
+    взял заказ — Conflict. Статус читается из Jira; если проверить не удалось, отмена отклоняется: иначе можно
+    отменить заказ, который уже в работе.
+    """
+    if not settings.service_desk_configured:
+        return False
+    req = await session.scalar(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.booking_id == booking_id, ServiceRequest.issue_key.is_not(None))
+        .order_by(ServiceRequest.id.desc()).limit(1)
+    )
+    if req is None:
+        return False
+    try:
+        await _sync_status(req)
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: статус перед отменой заказа не получен: %s", req.issue_key, exc)
+        raise DomainError("Не удалось проверить, взял ли исполнитель заказ: Service Desk недоступен. "
+                          "Попробуйте через несколько минут") from exc
+    await session.commit()
+    if req.status_category == "done":
+        return False
+    if req.status != "Backlog":
+        raise Conflict("Исполнитель уже взял заказ в работу, отменить его нельзя. Дождитесь подготовки ПК и верните его")
+    return True
+
+
 async def get_with_comments(session: AsyncSession, user: User, request_id: int) -> tuple[ServiceRequest, list]:
     req = await _get_accessible(session, user, request_id)
     if not req.issue_key:
         return req, []
     try:
-        status = await sd.get_status(req.issue_key)
-        req.status, req.status_category = status.status, status.category
-        req.last_checked_at = datetime.now(timezone.utc)
+        await _sync_status(req)
         await session.commit()
         comments = await sd.get_comments(req.issue_key)
     except sd.ServiceDeskError as exc:
@@ -267,12 +341,12 @@ async def refresh_open(session: AsyncSession, batch: int = 20) -> None:
         .order_by(ServiceRequest.last_checked_at.nulls_first()).limit(batch)
     )).unique().all()
     for req in rows:
+        old = req.customer_status
         try:
-            status = await sd.get_status(req.issue_key)
-            old = req.status
-            req.status, req.status_category = status.status, status.category
+            await _sync_status(req)
+            await _close_if_settled(session, req)
             notifications.request_status(session, req, old)
         except sd.ServiceDeskError as exc:
             log.warning("Статус %s не обновлён: %s", req.issue_key, exc)
-        req.last_checked_at = datetime.now(timezone.utc)
+            req.last_checked_at = datetime.now(timezone.utc)
     await session.commit()

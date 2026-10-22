@@ -1,11 +1,19 @@
 """Каталог (видимость по пулам/отделам, фильтры, счётчики), бронирование и возврат через HTTP."""
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
 from app.core import clock
-from app.models import Computer, ComputerStatus, Tier, UserRole
+from app.core.config import settings
+from app.db.session import SessionLocal
+from app.integrations import servicedesk as real_sd
+from app.models import Computer, ComputerStatus, ServiceRequest, Tier, UserRole
+from app.services import bookings as bookings_service
+from app.services import service_requests
+
+from .test_service_requests import FakeSd
 
 ADMIN = UserRole.admin.value
 
@@ -364,6 +372,44 @@ async def test_return_by_owner(client, shop, session, api, make_user, login):
     login(shop["emp"])
     assert await _names(client, api) == ["A1"]  # снова в каталоге
     assert (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).status_code == 201
+
+
+@pytest.mark.parametrize("task_status, cancelled", [("Backlog", True), ("Решено", False)])
+async def test_return_request_is_created_only_for_issued_pc(client, shop, api, monkeypatch, task_status, cancelled):
+    """Отмена заказа до подготовки не создаёт заявку «Возврат ПК»: ПК не выдавали."""
+    for k, v in dict(sd_jira_url="https://jira.test", sd_token="tok", sd_username="").items():
+        monkeypatch.setattr(settings, k, v)
+    fake = FakeSd()
+    fake.status = real_sd.SdStatus(task_status, "new" if cancelled else "done")
+    monkeypatch.setattr(service_requests, "sd", fake)
+    created = AsyncMock()
+    monkeypatch.setattr(bookings_service, "create_return_request", created)
+    monkeypatch.setattr(bookings_service, "create_prepare_request", AsyncMock())
+    bid = await _book(client, api, shop)
+    async with SessionLocal() as s:
+        s.add(ServiceRequest(kind="prepare", user_id=shop["emp"].id, booking_id=bid, issue_key="DR-7", summary="s",
+                             description="d", status=task_status))
+        await s.commit()
+    r = await client.post(api(f"/bookings/{bid}/return"), json={})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == ("cancelled" if cancelled else "returned")
+    assert created.await_count == (0 if cancelled else 1)
+
+
+async def test_return_of_taken_order_is_conflict(client, shop, api, monkeypatch):
+    for k, v in dict(sd_jira_url="https://jira.test", sd_token="tok", sd_username="").items():
+        monkeypatch.setattr(settings, k, v)
+    fake = FakeSd()
+    fake.status = real_sd.SdStatus("In Progress", "indeterminate")
+    monkeypatch.setattr(service_requests, "sd", fake)
+    monkeypatch.setattr(bookings_service, "create_prepare_request", AsyncMock())
+    bid = await _book(client, api, shop)
+    async with SessionLocal() as s:
+        s.add(ServiceRequest(kind="prepare", user_id=shop["emp"].id, booking_id=bid, issue_key="DR-7", summary="s",
+                             description="d", status="Backlog"))
+        await s.commit()
+    r = await client.post(api(f"/bookings/{bid}/return"), json={})
+    assert r.status_code == 409 and "Исполнитель уже взял заказ" in r.json()["detail"]
 
 
 async def test_return_without_body_fields(client, shop, api):

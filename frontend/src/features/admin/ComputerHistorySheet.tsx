@@ -163,7 +163,7 @@ export function ComputerHistorySheet({ computerId, onClose }: { computerId: numb
                       <div key={b.id} className="px-4 py-3 text-[13px]">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{b.department.name}</span>
-                          {b.status === 'active' ? <Badge tone="primary" dot>Сейчас</Badge> : b.status === 'cancelled' ? <Badge tone="danger">Отклонён</Badge> : <Badge>Возвращён</Badge>}
+                          {b.status === 'active' ? <Badge tone="primary" dot>Сейчас</Badge> : b.status === 'cancelled' ? <Badge tone="danger">{b.returned_by ? 'Отменён' : 'Отклонён'}</Badge> : <Badge>Возвращён</Badge>}
                         </div>
                         <p className="mt-1 text-muted-foreground">
                           {b.requester_name} ({b.requester_nick}) · {formatDateTime(b.booked_at)} → {b.returned_at ? formatDateTime(b.returned_at) : 'по сей день'}

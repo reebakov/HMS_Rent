@@ -6,6 +6,7 @@
   disable <логин> / enable <логин>               — заблокировать / разблокировать
   insight-check [--sample 5] [--query IQL]       — проверить подключение к Insight и маппинг
   insight-check --breakdown Type                 — сколько объектов с каждым значением атрибута
+  sd-transitions <ключ>                          — какие переходы Jira доступны сервисной учётке на задаче и видна ли история
   push-pools                                     — записать в Insight («Пул выдачи») пулы всех ПК, что сейчас на портале
 """
 import argparse
@@ -171,6 +172,29 @@ async def sd_check() -> None:
     print("\nПортал заполняет summary и description. Если обязательны другие поля — сделайте их необязательными в Jira.")
 
 
+async def sd_transitions(issue_key: str) -> None:
+    """Проверка прав сервисной учётки на задаче: доступные переходы и чтение истории статусов."""
+    from app.integrations import servicedesk as sd
+
+    print(f"Задача {issue_key} ({settings.sd_jira_url})")
+    try:
+        found = await sd.transitions(issue_key)
+    except sd.ServiceDeskError as exc:
+        print(f"\nПереходы: ОШИБКА — {exc}")
+    else:
+        print("\nПереходы из текущего статуса:")
+        for t in found:
+            print(f"  {t.get('id'):>4}  {t.get('name')} -> {(t.get('to') or {}).get('name')}")
+        if not any((t.get("to") or {}).get("name") == sd.STATUS_DONE for t in found):
+            print(f"  (перехода в {sd.STATUS_DONE} нет: портал не сможет закрыть задачу из этого статуса)")
+    try:
+        details = await sd.get_details(issue_key)
+    except sd.ServiceDeskError as exc:
+        print(f"\nИстория и резолюция: ОШИБКА — {exc}")
+    else:
+        print(f"\nИстория читается: брали в работу — {'да' if details.taken else 'нет'}, резолюция — {details.resolution or '—'}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Служебные команды HMS Rent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -183,6 +207,7 @@ def main() -> None:
     sub.add_parser("users")
     sub.add_parser("push-pools")
     sub.add_parser("sd-check")
+    sub.add_parser("sd-transitions").add_argument("issue_key")
     p = sub.add_parser("insight-check")
     p.add_argument("--sample", type=int, default=5, help="сколько объектов показать")
     p.add_argument("--query", help="свой IQL-запрос вместо query из маппинга")
@@ -191,6 +216,7 @@ def main() -> None:
 
     commands = {
         "sd-check": sd_check,
+        "sd-transitions": lambda: sd_transitions(args.issue_key),
         "create-admin": lambda: create_admin(args.username, args.name),
         "set-password": lambda: set_password(args.username),
         "disable": lambda: set_active(args.username, False),

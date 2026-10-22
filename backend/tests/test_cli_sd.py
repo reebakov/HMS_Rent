@@ -111,3 +111,58 @@ def test_main_dispatches_sd_check(monkeypatch):
         assert coro.cr_code.co_name == "sd_check" and coro.cr_frame.f_locals == {}
     finally:
         coro.close()
+
+
+@pytest.fixture
+def sd_issue(monkeypatch):
+    """sd_issue(transitions=..., details=...) — результат или исключение для каждого из двух чтений."""
+    def _set(transitions, details):
+        async def fake_transitions(key):
+            if isinstance(transitions, Exception):
+                raise transitions
+            return transitions
+
+        async def fake_details(key):
+            if isinstance(details, Exception):
+                raise details
+            return details
+        monkeypatch.setattr(servicedesk, "transitions", fake_transitions)
+        monkeypatch.setattr(servicedesk, "get_details", fake_details)
+    return _set
+
+
+async def test_sd_transitions_prints_transitions_and_history(sd_issue, capsys):
+    sd_issue([{"id": "151", "name": "Done", "to": {"name": "Done"}}, {"id": "171", "name": "Hold", "to": {"name": "To Do"}}],
+             servicedesk.SdDetails(taken=True, resolution="Rejected"))
+    await cli.sd_transitions("DR-1")
+    out = capsys.readouterr().out
+    assert "Задача DR-1" in out and "151  Done -> Done" in out and "171  Hold -> To Do" in out
+    assert "перехода в Done нет" not in out
+    assert "История читается: брали в работу — да, резолюция — Rejected" in out
+
+
+async def test_sd_transitions_warns_when_done_is_unavailable(sd_issue, capsys):
+    sd_issue([{"id": "171", "name": "Hold", "to": {"name": "To Do"}}], servicedesk.SdDetails(taken=False, resolution=None))
+    await cli.sd_transitions("DR-1")
+    out = capsys.readouterr().out
+    assert "перехода в Done нет" in out and "брали в работу — нет, резолюция — —" in out
+
+
+async def test_sd_transitions_reports_errors_separately(sd_issue, capsys):
+    sd_issue(ServiceDeskError("Service Desk 403: нет прав"), ServiceDeskError("Service Desk 404: нет задачи"))
+    await cli.sd_transitions("DR-1")
+    out = capsys.readouterr().out
+    assert "Переходы: ОШИБКА — Service Desk 403: нет прав" in out
+    assert "История и резолюция: ОШИБКА — Service Desk 404: нет задачи" in out
+
+
+def test_main_dispatches_sd_transitions(monkeypatch):
+    got = []
+    monkeypatch.setattr(cli.asyncio, "run", got.append)
+    monkeypatch.setattr(sys, "argv", ["cli", "sd-transitions", "DR-7"])
+    cli.main()
+    coro = got[0]
+    try:
+        assert coro.cr_code.co_name == "sd_transitions" and coro.cr_frame.f_locals == {"issue_key": "DR-7"}
+    finally:
+        coro.close()
