@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.models import (
     AssetEvent,
     BookingStatus,
@@ -207,3 +208,38 @@ async def test_reject_closed_missing_and_repeated(client, api, env):
 async def test_customer_cannot_reject(client, api, env, login):
     login(env.owner)
     assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 403
+
+
+# ---------- ссылка на заявку в Jira ----------
+
+def _request(env, booking, **kw) -> ServiceRequest:
+    return ServiceRequest(kind="prepare", user_id=env.owner.id, booking_id=booking.id, summary="s", description="d", **kw)
+
+
+async def test_orders_link_to_prepare_request_in_jira(client, api, env, session, monkeypatch):
+    monkeypatch.setattr(settings, "sd_jira_url", "https://jira.test/")
+    session.add_all([
+        _request(env, env.early, issue_key="HMS-77", status="В работе"),
+        ServiceRequest(kind="return", user_id=env.owner.id, booking_id=env.early.id, summary="s", description="d",
+                       issue_key="HMS-80"),
+        _request(env, env.late, issue_key=None, error="Service Desk недоступен"),  # Jira не приняла заявку
+    ])
+    await session.commit()
+
+    rows = {r["id"]: r for r in (await client.get(api("/executor/orders"))).json()}
+    early, late = rows[env.early.id], rows[env.late.id]
+    # ссылка — на заявку «подготовить ПК» (не на возврат) и для сотрудника поддержки (browse)
+    assert (early["request_key"], early["request_url"], early["request_status"]) == (
+        "HMS-77", "https://jira.test/browse/HMS-77", "В работе")
+    assert (late["request_key"], late["request_url"], late["request_error"]) == (None, None, "Service Desk недоступен")
+
+    # страница заказа и ответы на действия исполнителя несут ту же ссылку
+    page = (await client.get(api(f"/executor/orders/{env.early.id}"))).json()
+    assert page["request_url"] == "https://jira.test/browse/HMS-77"
+    saved = (await client.post(api(f"/executor/orders/{env.early.id}/result"), json=RESULT)).json()
+    assert saved["request_key"] == "HMS-77"
+
+
+async def test_order_without_request_has_no_link(client, api, env):
+    page = (await client.get(api(f"/executor/orders/{env.early.id}"))).json()
+    assert (page["request_key"], page["request_url"], page["request_status"], page["request_error"]) == (None,) * 4

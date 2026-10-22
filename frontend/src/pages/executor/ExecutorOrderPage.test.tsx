@@ -46,6 +46,25 @@ describe('ExecutorOrderPage: заказ', () => {
     expect(screen.getByText('Ждёт подготовки')).toBeInTheDocument()
   })
 
+  it('ссылка на заявку в Jira: ключ, статус, переход в новой вкладке', async () => {
+    order = makeExecutorOrder({ request_key: 'HMS-77', request_url: 'https://jira.test/browse/HMS-77', request_status: 'В работе' })
+    mount()
+    const link = await screen.findByRole('link', { name: 'HMS-77' })
+    expect(link).toHaveAttribute('href', 'https://jira.test/browse/HMS-77')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.getByText('· В работе')).toBeInTheDocument()
+  })
+
+  it('заявка не создалась — об этом сказано, ссылки нет; заявки нет совсем — тоже видно', async () => {
+    order = makeExecutorOrder({ request_error: 'Service Desk недоступен' })
+    const { unmount } = mount()
+    expect(await screen.findByText('Заявка в Jira не создана')).toHaveAttribute('title', 'Service Desk недоступен')
+    unmount()
+    order = makeExecutorOrder()
+    mount()
+    expect(await screen.findByText('Заявки нет')).toBeInTheDocument()
+  })
+
   it('«Все заказы» ведёт в очередь', async () => {
     mount()
     await userEvent.click(await screen.findByRole('link', { name: 'Все заказы' }))

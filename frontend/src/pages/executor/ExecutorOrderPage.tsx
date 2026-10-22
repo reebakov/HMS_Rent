@@ -8,6 +8,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonClass } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
 import { FAULTY_REASON, REJECT_REASONS } from '@/lib/dictionaries'
 import { useExecutorOrder, useRejectExecutorOrder, useSaveExecutorResult } from '@/lib/queries'
 import type { ConnectionMethod, ExecutorOrder } from '@/lib/types'
@@ -72,6 +73,10 @@ function OrderDetails({ order: o }: { order: ExecutorOrder }) {
             <dd className="font-medium">{value}</dd>
           </div>
         ))}
+        <dt className="text-muted-foreground">Заявка в Jira</dt>
+        <dd className="font-medium">
+          <JiraRequestLink order={o} />
+        </dd>
       </dl>
       {o.purpose && <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">{o.purpose}</p>}
       {o.prepared_at && (

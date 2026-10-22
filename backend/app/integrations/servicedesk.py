@@ -43,6 +43,11 @@ def portal_url(issue_key: str) -> str:
     return f"{settings.sd_jira_url.rstrip('/')}/plugins/servlet/desk/portal/{settings.sd_service_desk_id}/{issue_key}"
 
 
+def agent_url(issue_key: str) -> str:
+    """Ссылка на заявку для сотрудника поддержки (в Jira, а не в клиентском портале)."""
+    return f"{settings.sd_jira_url.rstrip('/')}/browse/{issue_key}"
+
+
 def _client() -> httpx.AsyncClient:
     if not settings.service_desk_configured:
         raise ServiceDeskUnavailable("Service Desk не настроен: задайте SD_TOKEN (или SD_USERNAME/SD_PASSWORD) в .env")

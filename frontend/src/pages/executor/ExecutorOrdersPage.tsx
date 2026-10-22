@@ -4,6 +4,7 @@ import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
 import { useExecutorOrders } from '@/lib/queries'
 import { computerSpecs, formatDate, formatDateTime, plural } from '@/lib/utils'
 
@@ -33,7 +34,7 @@ export function ExecutorOrdersPage() {
         >
           {(data) => (
             <DataTable
-              className="min-w-[900px]"
+              className="min-w-[1000px]"
               head={
                 <>
                   <Th>№ заказа</Th>
@@ -43,6 +44,7 @@ export function ExecutorOrdersPage() {
                   <Th>Взят</Th>
                   <Th>Вернуть до</Th>
                   <Th>Подготовка</Th>
+                  <Th>Заявка в Jira</Th>
                 </>
               }
             >
@@ -66,6 +68,9 @@ export function ExecutorOrdersPage() {
                   <td className="px-4 py-3 tabular">{formatDate(o.expected_return_at)}</td>
                   <td className="px-4 py-3">
                     {o.prepared_at ? <Badge tone="success">Подготовлен</Badge> : <Badge tone="warning" dot>Ждёт подготовки</Badge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <JiraRequestLink order={o} />
                   </td>
                 </tr>
               ))}

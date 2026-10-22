@@ -53,6 +53,11 @@ class ExecutorOrderOut(BookingOut):
     """Заказ для исполнителя: заказчику имя исполнителя не показывается, поэтому поле только здесь."""
 
     prepared_by: UserShort | None
+    # заявка Service Desk «подготовить ПК» по этому заказу (если создавалась)
+    request_key: str | None = None
+    request_url: str | None = None
+    request_status: str | None = None
+    request_error: str | None = None
 
 
 REJECT_REASONS = ("Сервер неисправен", "Заказчик не ответил", "Некорректный заказ")

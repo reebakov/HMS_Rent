@@ -47,6 +47,16 @@ describe('ExecutorOrdersPage', () => {
     expect(screen.getByText('Ждут подготовки: 1 заказ')).toBeInTheDocument()
   })
 
+  it('в очереди у каждого заказа ссылка на его заявку в Jira', async () => {
+    orders[0] = makeExecutorOrder({ request_key: 'HMS-77', request_url: 'https://jira.test/browse/HMS-77', request_status: 'Ожидает поддержки' })
+    mount()
+    const row = (await screen.findByRole('link', { name: 'A032' })).closest('tr')!
+    expect(within(row).getByRole('link', { name: 'HMS-77' })).toHaveAttribute('href', 'https://jira.test/browse/HMS-77')
+    expect(within(row).getByText('· Ожидает поддержки')).toBeInTheDocument()
+    const other = screen.getByRole('link', { name: 'A065' }).closest('tr')!
+    expect(within(other).getByText('Заявки нет')).toBeInTheDocument()
+  })
+
   it('ссылка ПК ведёт на страницу заказа', async () => {
     mount()
     await userEvent.click(await screen.findByRole('link', { name: 'A032' }))

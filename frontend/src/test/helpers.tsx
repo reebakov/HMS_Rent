@@ -106,5 +106,9 @@ export const makeExecutorOrder = (over: Partial<ExecutorOrder> = {}): ExecutorOr
   return_comment: null,
   ...unprepared,
   prepared_by: null,
+  request_key: null,
+  request_url: null,
+  request_status: null,
+  request_error: null,
   ...over,
 })

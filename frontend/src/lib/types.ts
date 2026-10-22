@@ -127,6 +127,11 @@ export type ConnectionMethod = 'RDP' | 'VNC'
 /** Заказ в разделе «Исполнитель»: заказчику имя исполнителя не показывается */
 export interface ExecutorOrder extends Booking {
   prepared_by: UserShort | null
+  // заявка Service Desk «подготовить ПК» по заказу (ссылка — для сотрудника поддержки в Jira)
+  request_key: string | null
+  request_url: string | null
+  request_status: string | null
+  request_error: string | null
 }
 
 export interface ExecutorReject {

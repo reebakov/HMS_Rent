@@ -11,13 +11,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import Conflict, NotFound
 from app.db.session import SessionLocal
 from app.integrations.notify import notify
-from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
-from app.schemas.booking import FAULTY_REASON, ExecutorReject, ExecutorResult
+from app.integrations.servicedesk import agent_url
+from app.models import (
+    Booking,
+    BookingStatus,
+    Computer,
+    ComputerStatus,
+    EventType,
+    ServiceRequest,
+    ServiceRequestKind,
+    User,
+)
+from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorReject, ExecutorResult
 from app.services import notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
 from app.services.events import add_event
 
 LIST_LIMIT = 200
+
+
+async def orders_out(session: AsyncSession, bookings: list[Booking]) -> list[ExecutorOrderOut]:
+    """Заказы со ссылкой на заявку «подготовить ПК» в Jira: исполнитель идёт из портала в задачу и обратно."""
+    requests = await session.scalars(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.booking_id.in_([b.id for b in bookings])).order_by(ServiceRequest.id)
+    )
+    by_booking = {r.booking_id: r for r in requests.unique()}  # при нескольких заявках — последняя
+    rows = []
+    for booking in bookings:
+        row = ExecutorOrderOut.model_validate(booking)
+        if req := by_booking.get(booking.id):
+            row.request_key, row.request_status, row.request_error = req.issue_key, req.status, req.error
+            row.request_url = agent_url(req.issue_key) if req.issue_key else None
+        rows.append(row)
+    return rows
+
+
+async def order_out(session: AsyncSession, booking: Booking) -> ExecutorOrderOut:
+    return (await orders_out(session, [booking]))[0]
 
 
 async def list_orders(session: AsyncSession) -> list[Booking]:
