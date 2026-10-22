@@ -13,6 +13,7 @@ from app.services import capacity, notifications, runtime
 
 log = logging.getLogger(__name__)
 
+POWERED_ON = "poweredOn"  # так vSphere называет включённую ВМ (str(vim.VirtualMachinePowerState.poweredOn))
 CREATE_ATTEMPTS = 2  # первая попытка + одна повторная (регламент DR-15065)
 CREATE_RETRY_DELAY_SEC = 10  # пауза перед повтором: vCenter успевает освободить имя и отпустить задачу
 
@@ -143,13 +144,23 @@ async def refresh_ips(session: AsyncSession, batch: int = 10) -> None:
 
 
 async def recover(session: AsyncSession) -> None:
-    """После перезапуска worker'а: «creating» без результата — проверить vSphere и вернуть в очередь."""
+    """После перезапуска worker'а: «creating» без результата — проверить vSphere.
+
+    Включение — последний шаг создания, поэтому включённая ВМ с таким именем готова. Невключённая — недоделанный клон
+    (перезапуск пришёлся на клонирование или настройку): по имени её не удаляем, а сообщаем и оставляем человеку.
+    Ничего не найдено — возвращаем в очередь.
+    """
     for vm in (await session.scalars(select(VirtualMachine).where(VirtualMachine.status == VmStatus.creating))).unique():
         info = await asyncio.to_thread(vsphere.find_vm, vm.name)
-        if info:
-            vm.status, vm.vsphere_moid, vm.ready_at = VmStatus.ready.value, info.moid, datetime.now(timezone.utc)
-        else:
+        if info is None:
             vm.status = VmStatus.queued.value
+        elif info.power_state == POWERED_ON:
+            vm.status, vm.vsphere_moid, vm.ready_at = VmStatus.ready.value, info.moid, datetime.now(timezone.utc)
+            vm.ip_address, vm.power_state, vm.insight_pending = info.ip_address, info.power_state, True
+            notifications.vm_ready(session, vm)
+        else:
+            await _fail(session, vm, f"Создание прервано перезапуском сервиса: ВМ «{vm.name}» в vCenter не доведена до "
+                                     "конца. Проверьте и удалите её вручную, затем закажите ВМ заново")
     await session.commit()
 
 

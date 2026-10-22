@@ -661,6 +661,32 @@ async def test_recover_creating(session, vm_on, ctx, vsphere):
     assert (found.status, found.vsphere_moid) == ("ready", "vm-77") and lost.status == "queued"
 
 
+async def test_recover_ready_vm_gets_ip_notification_and_insight_write(session, vm_on, ctx, vsphere):
+    vm = await request(session, ctx)
+    vm.status, vm.insight_pending = "creating", False
+    await session.commit()
+    vsphere.existing["A1001"] = VmInfo("vm-77", "A1001", "poweredOn", "10.0.0.9")
+    await vm_jobs.recover(session)
+    vm = await status_of(session, vm)
+    assert (vm.ip_address, vm.power_state, vm.insight_pending) == ("10.0.0.9", "poweredOn", True)
+    assert [n.title for n in await notes()] == ["ВМ A1001 готова"]
+
+
+async def test_recover_unfinished_clone_fails_visibly_and_is_not_deleted(session, vm_on, ctx, vsphere, notify):
+    """Перезапуск пришёлся на клонирование: невключённая ВМ — не «готова», а ошибка с просьбой разобраться вручную."""
+    vm = await request(session, ctx)
+    vm.status = "creating"
+    await session.commit()
+    vsphere.existing["A1001"] = VmInfo("vm-77", "A1001", "poweredOff", None)
+    await vm_jobs.recover(session)
+    vm = await status_of(session, vm)
+    assert vm.status == "failed" and "не доведена до конца" in vm.error and vm.insight_pending is True
+    assert vsphere.deleted == []  # по имени ничего не удаляем
+    notify.assert_awaited_once()
+    assert "A1001" in notify.await_args.args[0]
+    assert [n.title for n in await notes()] == ["ВМ A1001 не создана"]
+
+
 # ---------- удаление ----------
 
 async def test_release_queued_is_immediate(session, vm_on, ctx):
