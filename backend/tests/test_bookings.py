@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.core import clock
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
@@ -342,6 +342,25 @@ async def test_insight_object_missing_does_not_block(session, env, insight_comp,
     fake = use_insight(FakeInsight(result=None))
     b = await bookings.create_booking(session, env.user, payload(insight_comp, env.dept))
     assert b.status == BookingStatus.active and fake.closed
+
+
+async def test_insight_check_runs_without_row_lock(session, env, insight_comp, use_insight):
+    """Пока идёт запрос к Insight, строка ПК не заблокирована: другая транзакция берёт её без ожидания."""
+    lock_free: list[bool] = []
+
+    class ProbingInsight(FakeInsight):
+        async def _get(self, object_id):
+            async with SessionLocal() as other:
+                try:
+                    await other.execute(select(Computer.id).where(Computer.id == insight_comp.id).with_for_update(nowait=True))
+                    lock_free.append(True)
+                except DBAPIError:
+                    lock_free.append(False)
+            return insight_obj("Свободен")
+
+    use_insight(ProbingInsight())
+    await bookings.create_booking(session, env.user, payload(insight_comp, env.dept))
+    assert lock_free == [True]
 
 
 async def test_insight_skipped_when_writeback_pending(session, env, make_computer, use_insight):

@@ -59,9 +59,16 @@ async def _fresh_from_insight(comp: Computer) -> ComputerData | None:
 
 
 async def create_booking(session: AsyncSession, user: User, data: BookingCreate) -> Booking:
+    # Insight отвечает до 30 с, поэтому его перепроверяем ДО блокировки строки: иначе все, кто хочет этот ПК (и
+    # синхронизация), ждали бы чужой сетевой запрос. Обычное чтение строки не блокирует; статус проверяется заново
+    # под блокировкой.
+    peek = await session.scalar(select(Computer).where(Computer.id == data.computer_id))
+    fresh = await _fresh_from_insight(peek) if peek and not peek.is_archived and peek.status == ComputerStatus.available else None
+
     # FOR UPDATE: два человека не смогут одновременно забронировать один ПК
     comp = await session.scalar(
         select(Computer).where(Computer.id == data.computer_id).with_for_update(of=Computer)
+        .execution_options(populate_existing=True)
     )
     if comp is None or comp.is_archived:
         raise NotFound("Компьютер не найден")
@@ -69,7 +76,6 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         raise NotFound("Этот компьютер сейчас не выдаётся")
     if comp.status != ComputerStatus.available:
         raise Conflict(f"{comp.name} уже занят или недоступен")
-    fresh = await _fresh_from_insight(comp)
     if fresh is not None and fresh.status != ComputerStatus.available:
         # в Jira ПК успели занять руками, а синхронизация ещё не дошла — обновляем и не даём бронировать
         comp.insight_status, comp.status = fresh.insight_status, fresh.status
