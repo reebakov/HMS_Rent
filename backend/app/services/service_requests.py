@@ -123,6 +123,26 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
     ), settings.sd_request_type_return, actor)
 
 
+async def create_diagnose(session: AsyncSession, booking_id: int, actor: User, comment: str) -> None:
+    """Заявка «Диагностика комплекта» после того, как исполнитель отметил ПК неисправным.
+
+    К заказу не привязана: заказ отклонён, а заявка нужна исполнителям, не заказчику и его команде.
+    """
+    if not settings.service_desk_configured:
+        return
+    b = await session.get(Booking, booking_id)
+    if b is None:
+        return
+    await _save_in_background(session, ServiceRequest(
+        kind=ServiceRequestKind.diagnose.value, user_id=actor.id,
+        summary=f"HMS Rent: диагностика комплекта {b.computer.name}",
+        description=f"ПК выведен из пула как неисправный (заказ №{b.order_number}, отклонён).\n"
+                    f"Комментарий исполнителя: {comment}\nОтметил: {actor.display_name} ({actor.email or actor.username})\n\n"
+                    "Переведите ПК в Insight в «ТО», если запись в Insight в портале выключена, проведите диагностику и "
+                    "после ремонта верните ПК в пул.\n\n" + _booking_text(b),
+    ), settings.sd_request_type_order, actor)
+
+
 async def create_prepare(session: AsyncSession, booking_id: int, actor: User) -> None:
     """Заявка «подготовить ПК» после брони: исполнитель ставит выбранную ОС и настраивает ПК (до задач DR-15072)."""
     if not (settings.service_desk_configured and settings.sd_prepare_on_booking):

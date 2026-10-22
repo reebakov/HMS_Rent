@@ -71,6 +71,12 @@ def pc_ready(session: AsyncSession, booking: Booking, *, changed: bool) -> None:
         "исполнитель; смените его при первом входе.")
 
 
+def order_rejected(session: AsyncSession, booking: Booking, reason: str, comment: str) -> None:
+    add(session, booking.user_id, NotificationKind.order_rejected,
+        f"Заказ №{booking.order_number} на ПК {booking.computer.name} отклонён: {reason}",
+        f"{comment}\nОформите новый заказ или напишите администратору.")
+
+
 def vm_ready(session: AsyncSession, vm: VirtualMachine) -> None:
     add(session, vm.user_id, NotificationKind.vm_ready, f"ВМ {vm.name} готова",
         f"Заказ №{vm.order_number}, аренда до {_until(vm)}. Адрес и логин — в «Моей аренде», пароль сообщит исполнитель.")

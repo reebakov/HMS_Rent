@@ -129,6 +129,11 @@ export interface ExecutorOrder extends Booking {
   prepared_by: UserShort | null
 }
 
+export interface ExecutorReject {
+  reason: string
+  comment: string
+}
+
 export interface ExecutorResult {
   host: string
   ip: string
@@ -443,7 +448,7 @@ export interface AdminUserRow {
 
 export interface ServiceRequest {
   id: number
-  kind: 'problem' | 'return' | 'prepare' | 'build'
+  kind: 'problem' | 'return' | 'prepare' | 'build' | 'diagnose'
   booking_id: number | null
   vm_id: number | null
   department_id: number | null // команда сборки по запросу
@@ -542,7 +547,7 @@ export type VsphereCheck =
 
 // ---------- Уведомления (колокольчик) ----------
 
-export type NotificationKind = 'pc_ready' | 'vm_ready' | 'vm_failed' | 'request_status' | 'term_decision' | 'term_ending' | 'term_overdue'
+export type NotificationKind = 'order_rejected' | 'pc_ready' | 'vm_ready' | 'vm_failed' | 'request_status' | 'term_decision' | 'term_ending' | 'term_overdue'
 
 export interface UserNotification {
   id: number

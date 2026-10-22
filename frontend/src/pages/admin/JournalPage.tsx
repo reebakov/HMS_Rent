@@ -32,6 +32,7 @@ export function JournalPage() {
             <option value="">Все</option>
             <option value="active">Активные</option>
             <option value="returned">Возвращённые</option>
+            <option value="cancelled">Отклонённые</option>
           </Select>
           <Select
             className="w-48"
@@ -100,7 +101,7 @@ export function JournalPage() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDuration(b.booked_at, b.returned_at)}</td>
                   <td className="px-4 py-3">
-                    {b.status === 'active' ? <Badge tone="primary" dot>Активна</Badge> : <Badge>Закрыта</Badge>}
+                    {b.status === 'active' ? <Badge tone="primary" dot>Активна</Badge> : b.status === 'cancelled' ? <Badge tone="danger">Отклонена</Badge> : <Badge>Закрыта</Badge>}
                   </td>
                 </tr>
               ))}

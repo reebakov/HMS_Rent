@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import { Card, PageHeader } from '@/components/ui/card'
 import { DataState, FormError, RowsSkeleton } from '@/components/ui/data-state'
-import { Field, Input, Select } from '@/components/ui/input'
+import { Field, Input, Select, Textarea } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonClass } from '@/components/ui/button'
-import { useExecutorOrder, useSaveExecutorResult } from '@/lib/queries'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { FAULTY_REASON, REJECT_REASONS } from '@/lib/dictionaries'
+import { useExecutorOrder, useRejectExecutorOrder, useSaveExecutorResult } from '@/lib/queries'
 import type { ConnectionMethod, ExecutorOrder } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime } from '@/lib/utils'
 
@@ -34,7 +36,10 @@ export function ExecutorOrderPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <OrderDetails order={o} />
               {o.status === 'active' ? (
-                <ResultForm key={`${o.id}-${o.prepared_at}`} order={o} />
+                <div className="space-y-4">
+                  <ResultForm key={`${o.id}-${o.prepared_at}`} order={o} />
+                  <RejectForm order={o} />
+                </div>
               ) : (
                 <Card className="p-5 text-[13px] text-muted-foreground">Заказ закрыт: ПК вернули {formatDateTime(o.returned_at)}.</Card>
               )}
@@ -119,6 +124,73 @@ function ResultForm({ order: o }: { order: ExecutorOrder }) {
           {o.prepared_at ? 'Сохранить изменения' : 'Отправить заказчику'}
         </Button>
       </form>
+    </Card>
+  )
+}
+
+/** Отклонение заказа: основание из списка регламента и обязательный комментарий, который увидит заказчик */
+function RejectForm({ order: o }: { order: ExecutorOrder }) {
+  const navigate = useNavigate()
+  const reject = useRejectExecutorOrder()
+  const [reason, setReason] = useState('')
+  const [comment, setComment] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const faulty = reason === FAULTY_REASON
+
+  const submit = async () => {
+    try {
+      await reject.mutateAsync({ id: o.id, reason, comment: comment.trim() })
+      toast.success('Заказ отклонён, заказчик получил уведомление')
+      navigate('/executor')
+    } catch {
+      // текст ошибки показан в окне подтверждения
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="space-y-4">
+        <p className="font-semibold">Отклонить заказ</p>
+        <Field label="Основание" required>
+          <Select value={reason} onChange={(e) => setReason(e.target.value)}>
+            <option value="" disabled>
+              Выберите основание
+            </option>
+            {REJECT_REASONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Комментарий для заказчика" required hint="Заказчик увидит этот текст в уведомлении и в «Моей аренде»">
+          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} maxLength={2000} rows={3} />
+        </Field>
+        {faulty && (
+          <p className="text-xs text-muted-foreground">
+            ПК будет выведен из пула, а исполнителям создастся заявка «Диагностика комплекта». Если в пуле есть такой же свободный
+            сервер, предложите заказчику замену в комментарии к заявке.
+          </p>
+        )}
+        <Button variant="outline" disabled={!reason || !comment.trim()} onClick={() => setConfirming(true)}>
+          Отклонить заказ…
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={`Отклонить заказ №${o.order_number}?`}
+        description={
+          faulty
+            ? 'ПК будет выведен из пула, заказчик получит уведомление с причиной. Отменить отклонение нельзя.'
+            : 'ПК освободится, заказчик получит уведомление с причиной. Отменить отклонение нельзя.'
+        }
+        confirmLabel="Отклонить"
+        pending={reject.isPending}
+        onConfirm={submit}
+      >
+        {reject.isError && <FormError>{errorMessage(reject.error)}</FormError>}
+      </ConfirmDialog>
     </Card>
   )
 }

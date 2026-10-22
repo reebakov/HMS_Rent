@@ -9,9 +9,20 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
-from app.models import AssetEvent, EventType, Notification, NotificationKind, UserRole
+from app.models import (
+    AssetEvent,
+    BookingStatus,
+    Computer,
+    ComputerStatus,
+    EventType,
+    Notification,
+    NotificationKind,
+    ServiceRequest,
+    UserRole,
+)
 
 from .sync_fakes import add_booking
+from .test_service_requests import boom, sd  # noqa: F401 — sd: фикстура «Service Desk подключён, вызовы записываются»
 
 RESULT = {"host": "A001.ff.local", "ip": "10.1.2.3", "method": "RDP"}
 
@@ -24,9 +35,9 @@ async def env(session, make_department, make_user, make_pool, make_computer, log
     worker = await make_user("worker", role=UserRole.executor.value, display_name="Пётр Исполнитель")
     pool = await make_pool()
     now = datetime.now(timezone.utc)
-    early = await add_booking(session, await make_computer("A001", pool), owner, qa, booked_at=now - timedelta(days=2))
-    late = await add_booking(session, await make_computer("A002", pool), owner, qa, booked_at=now - timedelta(days=1))
-    closed = await add_booking(session, await make_computer("A003", pool), owner, qa, status="returned")
+    early = await add_booking(session, await make_computer("A001", pool, insight_status="Свободен"), owner, qa, booked_at=now - timedelta(days=2))
+    late = await add_booking(session, await make_computer("A002", pool, insight_status="Свободен"), owner, qa, booked_at=now - timedelta(days=1))
+    closed = await add_booking(session, await make_computer("A003", pool, insight_status="Свободен"), owner, qa, status="returned")
     login(worker)
     return SimpleNamespace(owner=owner, worker=worker, early=early, late=late, closed=closed)
 
@@ -117,3 +128,82 @@ async def test_result_validation(client, api, env, session, patch):
     r = await client.post(api(f"/executor/orders/{env.early.id}/result"), json={**RESULT, **patch})
     assert r.status_code == 422
     assert await _count(session, Notification) == 0
+
+
+# ---------- отклонение заказа ----------
+
+REJECT = {"reason": "Заказчик не ответил", "comment": "Нет ответа 5 рабочих дней"}
+
+
+async def test_reject_closes_order_frees_pc_and_notifies_customer(client, api, env, login, session):
+    r = await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "cancelled" and body["returned_at"] and body["returned_by"] is None
+    assert body["return_comment"] == "Заказчик не ответил: Нет ответа 5 рабочих дней"
+
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A001").execution_options(populate_existing=True))).one()
+    assert (comp.status, comp.department_id, comp.order_number, comp.usage_until) == (ComputerStatus.available, None, None, None)
+    assert comp.pool_id is not None  # обычное отклонение пул не трогает
+    (event,) = await session.scalars(select(AssetEvent).where(AssetEvent.event_type == EventType.rejected))
+    assert event.actor_id == env.worker.id and "Заказчик не ответил" in event.message
+
+    # заказ ушёл из очереди; заказчик видит причину в колокольчике и в «Моей аренде», но не исполнителя
+    assert [o["id"] for o in (await client.get(api("/executor/orders"))).json()] == [env.late.id]
+    login(env.owner)
+    first = (await client.get(api("/notifications"))).json()["items"][0]
+    assert first["kind"] == "order_rejected"
+    assert first["title"] == f"Заказ №{env.early.order_number} на ПК A001 отклонён: Заказчик не ответил"
+    assert "Нет ответа 5 рабочих дней" in first["body"]
+    mine = {b["id"]: b for b in (await client.get(api("/bookings/my"))).json()}[env.early.id]
+    assert mine["status"] == "cancelled" and "prepared_by" not in mine and mine["returned_by"] is None
+
+
+async def test_faulty_removes_pc_from_pool_and_opens_diagnose_request(client, api, env, session, sd):  # noqa: F811
+    r = await client.post(api(f"/executor/orders/{env.early.id}/reject"),
+                          json={"reason": "Сервер неисправен", "comment": "Не включается, пищит БП"})
+    assert r.status_code == 200 and r.json()["status"] == BookingStatus.cancelled
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A001").execution_options(populate_existing=True))).one()
+    assert (comp.status, comp.pool_id, comp.department_id) == (ComputerStatus.maintenance, None, None)
+
+    # заявка «Диагностика комплекта» создана в фоне, к заказу и команде заказчика не привязана
+    (type_id, summary, description, _), = sd.created
+    assert (type_id, summary) == (1252, "HMS Rent: диагностика комплекта A001")
+    assert "Не включается, пищит БП" in description and "ТО" in description
+    (req,) = await session.scalars(select(ServiceRequest))
+    assert (req.kind, req.booking_id, req.department_id, req.user_id) == ("diagnose", None, None, env.worker.id)
+
+
+async def test_plain_rejection_creates_no_diagnose_request(client, api, env, sd):  # noqa: F811
+    await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)
+    assert sd.created == []
+
+
+async def test_diagnose_request_failure_does_not_undo_rejection(client, api, env, session, sd):  # noqa: F811
+    sd.create_error = boom()
+    r = await client.post(api(f"/executor/orders/{env.early.id}/reject"),
+                          json={"reason": "Сервер неисправен", "comment": "x"})
+    assert r.status_code == 200
+    (req,) = await session.scalars(select(ServiceRequest))
+    assert req.issue_key is None and req.error  # ошибка сохранена в заявке, заказ остался отклонённым
+
+
+@pytest.mark.parametrize("body", [
+    {"reason": "Заказчик не ответил"}, {"reason": "Заказчик не ответил", "comment": ""},
+    {"reason": "Заказчик не ответил", "comment": "   "}, {"reason": "Не нравится", "comment": "x"},
+    {"reason": "Заказчик не ответил", "comment": "x" * 2001},
+], ids=["no_comment", "empty", "spaces", "unknown_reason", "too_long"])
+async def test_reject_validation_422(client, api, env, body):
+    assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=body)).status_code == 422
+
+
+async def test_reject_closed_missing_and_repeated(client, api, env):
+    assert (await client.post(api(f"/executor/orders/{env.closed.id}/reject"), json=REJECT)).status_code == 409
+    assert (await client.post(api("/executor/orders/999999/reject"), json=REJECT)).status_code == 404
+    assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 200
+    assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 409
+
+
+async def test_customer_cannot_reject(client, api, env, login):
+    login(env.owner)
+    assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 403

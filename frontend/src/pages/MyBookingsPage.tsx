@@ -181,7 +181,7 @@ export function MyBookingsPage() {
 
       {history.length > 0 && (
         <Card className="mt-8">
-          <CardHeader title="История" description="Возвращённые компьютеры" />
+          <CardHeader title="История" description="Возвращённые и отклонённые заказы" />
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
               <thead className="text-xs text-muted-foreground">
@@ -190,7 +190,7 @@ export function MyBookingsPage() {
                   <th className="px-5 py-3 font-medium">Компьютер</th>
                   <th className="px-5 py-3 font-medium">Отдел</th>
                   <th className="px-5 py-3 font-medium">Взят</th>
-                  <th className="px-5 py-3 font-medium">Возвращён</th>
+                  <th className="px-5 py-3 font-medium">Закрыт</th>
                   <th className="px-5 py-3 font-medium">Срок</th>
                   <th className="px-5 py-3 font-medium">Заявки</th>
                 </tr>
@@ -199,7 +199,15 @@ export function MyBookingsPage() {
                 {history.map((b) => (
                   <tr key={b.id} className="hover:bg-muted/40">
                     <td className="px-5 py-3 tabular text-muted-foreground">№{b.order_number}</td>
-                    <td className="px-5 py-3 font-medium">{b.computer.name}</td>
+                    <td className="px-5 py-3 font-medium">
+                      {b.computer.name}
+                      {b.status === 'cancelled' && (
+                        <span className="mt-0.5 flex items-center gap-1.5 text-xs font-normal">
+                          <Badge tone="danger">Отклонён</Badge>
+                          <span className="text-muted-foreground">{b.return_comment}</span>
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">{b.department.name}</td>
                     <td className="px-5 py-3 tabular">{formatDateTime(b.booked_at)}</td>
                     <td className="px-5 py-3 tabular">{formatDateTime(b.returned_at)}</td>

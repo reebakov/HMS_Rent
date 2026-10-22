@@ -53,6 +53,7 @@ class ServiceRequestKind(StrEnum):
     return_ = "return"   # заявка на возврат ПК (return — зарезервированное слово)
     prepare = "prepare"  # подготовить ПК после брони: поставить выбранную ОС
     build = "build"      # сборка по запросу из каталога (без ПК и ВМ, привязана к команде)
+    diagnose = "diagnose"  # «Диагностика комплекта»: исполнитель отметил ПК неисправным (без привязки к заказу)
 
 
 class EventType(StrEnum):
@@ -60,6 +61,7 @@ class EventType(StrEnum):
     returned = "returned"
     extended = "extended"
     prepared = "prepared"  # исполнитель подготовил ПК и внёс данные для подключения
+    rejected = "rejected"  # исполнитель отклонил заказ ПК (в том числе «Сервер неисправен»)
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"
@@ -72,6 +74,7 @@ class NotificationKind(StrEnum):
     """Что случилось с заказом заказчика; по виду фронтенд выбирает значок и цвет."""
 
     pc_ready = "pc_ready"  # исполнитель подготовил ПК, данные для подключения в «Моей аренде»
+    order_rejected = "order_rejected"  # исполнитель отклонил заказ ПК, причина в уведомлении
     vm_ready = "vm_ready"
     vm_failed = "vm_failed"
     request_status = "request_status"  # сменился статус заявки в Service Desk

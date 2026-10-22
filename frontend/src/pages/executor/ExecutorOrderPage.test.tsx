@@ -110,3 +110,74 @@ describe('ExecutorOrderPage: данные для подключения', () => 
     expect(toast.success).not.toHaveBeenCalled()
   })
 })
+
+describe('ExecutorOrderPage: отклонение', () => {
+  const fill = async (reason: string, comment = 'Нет ответа 5 рабочих дней') => {
+    const user = userEvent.setup()
+    await user.selectOptions(await screen.findByLabelText(/Основание/), reason)
+    await user.type(screen.getByLabelText(/Комментарий для заказчика/), comment)
+    return user
+  }
+
+  it('кнопка недоступна, пока нет основания и комментария', async () => {
+    mount()
+    const button = await screen.findByRole('button', { name: 'Отклонить заказ…' })
+    expect(button).toBeDisabled()
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByLabelText(/Основание/), 'Некорректный заказ')
+    expect(button).toBeDisabled()
+    await user.type(screen.getByLabelText(/Комментарий для заказчика/), '   ')
+    expect(button).toBeDisabled()
+    await user.type(screen.getByLabelText(/Комментарий для заказчика/), 'Дубль заказа')
+    expect(button).toBeEnabled()
+  })
+
+  it('основания — по регламенту', async () => {
+    mount()
+    await screen.findByRole('heading', { name: /заказ №1042/ })
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual(expect.arrayContaining(['Сервер неисправен', 'Заказчик не ответил', 'Некорректный заказ']))
+  })
+
+  it('отправка идёт через подтверждение: POST, тост и возврат в очередь', async () => {
+    vi.mocked(api.post).mockResolvedValue({ ...order, status: 'cancelled' })
+    mount()
+    const user = await fill('Заказчик не ответил')
+    await user.click(screen.getByRole('button', { name: 'Отклонить заказ…' }))
+    expect(api.post).not.toHaveBeenCalled() // пока не подтвердили
+    await user.click(await screen.findByRole('button', { name: 'Отклонить' }))
+    expect(api.post).toHaveBeenCalledWith('/executor/orders/7/reject', {
+      reason: 'Заказчик не ответил', comment: 'Нет ответа 5 рабочих дней',
+    })
+    expect(toast.success).toHaveBeenCalledWith('Заказ отклонён, заказчик получил уведомление')
+    expect(await screen.findByText('очередь')).toBeInTheDocument()
+  })
+
+  it('«Сервер неисправен» предупреждает про вывод ПК из пула', async () => {
+    mount()
+    expect(await screen.findByLabelText(/Основание/)).toBeInTheDocument()
+    expect(screen.queryByText(/выведен из пула/)).not.toBeInTheDocument()
+    const user = await fill('Сервер неисправен', 'Не включается')
+    expect(screen.getByText(/ПК будет выведен из пула, а исполнителям создастся заявка/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Отклонить заказ…' }))
+    expect(await screen.findByText(/ПК будет выведен из пула, заказчик получит уведомление/)).toBeInTheDocument()
+  })
+
+  it('ошибка сервера показана в окне, заказ остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Заказ уже закрыт'))
+    mount()
+    const user = await fill('Некорректный заказ', 'Дубль')
+    await user.click(screen.getByRole('button', { name: 'Отклонить заказ…' }))
+    await user.click(await screen.findByRole('button', { name: 'Отклонить' }))
+    expect(await screen.findByText('Заказ уже закрыт')).toBeInTheDocument()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.queryByText('очередь')).not.toBeInTheDocument()
+  })
+
+  it('у закрытого заказа формы отклонения нет', async () => {
+    order = makeExecutorOrder({ status: 'cancelled', returned_at: '2026-10-21T12:00:00Z' })
+    mount()
+    await screen.findByText(/Заказ закрыт/)
+    expect(screen.queryByRole('button', { name: 'Отклонить заказ…' })).not.toBeInTheDocument()
+  })
+})

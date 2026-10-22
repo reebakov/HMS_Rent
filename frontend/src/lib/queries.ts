@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorResult,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorReject, ExecutorResult,
 } from './types'
 
 export interface ComputerFilters {
@@ -429,6 +429,14 @@ export const useExecutorOrders = (enabled = true) =>
 
 export const useExecutorOrder = (id: number) =>
   useQuery({ queryKey: ['executor', 'order', id], queryFn: () => api.get<ExecutorOrder>(`/executor/orders/${id}`) })
+
+export function useRejectExecutorOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: ExecutorReject & { id: number }) => api.post<ExecutorOrder>(`/executor/orders/${id}/reject`, data),
+    onSettled: () => Promise.all(['executor', 'my-bookings', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
 
 export function useSaveExecutorResult() {
   const qc = useQueryClient()

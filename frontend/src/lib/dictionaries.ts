@@ -61,11 +61,16 @@ export const canReleaseVm = (status: VmStatus) => status === 'ready' || status =
 /** Продлить срок ВМ можно, пока она не удаляется и не удалена */
 export const canExtendVm = (status: VmStatus) => status !== 'deleting' && status !== 'deleted'
 
+/** Основания отклонения заказа ПК исполнителем (регламент); первое ещё и выводит ПК из пула */
+export const REJECT_REASONS = ['Сервер неисправен', 'Заказчик не ответил', 'Некорректный заказ'] as const
+export const FAULTY_REASON = REJECT_REASONS[0]
+
 export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',
   returned: 'Возврат',
   extended: 'Продление',
   prepared: 'Подготовка ПК',
+  rejected: 'Отклонение заказа',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',

@@ -10,7 +10,7 @@ import { useAddComment, useCreateRequest, useRequestDetail, useSdConfig } from '
 import type { ServiceRequest } from '@/lib/types'
 import { errorMessage, formatDateTime } from '@/lib/utils'
 
-const KIND_LABEL: Record<ServiceRequest['kind'], string> = { problem: 'Заявка', return: 'Возврат', prepare: 'Подготовка', build: 'Сборка' }
+const KIND_LABEL: Record<ServiceRequest['kind'], string> = { problem: 'Заявка', return: 'Возврат', prepare: 'Подготовка', build: 'Сборка', diagnose: 'Диагностика' }
 
 const tone = (r: ServiceRequest): Tone =>
   r.error ? 'danger' : r.status_category === 'done' ? 'success' : r.status_category === 'indeterminate' ? 'primary' : 'warning'

@@ -218,6 +218,17 @@ describe('MyBookingsPage', () => {
     expect(screen.getAllByRole('button', { name: /Вернуть компьютер/ })).toHaveLength(1)
   })
 
+  it('отклонённый заказ в истории: метка «Отклонён» и причина исполнителя', async () => {
+    bookings = [makeBooking({
+      id: 3, order_number: 80, status: 'cancelled', returned_at: '2024-01-12T09:00:00Z',
+      return_comment: 'Заказчик не ответил: Нет ответа 5 рабочих дней',
+    })]
+    renderPage()
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('Отклонён')).toBeInTheDocument()
+    expect(within(table).getByText('Заказчик не ответил: Нет ответа 5 рабочих дней')).toBeInTheDocument()
+  })
+
   it('если активных нет, но есть история — и пустое состояние, и таблица', async () => {
     bookings = [makeBooking({ status: 'returned', returned_at: '2024-01-11T09:00:00Z' })]
     renderPage()

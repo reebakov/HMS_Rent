@@ -178,3 +178,10 @@ async def test_computers_are_sent_in_id_order_even_after_updates(session, fake, 
     await session.commit()
     await push_pending(session)
     assert [c["id"] for c in fake.calls] == [1, 2]
+
+
+async def test_faulty_pc_is_written_as_maintenance(session, fake, wb_on, make_computer):
+    """ПК, отмеченный неисправным исполнителем, уходит в Insight статусом обслуживания, а не «свободен»."""
+    await pending(make_computer, status="maintenance")
+    await push_pending(session)
+    assert fake.calls[0]["values"]["Статус"] == "В ремонте"  # в демо-маппинге; в боевом — «ТО»

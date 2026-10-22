@@ -56,7 +56,9 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
             booking = await session.scalar(
                 select(Booking).where(Booking.computer_id == comp.id, Booking.status == BookingStatus.active)
             )
-            target = ComputerStatus.booked if booking else ComputerStatus.available
+            # неисправный ПК (его отметил исполнитель) пишется статусом «ТО», если он задан в маппинге, а не «Ожидает»
+            idle = ComputerStatus.maintenance if comp.status == ComputerStatus.maintenance else ComputerStatus.available
+            target = ComputerStatus.booked if booking else idle
             values: dict[str, str | None] = {}
             extras: dict[str, str | None] = {}  # необязательные поля: их сбой не должен мешать записи статуса
             if wb.status_attribute and wb.status_values.get(target):

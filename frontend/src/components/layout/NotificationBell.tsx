@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlarmClock, Bell, CalendarCheck, CircleAlert, ClipboardList, Cloud, Clock, Monitor } from 'lucide-react'
+import { AlarmClock, Ban, Bell, CalendarCheck, CircleAlert, ClipboardList, Cloud, Clock, Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DataState } from '@/components/ui/data-state'
 import { useNotifications, useReadNotifications } from '@/lib/queries'
@@ -9,6 +9,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 
 const KINDS: Record<NotificationKind, { icon: ComponentType<{ className?: string }>; tone: string }> = {
   pc_ready: { icon: Monitor, tone: 'text-success' },
+  order_rejected: { icon: Ban, tone: 'text-danger' },
   vm_ready: { icon: Cloud, tone: 'text-success' },
   vm_failed: { icon: CircleAlert, tone: 'text-danger' },
   request_status: { icon: ClipboardList, tone: 'text-primary' },

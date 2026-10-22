@@ -10,7 +10,7 @@ from app.models.vm import VirtualMachine
 @pytest.mark.parametrize("enum, values", [
     (VmStatus, ["queued", "creating", "ready", "deleting", "deleted", "failed"]),
     (SyncRunStatus, ["running", "success", "failed"]),
-    (ServiceRequestKind, ["problem", "return", "prepare", "build"]),
+    (ServiceRequestKind, ["problem", "return", "prepare", "build", "diagnose"]),
 ])
 def test_values_are_the_strings_stored_in_db(enum, values):
     assert [m.value for m in enum] == values

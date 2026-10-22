@@ -55,6 +55,17 @@ class ExecutorOrderOut(BookingOut):
     prepared_by: UserShort | None
 
 
+REJECT_REASONS = ("Сервер неисправен", "Заказчик не ответил", "Некорректный заказ")
+FAULTY_REASON = REJECT_REASONS[0]  # эта причина ещё и выводит ПК из пула
+
+
+class ExecutorReject(InputModel):
+    """Отклонение заказа ПК: основание из списка регламента и обязательный комментарий."""
+
+    reason: Literal[*REJECT_REASONS]
+    comment: str = Field(min_length=1, max_length=2000)
+
+
 class ExecutorResult(InputModel):
     """Результат подготовки ПК: логин `user` и пароль исполнитель не вводит."""
 
