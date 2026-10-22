@@ -56,8 +56,10 @@ def _jira_summary(summary: str) -> str:
     return f"{prefix} {summary}" if prefix else summary
 
 
-async def _send(req: ServiceRequest, request_type_id: int, on_behalf_of: str | None) -> None:
-    key, status = await sd.create_request(request_type_id, _jira_summary(req.summary), req.description, on_behalf_of)
+async def _send(req: ServiceRequest, request_type_id: int, on_behalf_of: str | None,
+                extra_fields: dict | None = None) -> None:
+    key, status = await sd.create_request(request_type_id, _jira_summary(req.summary), req.description, on_behalf_of,
+                                          extra_fields)
     req.issue_key, req.status, req.status_category = key, status.status, status.category
     req.error, req.last_checked_at = None, datetime.now(timezone.utc)
 
@@ -88,7 +90,7 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
         description=f"{message}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
     try:
-        await _send(req, settings.sd_request_type_problem, user.username)
+        await _send(req, settings.sd_request_type_problem, user.username, settings.sd_problem_fields)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка по проблеме не создана: %s", exc)  # подробности Jira — только в лог
         raise DomainError(f"Не удалось создать заявку: {exc.user_message}") from exc
