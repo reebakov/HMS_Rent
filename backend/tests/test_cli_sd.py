@@ -1,4 +1,4 @@
-"""CLI sd-check (app/cli.py): проверка Service Desk — какие поля у типов заявок обязательны.
+"""CLI sd-check (app/cli.py): проверка Service Desk — какие поля у типа заявок «Прочее» обязательны.
 
 request_type_fields подменяем фейком: сети и Jira нет. Корутину вызываем напрямую (см. пояснение в test_cli.py),
 диспетчер main() — подменой asyncio.run.
@@ -38,14 +38,14 @@ def lines_of(capsys) -> list[str]:
     return capsys.readouterr().out.splitlines()
 
 
-async def test_sd_check_prints_headers_fields_and_marks_required(sd_fields, capsys):
-    asked = sd_fields({1248: [SUMMARY, DESCRIPTION], 1252: [{"fieldId": "customfield_10500", "name": "Инвентарный №",
-                                                             "required": True}]})
+async def test_sd_check_prints_header_fields_and_marks_required(sd_fields, capsys):
+    asked = sd_fields({1252: [SUMMARY, DESCRIPTION, {"fieldId": "customfield_10500", "name": "Инвентарный №",
+                                                     "required": True}]})
     await cli.sd_check()
     out = lines_of(capsys)
-    assert asked == [1248, 1252]  # сначала «Проблема», потом «Возврат»
+    assert asked == [1252]
     assert out[0] == f"Service Desk: {settings.sd_jira_url}, id={settings.sd_service_desk_id}"
-    assert out.index("Проблема (1248):") < out.index("Возврат (1252):")
+    assert "Прочее (1252):" in out
     by_id = {line.split()[0]: line for line in out if line.startswith("  ")}
     assert by_id["summary"].endswith("Тема ОБЯЗАТЕЛЬНО")
     assert "ОБЯЗАТЕЛЬНО" not in by_id["description"] and "Описание" in by_id["description"]
@@ -53,52 +53,30 @@ async def test_sd_check_prints_headers_fields_and_marks_required(sd_fields, caps
     assert HINT in out[-1]  # подсказка — последней строкой
 
 
-async def test_sd_check_uses_configured_type_ids(sd_fields, capsys, monkeypatch):
-    monkeypatch.setattr(settings, "sd_request_type_problem", 11)
-    monkeypatch.setattr(settings, "sd_request_type_return", 22)
-    asked = sd_fields({11: [SUMMARY], 22: []})
+async def test_sd_check_uses_configured_type_id(sd_fields, capsys, monkeypatch):
+    monkeypatch.setattr(settings, "sd_request_type", 11)
+    asked = sd_fields({11: [SUMMARY]})
     await cli.sd_check()
-    out = capsys.readouterr().out
-    assert asked == [11, 22] and "Проблема (11):" in out and "Возврат (22):" in out
+    assert asked == [11] and "Прочее (11):" in capsys.readouterr().out
 
 
 async def test_sd_check_field_without_required_flag_is_optional(sd_fields, capsys):
-    sd_fields({1248: [{"fieldId": "priority", "name": "Приоритет"}], 1252: []})
+    sd_fields({1252: [{"fieldId": "priority", "name": "Приоритет"}]})
     await cli.sd_check()
     assert "ОБЯЗАТЕЛЬНО" not in capsys.readouterr().out
 
 
-async def test_sd_check_error_on_first_type_continues_with_second(sd_fields, capsys):
-    asked = sd_fields({1248: ServiceDeskError("403: нет доступа"), 1252: [SUMMARY]})
+async def test_sd_check_error_is_printed_not_raised(sd_fields, capsys):
+    sd_fields({1252: ServiceDeskError("403: нет доступа")})
     await cli.sd_check()  # ошибка типа не роняет команду
-    out = capsys.readouterr().out
-    assert asked == [1248, 1252]
-    assert "Проблема (1248): ОШИБКА — 403: нет доступа" in out
-    assert "\nВозврат (1252):\n" in out and "summary" in out  # второй тип проверен как обычно
-    assert HINT in out
+    assert "Прочее (1252): ОШИБКА — 403: нет доступа" in capsys.readouterr().out
 
 
-async def test_sd_check_error_on_second_type_keeps_first_result(sd_fields, capsys):
-    sd_fields({1248: [SUMMARY], 1252: ServiceDeskError("404")})
-    await cli.sd_check()
-    out = capsys.readouterr().out
-    assert "\nПроблема (1248):\n" in out and "summary" in out
-    assert "Возврат (1252): ОШИБКА — 404" in out and HINT in out
-
-
-async def test_sd_check_both_types_fail(sd_fields, capsys):
-    sd_fields({1248: ServiceDeskError("Service Desk не настроен"), 1252: ServiceDeskError("Service Desk не настроен")})
-    await cli.sd_check()
-    out = capsys.readouterr().out
-    assert out.count("ОШИБКА — Service Desk не настроен") == 2 and HINT in out
-
-
-async def test_sd_check_not_configured_reports_error_for_both_types(capsys):
-    """Без подмены: SD_TOKEN не задан -> _client() кидает ServiceDeskError, команда печатает его для обоих типов."""
+async def test_sd_check_not_configured_reports_error(capsys):
+    """Без подмены: SD_TOKEN не задан -> _client() кидает ServiceDeskError, команда печатает его."""
     assert not settings.sd_token and not settings.sd_username
     await cli.sd_check()
-    out = capsys.readouterr().out
-    assert out.count("ОШИБКА — Service Desk не настроен") == 2 and HINT in out
+    assert "ОШИБКА — Service Desk не настроен" in capsys.readouterr().out
 
 
 def test_main_dispatches_sd_check(monkeypatch):

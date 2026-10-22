@@ -155,21 +155,21 @@ async def insight_check(sample: int, query: str | None, breakdown: str | None) -
 
 
 async def sd_check() -> None:
-    """Проверка Service Desk: доступ и поля типов заявок (какие обязательны)."""
+    """Проверка Service Desk: доступ и поля типа «Прочее» (какие обязательны)."""
     from app.integrations import servicedesk as sd
 
+    type_id = settings.sd_request_type
     print(f"Service Desk: {settings.sd_jira_url}, id={settings.sd_service_desk_id}")
-    for title, type_id in (("Проблема", settings.sd_request_type_problem), ("Возврат", settings.sd_request_type_return)):
-        try:
-            fields = await sd.request_type_fields(type_id)
-        except sd.ServiceDeskError as exc:
-            print(f"\n{title} ({type_id}): ОШИБКА — {exc}")
-            continue
-        print(f"\n{title} ({type_id}):")
-        for f in fields:
-            mark = "ОБЯЗАТЕЛЬНО" if f.get("required") else ""
-            print(f"  {f.get('fieldId'):24} {f.get('name')} {mark}")
-    print("\nПортал заполняет summary и description. Значения других обязательных полей типа «Проблема» задаются в SD_PROBLEM_FIELDS.")
+    try:
+        fields = await sd.request_type_fields(type_id)
+    except sd.ServiceDeskError as exc:
+        print(f"\nПрочее ({type_id}): ОШИБКА — {exc}")
+        return
+    print(f"\nПрочее ({type_id}):")
+    for f in fields:
+        mark = "ОБЯЗАТЕЛЬНО" if f.get("required") else ""
+        print(f"  {f.get('fieldId'):24} {f.get('name')} {mark}")
+    print("\nПортал заполняет summary и description; остальное в шапке задачи он ставит после создания (SD_ISSUE_FIELDS).")
 
 
 async def sd_transitions(issue_key: str) -> None:

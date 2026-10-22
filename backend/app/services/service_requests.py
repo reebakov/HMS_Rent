@@ -56,12 +56,17 @@ def _jira_summary(summary: str) -> str:
     return f"{prefix} {summary}" if prefix else summary
 
 
-async def _send(req: ServiceRequest, request_type_id: int, on_behalf_of: str | None,
-                extra_fields: dict | None = None) -> None:
-    key, status = await sd.create_request(request_type_id, _jira_summary(req.summary), req.description, on_behalf_of,
-                                          extra_fields)
+async def _send(req: ServiceRequest, on_behalf_of: str | None) -> None:
+    """Создаёт задачу через тип «Прочее» (обязательное поле одно — описание) и приводит её шапку к заявке."""
+    key, status = await sd.create_request(settings.sd_request_type, _jira_summary(req.summary), req.description,
+                                          on_behalf_of)
     req.issue_key, req.status, req.status_category = key, status.status, status.category
     req.error, req.last_checked_at = None, datetime.now(timezone.utc)
+    if settings.sd_issue_fields:
+        try:
+            await sd.update_issue(key, settings.sd_issue_fields)
+        except sd.ServiceDeskError as exc:  # задача создана: сбой шапки заявку не отменяет, исполнитель поправит вручную
+            log.warning("Шапка задачи %s не изменена: %s", key, exc)
 
 
 async def create_problem(session: AsyncSession, user: User, *, booking_id: int | None, vm_id: int | None,
@@ -90,7 +95,7 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
         description=f"{message}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
     try:
-        await _send(req, settings.sd_request_type_problem, user.username, settings.sd_problem_fields)
+        await _send(req, user.username)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка по проблеме не создана: %s", exc)  # подробности Jira — только в лог
         raise DomainError(f"Не удалось создать заявку: {exc.user_message}") from exc
@@ -99,10 +104,10 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
     return req
 
 
-async def _save_in_background(session: AsyncSession, req: ServiceRequest, request_type_id: int, actor: User) -> None:
+async def _save_in_background(session: AsyncSession, req: ServiceRequest, actor: User) -> None:
     """Заявка, которую сервис создаёт сам после операции: ошибка Jira операцию не отменяет и сохраняется в заявке."""
     try:
-        await _send(req, request_type_id, actor.username)
+        await _send(req, actor.username)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка «%s» не создана: %s", req.summary, exc)
         req.error = exc.user_message  # поле видно сотруднику в карточке заявки; подробности — только в логе
@@ -122,7 +127,7 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
         summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
         description=_booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
         + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
-    ), settings.sd_request_type_return, actor)
+    ), actor)
 
 
 async def create_diagnose(session: AsyncSession, booking_id: int, actor: User, comment: str) -> None:
@@ -142,7 +147,7 @@ async def create_diagnose(session: AsyncSession, booking_id: int, actor: User, c
                     f"Комментарий исполнителя: {comment}\nОтметил: {actor.display_name} ({actor.email or actor.username})\n\n"
                     "Переведите ПК в Insight в «ТО», если запись в Insight в портале выключена, проведите диагностику и "
                     "после ремонта верните ПК в пул.\n\n" + _booking_text(b),
-    ), settings.sd_request_type_order, actor)
+    ), actor)
 
 
 async def create_prepare(session: AsyncSession, booking_id: int, actor: User) -> None:
@@ -158,7 +163,7 @@ async def create_prepare(session: AsyncSession, booking_id: int, actor: User) ->
         description="Поставить выбранную ОС, выполнить первичную настройку и внести данные для подключения "
         f"на странице заказа: {settings.public_url.rstrip('/')}/executor/orders/{b.id}\n\n"
         + _booking_text(b) + (f"\nЦель: {b.purpose}" if b.purpose else ""),
-    ), settings.sd_request_type_order, actor)
+    ), actor)
 
 
 async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> ServiceRequest:
@@ -193,7 +198,7 @@ async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> 
         + "\n".join(lines),
     )
     try:
-        await _send(req, settings.sd_request_type_order, user.username)
+        await _send(req, user.username)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка на сборку не создана: %s", exc)
         raise DomainError(f"Не удалось создать заявку: {exc.user_message}") from exc

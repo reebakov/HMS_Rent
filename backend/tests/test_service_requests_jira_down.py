@@ -19,7 +19,7 @@ API = "https://jira.test/rest/servicedeskapi"
 @pytest.fixture(autouse=True)
 def cfg(monkeypatch):
     for k, v in dict(sd_jira_url="https://jira.test", sd_token="tok", sd_username="", sd_password="",
-                     sd_service_desk_id=54, sd_request_type_problem=1248, sd_request_type_return=1252,
+                     sd_service_desk_id=54, sd_request_type=1252, sd_issue_fields={},
                      sd_raise_on_behalf=True, sd_return_on_return=True, sd_verify_ssl=True).items():
         monkeypatch.setattr(settings, k, v)
 
