@@ -34,9 +34,14 @@ class FakeSd:
     ServiceDeskError = real_sd.ServiceDeskError
     RESOLUTION_DONE = real_sd.RESOLUTION_DONE
     RESOLUTION_REJECTED = real_sd.RESOLUTION_REJECTED
+    is_done_transition = staticmethod(real_sd.is_done_transition)
 
     def __init__(self):
         self.created: list[tuple] = []
+        self.available: list[dict] = []  # переходы, доступные из текущего статуса
+        self.transitions_error: Exception | None = None
+        self.moved: list[tuple] = []
+        self.move_error: Exception | None = None
         self.updated: list[tuple] = []
         self.update_error: Exception | None = None
         self.create_error: Exception | None = None
@@ -59,6 +64,16 @@ class FakeSd:
         if self.create_error:
             raise self.create_error
         return f"HMS-{len(self.created)}", self.status
+
+    async def transitions(self, key):
+        if self.transitions_error:
+            raise self.transitions_error
+        return self.available
+
+    async def transition_issue(self, key, transition_id, resolution=None):
+        if self.move_error:
+            raise self.move_error
+        self.moved.append((key, transition_id, resolution))
 
     async def update_issue(self, key, fields):
         if self.update_error:

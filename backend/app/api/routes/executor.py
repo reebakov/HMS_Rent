@@ -2,7 +2,15 @@ from fastapi import APIRouter, BackgroundTasks
 
 from app.api.deps import DB, ExecutorUser
 from app.models import ServiceRequestKind
-from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorProblemOut, ExecutorReject, ExecutorResult
+from app.schemas.booking import (
+    FAULTY_REASON,
+    ExecutorOrderOut,
+    ExecutorProblemOut,
+    ExecutorReject,
+    ExecutorResult,
+    ProblemTransitionIn,
+    ProblemTransitionOut,
+)
 from app.services import executor as service
 from app.services.bookings import get_booking, push_to_insight
 
@@ -39,6 +47,17 @@ async def reject_order(
 async def list_problems(_: ExecutorUser, session: DB) -> list[ExecutorProblemOut]:
     """Проблемы по заказам: заявки «Сообщить о проблеме» от заказчиков, открытые выше."""
     return await service.list_problems(session)
+
+
+@router.get("/problems/{request_id}/transitions", response_model=list[ProblemTransitionOut])
+async def problem_transitions(request_id: int, _: ExecutorUser, session: DB) -> list[ProblemTransitionOut]:
+    """Куда можно перевести задачу Jira по проблеме из её текущего статуса."""
+    return await service.problem_transitions(session, request_id)
+
+
+@router.post("/problems/{request_id}/transition", response_model=ExecutorProblemOut)
+async def move_problem(request_id: int, data: ProblemTransitionIn, _: ExecutorUser, session: DB) -> ExecutorProblemOut:
+    return await service.move_problem(session, request_id, data.transition_id)
 
 
 @router.get("/returns", response_model=list[ExecutorOrderOut])

@@ -241,7 +241,7 @@ async def _get_accessible(session: AsyncSession, user: User, request_id: int) ->
     return req
 
 
-async def _sync_status(req: ServiceRequest) -> None:
+async def sync_status(req: ServiceRequest) -> None:
     """Статус заявки из Jira и то, что нужно для статуса заказчику; ошибка самого статуса — наружу.
 
     История, резолюция и комментарий — дополнительные чтения REST Jira: если у сервисной учётки нет прав, статус
@@ -285,7 +285,7 @@ async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
         return
     try:
         await sd.close_issue(req.issue_key, resolution)
-        await _sync_status(req)
+        await sync_status(req)
     except sd.ServiceDeskError as exc:
         log.warning("Задача %s не закрыта (%s): %s", req.issue_key, resolution, exc)
 
@@ -312,7 +312,7 @@ async def is_untouched(session: AsyncSession, booking_id: int) -> bool:
     if req is None:
         return False
     try:
-        await _sync_status(req)
+        await sync_status(req)
     except sd.ServiceDeskError as exc:
         log.warning("Заявка %s: статус перед отменой заказа не получен: %s", req.issue_key, exc)
         raise DomainError("Не удалось проверить, взял ли исполнитель заказ: Service Desk недоступен. "
@@ -325,12 +325,40 @@ async def is_untouched(session: AsyncSession, booking_id: int) -> bool:
     return True
 
 
+async def available_transitions(req: ServiceRequest) -> list[dict]:
+    """Переходы задачи Jira из её статуса (для исполнителя в «Проблемах по заказам»)."""
+    try:
+        return await sd.transitions(req.issue_key)
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: переходы не получены: %s", req.issue_key, exc)
+        raise DomainError(f"Не удалось получить переходы: {exc.user_message}") from exc
+
+
+async def move_issue(session: AsyncSession, req: ServiceRequest, transition_id: str) -> None:
+    """Переводит задачу Jira в новый статус; переход в закрытый ставит резолюцию Done."""
+    found = {str(t["id"]): t for t in await available_transitions(req)}
+    transition = found.get(transition_id)
+    if transition is None:
+        raise Conflict("Такого перехода уже нет: статус задачи изменили, обновите список")
+    try:
+        await sd.transition_issue(req.issue_key, transition_id,
+                                  sd.RESOLUTION_DONE if sd.is_done_transition(transition) else None)
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: переход %s не выполнен: %s", req.issue_key, transition_id, exc)
+        raise DomainError(f"Не удалось сменить статус: {exc.user_message}") from exc
+    try:
+        await sync_status(req)
+    except sd.ServiceDeskError as exc:  # переход выполнен: новый статус подтянет worker
+        log.warning("Заявка %s: статус после перехода не прочитан: %s", req.issue_key, exc)
+    await session.commit()
+
+
 async def get_with_comments(session: AsyncSession, user: User, request_id: int) -> tuple[ServiceRequest, list]:
     req = await _get_accessible(session, user, request_id)
     if not req.issue_key:
         return req, []
     try:
-        await _sync_status(req)
+        await sync_status(req)
         await session.commit()
         comments = await sd.get_comments(req.issue_key)
     except sd.ServiceDeskError as exc:
@@ -365,7 +393,7 @@ async def refresh_open(session: AsyncSession, batch: int = 20) -> None:
     for req in rows:
         old = req.customer_status
         try:
-            await _sync_status(req)
+            await sync_status(req)
             await _close_if_settled(session, req)
             notifications.request_status(session, req, old)
         except sd.ServiceDeskError as exc:

@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ProblemTransition,
 } from './types'
 
 export interface ComputerFilters {
@@ -434,6 +434,24 @@ export const useExecutorProblems = (enabled = true) =>
     enabled,
     refetchInterval: 60_000,
   })
+
+/** Переходы задачи Jira по проблеме; грузятся, только когда исполнитель открыл «Сменить статус» */
+export const useProblemTransitions = (id: number, enabled: boolean) =>
+  useQuery({
+    queryKey: ['executor', 'problem-transitions', id],
+    queryFn: () => api.get<ProblemTransition[]>(`/executor/problems/${id}/transitions`),
+    enabled,
+    gcTime: 0,
+  })
+
+export function useMoveProblem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, transitionId }: { id: number; transitionId: string }) =>
+      api.post<ExecutorProblem>(`/executor/problems/${id}/transition`, { transition_id: transitionId }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['executor'] }),
+  })
+}
 
 export const useExecutorOrder = (id: number) =>
   useQuery({ queryKey: ['executor', 'order', id], queryFn: () => api.get<ExecutorOrder>(`/executor/orders/${id}`) })

@@ -467,3 +467,16 @@ async def test_update_issue_error_is_service_desk_error(jira):
     jira.put(f"{REST}/issue/DR-1").respond(400, json={"errors": {"components": "не найден"}})
     with pytest.raises(sd.ServiceDeskError, match="components: не найден"):
         await sd.update_issue("DR-1", {"components": [{"name": "X"}]})
+
+
+@pytest.mark.parametrize("resolution, fields", [(None, {}), ("Done", {"fields": {"resolution": {"name": "Done"}}})])
+async def test_transition_issue_sends_resolution_only_when_given(jira, resolution, fields):
+    route = jira.post(f"{REST}/issue/DR-1/transitions").respond(204)
+    await sd.transition_issue("DR-1", 161, resolution)
+    assert sent(route) == {"transition": {"id": "161"}, **fields}
+
+
+async def test_transition_issue_error_is_service_desk_error(jira):
+    jira.post(f"{REST}/issue/DR-1/transitions").respond(400, json={"errorMessages": ["Transition is not valid"]})
+    with pytest.raises(sd.ServiceDeskError, match="400: Transition is not valid"):
+        await sd.transition_issue("DR-1", "161")

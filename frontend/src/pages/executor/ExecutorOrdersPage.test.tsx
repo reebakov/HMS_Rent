@@ -49,6 +49,7 @@ describe('ExecutorOrdersPage', () => {
     orders = [makeExecutorOrder({ request_done: true }), makeExecutorOrder({ id: 8, order_number: 1043, request_done: true, prepared_at: '2026-10-21T10:00:00Z' })]
     mount()
     await screen.findAllByRole('row')
+    await userEvent.click(screen.getByRole('button', { name: /Архив заказов/ }))
     expect(await screen.findAllByText('Задача закрыта в Jira — внесите данные подключения')).toHaveLength(1)
   })
 
@@ -58,9 +59,31 @@ describe('ExecutorOrdersPage', () => {
     expect(within(waiting).getByText('Ждёт подготовки')).toBeInTheDocument()
     expect(within(waiting).getByText('Windows 11 26H2')).toBeInTheDocument()
     expect(within(waiting).getByText('Пётр Петров (petrov)')).toBeInTheDocument()
+    expect(screen.getByText('Ждут подготовки: 1 заказ')).toBeInTheDocument()
+  })
+
+  it('подготовленные заказы скрыты в «Архиве заказов», который раскрывается кнопкой снизу', async () => {
+    const user = userEvent.setup()
+    mount()
+    await screen.findByRole('link', { name: 'A032' })
+    expect(screen.queryByRole('link', { name: 'A065' })).not.toBeInTheDocument()
+    const archive = screen.getByRole('button', { name: 'Архив заказов (1)' })
+    expect(archive).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(archive)
     const done = screen.getByRole('link', { name: 'A065' }).closest('tr')!
     expect(within(done).getByText('Подготовлен')).toBeInTheDocument()
-    expect(screen.getByText('Ждут подготовки: 1 заказ')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Архив заказов (1)' })).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Архив заказов (1)' }))
+    expect(screen.queryByRole('link', { name: 'A065' })).not.toBeInTheDocument()
+  })
+
+  it('нет подготовленных — кнопки архива нет', async () => {
+    orders = [makeExecutorOrder()]
+    mount()
+    await screen.findByRole('link', { name: 'A032' })
+    expect(screen.queryByRole('button', { name: /Архив заказов/ })).not.toBeInTheDocument()
   })
 
   it('в очереди у каждого заказа ссылка на его заявку в Jira', async () => {
@@ -69,6 +92,7 @@ describe('ExecutorOrdersPage', () => {
     const row = (await screen.findByRole('link', { name: 'A032' })).closest('tr')!
     expect(within(row).getByRole('link', { name: 'HMS-77' })).toHaveAttribute('href', 'https://jira.test/browse/HMS-77')
     expect(within(row).getByText('· Ожидает поддержки')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Архив заказов/ }))
     const other = screen.getByRole('link', { name: 'A065' }).closest('tr')!
     expect(within(other).getByText('Заявки нет')).toBeInTheDocument()
   })
@@ -83,6 +107,8 @@ describe('ExecutorOrdersPage', () => {
     orders = [makeExecutorOrder({ prepared_at: '2026-10-21T10:00:00Z' })]
     mount()
     expect(await screen.findByText('Все выданные ПК подготовлены')).toBeInTheDocument()
+    expect(screen.getByText('Нет заказов на подготовку')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Архив заказов (1)' })).toBeInTheDocument()
   })
 
   it('пустая очередь — понятная заглушка', async () => {
