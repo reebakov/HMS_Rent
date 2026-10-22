@@ -57,16 +57,14 @@ def _jira_summary(summary: str) -> str:
 
 
 async def _send(req: ServiceRequest, on_behalf_of: str | None) -> None:
-    """Создаёт задачу через тип «Прочее» (обязательное поле одно — описание) и приводит её шапку к заявке."""
-    key, status = await sd.create_request(settings.sd_request_type, _jira_summary(req.summary), req.description,
-                                          on_behalf_of)
+    """Создаёт задачу через тип «Прочее» (в форме одно поле — описание) и приводит её шапку к заявке: тема, компонент, эпик."""
+    key, status = await sd.create_request(settings.sd_request_type, req.description, on_behalf_of)
     req.issue_key, req.status, req.status_category = key, status.status, status.category
     req.error, req.last_checked_at = None, datetime.now(timezone.utc)
-    if settings.sd_issue_fields:
-        try:
-            await sd.update_issue(key, settings.sd_issue_fields)
-        except sd.ServiceDeskError as exc:  # задача создана: сбой шапки заявку не отменяет, исполнитель поправит вручную
-            log.warning("Шапка задачи %s не изменена: %s", key, exc)
+    try:
+        await sd.update_issue(key, {"summary": _jira_summary(req.summary)[:255], **settings.sd_issue_fields})
+    except sd.ServiceDeskError as exc:  # задача создана: сбой шапки заявку не отменяет, исполнитель поправит вручную
+        log.warning("Шапка задачи %s не изменена: %s", key, exc)
 
 
 async def create_problem(session: AsyncSession, user: User, *, booking_id: int | None, vm_id: int | None,

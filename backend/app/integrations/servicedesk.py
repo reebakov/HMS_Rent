@@ -107,13 +107,16 @@ def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
     return key, _status(data)
 
 
-async def create_request(request_type_id: int, summary: str, description: str,
+async def create_request(request_type_id: int, description: str,
                          on_behalf_of: str | None = None) -> tuple[str, SdStatus]:
-    """Создаёт заявку. Если сотрудника нет в Jira, создаёт от сервисной учётки (автор — в описании)."""
+    """Создаёт заявку с одним полем — описанием. Если сотрудника нет в Jira, создаёт от сервисной учётки (автор — в описании).
+
+    Темы в форме типа «Прочее» нет (Jira ставит название типа), поэтому тему и шапку портал меняет после создания.
+    """
     payload = {
         "serviceDeskId": str(settings.sd_service_desk_id),
         "requestTypeId": str(request_type_id),
-        "requestFieldValues": {"summary": summary[:250], "description": description},
+        "requestFieldValues": {"description": description},
     }
     async with _client() as http:
         if on_behalf_of and settings.sd_raise_on_behalf:
@@ -217,7 +220,7 @@ async def get_details(issue_key: str) -> SdDetails:
 
 
 async def update_issue(issue_key: str, fields: dict) -> None:
-    """Меняет шапку задачи (компонент, эпик…): Service Desk при создании принимает только поля формы."""
+    """Меняет шапку задачи (тему, компонент, эпик…): Service Desk при создании принимает только поля формы."""
     async with _client(JIRA_API) as http:
         resp = await _send(http, "PUT", f"/issue/{issue_key}", json={"fields": fields})
         if resp.status_code >= 400:

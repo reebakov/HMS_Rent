@@ -45,24 +45,18 @@ def sent(route, n=-1) -> dict:
 
 async def test_create_request_success(jira):
     route = jira.post(f"{API}/request").respond(201, json=created("HMS-7", "В работе", "INDETERMINATE"))
-    key, status = await sd.create_request(1248, "Тема", "Описание", "ivanov")
+    key, status = await sd.create_request(1248, "Описание", "ivanov")
     assert key == "HMS-7" and status == sd.SdStatus("В работе", "indeterminate")
     assert route.call_count == 1
     assert sent(route) == {"serviceDeskId": "54", "requestTypeId": "1248", "raiseOnBehalfOf": "ivanov",
-                           "requestFieldValues": {"summary": "Тема", "description": "Описание"}}
-
-
-async def test_create_request_truncates_summary(jira):
-    route = jira.post(f"{API}/request").respond(201, json=created())
-    await sd.create_request(1248, "я" * 400, "d", None)
-    assert sent(route)["requestFieldValues"]["summary"] == "я" * 250
+                           "requestFieldValues": {"description": "Описание"}}  # темы в форме «Прочее» нет: ей Jira ставит название типа
 
 
 @pytest.mark.parametrize("behalf, switch", [(None, True), ("", True), ("ivanov", False)], ids=["no-login", "empty-login", "switch-off"])
 async def test_create_request_without_raise_on_behalf(jira, monkeypatch, behalf, switch):
     monkeypatch.setattr(settings, "sd_raise_on_behalf", switch)
     route = jira.post(f"{API}/request").respond(201, json=created())
-    await sd.create_request(1248, "T", "D", behalf)
+    await sd.create_request(1248, "D", behalf)
     assert route.call_count == 1 and "raiseOnBehalfOf" not in sent(route)
 
 
@@ -73,7 +67,7 @@ async def test_create_request_unknown_jira_user_falls_back_to_service_account(ji
         httpx.Response(code, json={"errorMessage": "user not found"}),
         httpx.Response(201, json=created("HMS-9")),
     ])
-    key, status = await sd.create_request(1248, "T", "Описание с автором", "ghost")
+    key, status = await sd.create_request(1248, "Описание с автором", "ghost")
     assert key == "HMS-9" and status.category == "new"
     assert route.call_count == 2
     assert sent(route, 0)["raiseOnBehalfOf"] == "ghost"
@@ -87,7 +81,7 @@ async def test_create_request_both_attempts_fail(jira):
         httpx.Response(400, json={"errors": {"customfield_1": "обязательное поле"}}),
     ])
     with pytest.raises(sd.ServiceDeskError, match="400.*customfield_1: обязательное поле"):
-        await sd.create_request(1248, "T", "D", "ghost")
+        await sd.create_request(1248, "D", "ghost")
     assert route.call_count == 2
 
 
@@ -102,7 +96,7 @@ async def test_create_request_both_attempts_fail(jira):
 async def test_create_request_http_errors(jira, resp, text):
     jira.post(f"{API}/request").mock(return_value=resp)
     with pytest.raises(sd.ServiceDeskError) as e:
-        await sd.create_request(1248, "T", "D", None)
+        await sd.create_request(1248, "D", None)
     assert str(e.value) == text
 
 
@@ -192,7 +186,7 @@ async def test_request_type_fields_uses_configured_desk_and_empty(jira, monkeypa
 
 
 CALLS = {
-    "create": (lambda: sd.create_request(1248, "T", "D", None), "post", "/request"),
+    "create": (lambda: sd.create_request(1248, "D", None), "post", "/request"),
     "status": (lambda: sd.get_status("HMS-5"), "get", "/request/HMS-5"),
     "comments": (lambda: sd.get_comments("HMS-5"), "get", "/request/HMS-5/comment"),
     "add_comment": (lambda: sd.add_comment("HMS-5", "И", "т"), "post", "/request/HMS-5/comment"),
@@ -278,7 +272,7 @@ async def test_secrets_not_in_errors_and_logs(jira, monkeypatch, caplog):
         monkeypatch.setattr(settings, "sd_password", pwd)
         jira.post(f"{API}/request").respond(400, json={"errorMessage": "плохо"})
         with pytest.raises(sd.ServiceDeskError) as e:
-            await sd.create_request(1248, "T", "D", "ghost")
+            await sd.create_request(1248, "D", "ghost")
         blob = str(e.value) + caplog.text
         assert TOKEN not in blob and PASSWORD not in blob
         assert base64.b64encode(f"svc:{PASSWORD}".encode()).decode() not in blob
@@ -312,7 +306,7 @@ async def test_non_json_success_becomes_servicedesk_error(jira, name):
 async def test_create_without_issue_key_becomes_servicedesk_error(jira):
     jira.post(f"{API}/request").respond(201, json={"id": "1"})
     with pytest.raises(sd.ServiceDeskError):
-        await sd.create_request(1248, "T", "D", None)
+        await sd.create_request(1248, "D", None)
 
 
 async def test_error_body_json_array(jira):
