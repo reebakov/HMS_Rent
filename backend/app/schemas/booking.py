@@ -53,6 +53,7 @@ class ExecutorOrderOut(BookingOut):
     """Заказ для исполнителя: заказчику имя исполнителя не показывается, поэтому поле только здесь."""
 
     prepared_by: UserShort | None
+    insight_ip: str | None = None  # IPv4 ПК из Insight, если он там записан: подсказка для формы результата
     # заявка Service Desk «подготовить ПК» по этому заказу (если создавалась)
     request_key: str | None = None
     request_url: str | None = None

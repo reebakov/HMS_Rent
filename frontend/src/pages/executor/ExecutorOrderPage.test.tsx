@@ -99,6 +99,37 @@ describe('ExecutorOrderPage: данные для подключения', () => 
     expect(toast.success).toHaveBeenCalledWith('Данные для подключения отправлены заказчику')
   })
 
+  it('IP из Insight подставлен в форму с пометкой и уходит на сервер без правки', async () => {
+    order = makeExecutorOrder({ insight_ip: '10.9.8.7' })
+    vi.mocked(api.post).mockResolvedValue({ ...order, prepared_at: '2026-10-21T10:00:00Z' })
+    mount()
+    expect(await screen.findByLabelText(/IP-адрес/)).toHaveValue('10.9.8.7')
+    expect(screen.getByText('Подставлен из Insight')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Отправить заказчику' }))
+    expect(api.post).toHaveBeenCalledWith('/executor/orders/7/result', { host: 'A032.ff.local', ip: '10.9.8.7', method: 'RDP' })
+  })
+
+  it('исполнитель правит подставленный IP — пометка пропадает; без IP в Insight поле пустое', async () => {
+    order = makeExecutorOrder({ insight_ip: '10.9.8.7' })
+    const { unmount } = mount()
+    const field = await screen.findByLabelText(/IP-адрес/)
+    await userEvent.clear(field)
+    await userEvent.type(field, '10.1.1.1')
+    expect(screen.queryByText('Подставлен из Insight')).not.toBeInTheDocument()
+    unmount()
+    order = makeExecutorOrder()
+    mount()
+    expect(await screen.findByLabelText(/IP-адрес/)).toHaveValue('')
+    expect(screen.queryByText('Подставлен из Insight')).not.toBeInTheDocument()
+  })
+
+  it('внесённый исполнителем IP важнее подсказки из Insight', async () => {
+    order = makeExecutorOrder({ insight_ip: '10.9.8.7', connection_ip: '10.1.2.3', connection_host: 'A032.ff.local', connection_method: 'RDP', prepared_at: '2026-10-21T10:00:00Z' })
+    mount()
+    expect(await screen.findByLabelText(/IP-адрес/)).toHaveValue('10.1.2.3')
+    expect(screen.queryByText('Подставлен из Insight')).not.toBeInTheDocument()
+  })
+
   it('для Linux по умолчанию VNC, способ можно сменить с клавиатуры', async () => {
     order = makeExecutorOrder({ os_label: 'Ubuntu 24.04' })
     mount()
