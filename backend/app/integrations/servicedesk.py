@@ -108,12 +108,12 @@ def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
 
 
 async def create_request(request_type_id: int, summary: str, description: str,
-                         on_behalf_of: str | None = None, extra_fields: dict | None = None) -> tuple[str, SdStatus]:
+                         on_behalf_of: str | None = None) -> tuple[str, SdStatus]:
     """Создаёт заявку. Если сотрудника нет в Jira, создаёт от сервисной учётки (автор — в описании)."""
     payload = {
         "serviceDeskId": str(settings.sd_service_desk_id),
         "requestTypeId": str(request_type_id),
-        "requestFieldValues": {**(extra_fields or {}), "summary": summary[:250], "description": description},
+        "requestFieldValues": {"summary": summary[:250], "description": description},
     }
     async with _client() as http:
         if on_behalf_of and settings.sd_raise_on_behalf:
@@ -214,6 +214,14 @@ async def get_details(issue_key: str) -> SdDetails:
             raise ServiceDeskError(_error(resp))
         issue = _json_object(resp)
     return SdDetails(taken=_history_taken(issue), resolution=((issue.get("fields") or {}).get("resolution") or {}).get("name"))
+
+
+async def update_issue(issue_key: str, fields: dict) -> None:
+    """Меняет шапку задачи (компонент, «Типовой запрос»…): Service Desk при создании принимает только поля формы."""
+    async with _client(JIRA_API) as http:
+        resp = await _send(http, "PUT", f"/issue/{issue_key}", json={"fields": fields})
+        if resp.status_code >= 400:
+            raise ServiceDeskError(_error(resp))
 
 
 async def transitions(issue_key: str) -> list[dict]:

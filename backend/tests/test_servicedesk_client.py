@@ -23,7 +23,7 @@ PASSWORD = "p@ss-w0rd-XYZ"
 def cfg(monkeypatch):
     """Service Desk настроен по токену; «на чьё имя» включено."""
     for k, v in dict(sd_jira_url=BASE, sd_token=TOKEN, sd_username="", sd_password="", sd_service_desk_id=54,
-                     sd_request_type_problem=1248, sd_raise_on_behalf=True, sd_verify_ssl=True).items():
+                     sd_raise_on_behalf=True, sd_verify_ssl=True).items():
         monkeypatch.setattr(settings, k, v)
 
 
@@ -50,12 +50,6 @@ async def test_create_request_success(jira):
     assert route.call_count == 1
     assert sent(route) == {"serviceDeskId": "54", "requestTypeId": "1248", "raiseOnBehalfOf": "ivanov",
                            "requestFieldValues": {"summary": "Тема", "description": "Описание"}}
-
-
-async def test_create_request_adds_extra_fields_but_keeps_summary(jira):
-    route = jira.post(f"{API}/request").respond(201, json=created())
-    await sd.create_request(1248, "Тема", "Описание", None, {"customfield_16513": ["OTP-121063"], "summary": "чужая"})
-    assert sent(route)["requestFieldValues"] == {"customfield_16513": ["OTP-121063"], "summary": "Тема", "description": "Описание"}
 
 
 async def test_create_request_truncates_summary(jira):
@@ -407,9 +401,23 @@ async def test_close_issue_status_read_error(jira):
         await sd.close_issue("DR-1", sd.RESOLUTION_DONE)
 
 
-def test_problem_fields_are_read_from_env_json(monkeypatch):
+def test_issue_fields_default_and_env_override(monkeypatch):
     from app.core.config import Settings
-    monkeypatch.setenv("SD_PROBLEM_FIELDS", '{"customfield_16513": ["OTP-121063"]}')
-    assert Settings(_env_file=None).sd_problem_fields == {"customfield_16513": ["OTP-121063"]}
-    monkeypatch.delenv("SD_PROBLEM_FIELDS")
-    assert Settings(_env_file=None).sd_problem_fields == {}
+    assert Settings(_env_file=None).sd_issue_fields == {"components": [{"name": "HMS"}],
+                                                        "customfield_14625": [{"key": "OTP-124158"}]}
+    monkeypatch.setenv("SD_ISSUE_FIELDS", '{"components": [{"name": "OPS"}]}')
+    assert Settings(_env_file=None).sd_issue_fields == {"components": [{"name": "OPS"}]}
+    monkeypatch.setenv("SD_ISSUE_FIELDS", "{}")
+    assert Settings(_env_file=None).sd_issue_fields == {}
+
+
+async def test_update_issue_puts_fields(jira):
+    route = jira.put(f"{REST}/issue/DR-1").respond(204)
+    await sd.update_issue("DR-1", {"components": [{"name": "HMS"}]})
+    assert sent(route) == {"fields": {"components": [{"name": "HMS"}]}}
+
+
+async def test_update_issue_error_is_service_desk_error(jira):
+    jira.put(f"{REST}/issue/DR-1").respond(400, json={"errors": {"customfield_14625": "не найден"}})
+    with pytest.raises(sd.ServiceDeskError, match="customfield_14625: не найден"):
+        await sd.update_issue("DR-1", {"customfield_14625": [{"key": "X"}]})

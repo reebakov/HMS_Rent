@@ -37,7 +37,8 @@ class FakeSd:
 
     def __init__(self):
         self.created: list[tuple] = []
-        self.extra_fields: list[dict | None] = []
+        self.updated: list[tuple] = []
+        self.update_error: Exception | None = None
         self.create_error: Exception | None = None
         self.status = real_sd.SdStatus("Ожидает поддержки", "new")
         self.status_errors: dict[str, Exception] = {}
@@ -53,12 +54,16 @@ class FakeSd:
         self.sent: list[tuple] = []
         self.send_error: Exception | None = None
 
-    async def create_request(self, type_id, summary, description, on_behalf_of=None, extra_fields=None):
+    async def create_request(self, type_id, summary, description, on_behalf_of=None):
         self.created.append((type_id, summary, description, on_behalf_of))
-        self.extra_fields.append(extra_fields)
         if self.create_error:
             raise self.create_error
         return f"HMS-{len(self.created)}", self.status
+
+    async def update_issue(self, key, fields):
+        if self.update_error:
+            raise self.update_error
+        self.updated.append((key, fields))
 
     async def get_status(self, key):
         self.status_calls.append(key)
@@ -102,7 +107,7 @@ def sd(monkeypatch):
     fake = FakeSd()
     monkeypatch.setattr(svc, "sd", fake)
     for k, v in dict(sd_jira_url="https://jira.test", sd_token="tok", sd_username="", sd_password="",
-                     sd_request_type_problem=1248, sd_request_type_return=1252, sd_return_on_return=True).items():
+                     sd_request_type=1252, sd_return_on_return=True, sd_issue_fields={}).items():
         monkeypatch.setattr(settings, k, v)
     return fake
 
@@ -147,20 +152,48 @@ async def fresh(req_id: int) -> ServiceRequest:
         return await s.get(ServiceRequest, req_id)
 
 
-# ---------- create_problem ----------
+# ---------- шапка задачи после создания ----------
 
-async def test_create_problem_sends_configured_required_fields(session, env, sd, monkeypatch):
-    fields = {"customfield_14625": ["OTP-124158"], "customfield_16513": ["OTP-121063"]}
-    monkeypatch.setattr(settings, "sd_problem_fields", fields)
+HEADER = {"components": [{"name": "HMS"}], "customfield_14625": [{"key": "OTP-124158"}]}
+
+
+async def _all_kinds(session, env, sd):
     await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
     await svc.create_return(session, env.booking.id, env.owner)
-    assert sd.extra_fields == [fields, None]  # только заявка «Проблема»: у «Возврата» таких полей нет
+    await svc.create_prepare(session, env.booking.id, env.owner)
+    await svc.create_diagnose(session, env.booking.id, env.owner, "Не включается")
+    await svc.create_build(session, env.owner, BuildCreate(build=default_pc_builds()[0], os_label="Windows 11 26H2",
+                                                           requester_nick="ivan",
+                                                           expected_return_at=clock.today() + timedelta(days=30)))
 
+
+async def test_all_requests_go_through_one_type_and_get_the_same_header(session, env, sd, monkeypatch):
+    monkeypatch.setattr(settings, "sd_issue_fields", HEADER)
+    monkeypatch.setattr(settings, "sd_request_type", 1252)
+    await _all_kinds(session, env, sd)
+    assert {c[0] for c in sd.created} == {1252} and len(sd.created) == 5
+    assert sd.updated == [(f"HMS-{i}", HEADER) for i in range(1, 6)]  # «Типовой запрос» и компонент — у каждой задачи
+
+
+async def test_header_is_left_alone_when_not_configured(session, env, sd):
+    await _all_kinds(session, env, sd)
+    assert sd.updated == []
+
+
+async def test_header_failure_does_not_cancel_request(session, env, sd, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "sd_issue_fields", HEADER)
+    sd.update_error = boom("Service Desk 400: customfield_14625: не найден")
+    req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
+    assert (req.issue_key, req.error) == ("HMS-1", None)  # задача создана и сохранена
+    assert "Шапка задачи HMS-1 не изменена" in caplog.text
+
+
+# ---------- create_problem ----------
 
 async def test_create_problem_for_booking(session, env, sd):
     req = await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
     type_id, summary, description, behalf = sd.created[0]
-    assert (type_id, behalf) == (1248, "owner")
+    assert (type_id, behalf) == (1252, "owner")
     assert "A001" in summary and f"заказ №{env.booking.order_number}" in summary
     assert description.startswith("Не включается\n\n---\n")
     for part in ["Компьютер: A001 (ITAM-1)", f"Заказ №{env.booking.order_number}", "i9 · 64 ГБ · 2 TB · RTX 4090",
@@ -233,7 +266,7 @@ async def test_create_problem_jira_error_not_saved(session, env, sd):
 # ---------- create_return ----------
 
 async def test_create_return_saves_request(session, env, sd, monkeypatch):
-    monkeypatch.setattr(settings, "sd_request_type_return", 7777)  # тип «Возврат» отдельный от «Проблемы»
+    monkeypatch.setattr(settings, "sd_request_type", 7777)
     env.booking.return_comment = "Всё цело"
     await session.commit()
     await svc.create_return(session, env.booking.id, env.mate)
@@ -682,7 +715,7 @@ async def test_refresh_open_not_configured(session, env, sd, monkeypatch):
 # ---------- create_prepare: «подготовить ПК» после брони ----------
 
 async def test_create_prepare_saves_request_with_os(session, env, sd, monkeypatch):
-    monkeypatch.setattr(settings, "sd_request_type_order", 4321)
+    monkeypatch.setattr(settings, "sd_request_type", 4321)
     env.booking.os_label, env.booking.purpose = "Ubuntu 24.04", "Тесты сборки"
     await session.commit()
     await svc.create_prepare(session, env.booking.id, env.mate)
@@ -745,7 +778,7 @@ def build_data(env, **kw) -> BuildCreate:
 
 
 async def test_create_build_typical(session, env, sd, monkeypatch):
-    monkeypatch.setattr(settings, "sd_request_type_order", 4321)
+    monkeypatch.setattr(settings, "sd_request_type", 4321)
     wanted = clock.today() + timedelta(days=5)
     req = await svc.create_build(session, env.owner, build_data(env, purpose="Нагрузочные тесты", wanted_by=wanted))
     type_id, summary, description, behalf = sd.created[0]
