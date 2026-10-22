@@ -33,7 +33,7 @@ export function ComputerSheet({
           <span className="flex flex-wrap items-center gap-2">
             <TierBadge tier={data.tier} />
             <StatusBadge status={data.status} />
-            {data.insight_key && <span className="font-mono text-xs">{data.insight_key}</span>}
+            {isAdmin && data.insight_key && <span className="font-mono text-xs">{data.insight_key}</span>}
           </span>
         )
       }
@@ -61,11 +61,10 @@ export function ComputerSheet({
 
             <dl className="grid grid-cols-2 gap-4 rounded-xl border p-4 text-[13px]">
               {[
-                ['Hostname', data.hostname],
+                ...(isAdmin ? [['Hostname', data.hostname]] : []),
                 ['ОС', data.os],
                 ['Расположение', data.location],
-                ['IP-адрес', data.ip_address],
-                ['Статус в Insight', data.insight_status],
+                ...(isAdmin ? [['IP-адрес', data.ip_address], ['Статус в Insight', data.insight_status]] : []),
                 ['Обновлено', formatRelative(data.synced_at)],
               ].map(([label, value]) => (
                 <div key={label}>

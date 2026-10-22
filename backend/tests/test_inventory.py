@@ -184,7 +184,7 @@ async def test_csv_escapes_special_characters(session, make_computer, make_user,
 
 
 async def test_csv_empty_values_and_unknown_labels(session, make_computer):
-    await make_computer("A1", status="maintenance", tier="vm")
+    await make_computer("A1", status="maintenance", tier="vm", ram_gb=None)
     _, rows = await csv_rows(session)
     data = dict(zip(rows[0], rows[1], strict=True))
     assert data["Статус портала"] == "Резерв" and data["Категория"] == "Виртуальная"

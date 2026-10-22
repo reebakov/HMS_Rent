@@ -117,6 +117,8 @@ async def make_computer(session):
     async def _make(name: str | None = None, pool: Pool | None = None, status: str = ComputerStatus.available.value,
                     **kw) -> Computer:
         counter["n"] += 1
+        # железо описано по умолчанию: ПК без него в каталог не попадает
+        kw = {"cpu": "Intel Core i5", "ram_gb": 16, "storage": "SSD 512 ГБ", **kw}
         obj = Computer(name=name or f"A{counter['n']:03d}", status=status, pool_id=pool.id if pool else None, **kw)
         session.add(obj)
         await session.commit()

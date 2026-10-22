@@ -90,6 +90,21 @@ async def test_attributes_hidden_from_employee_but_not_admin(client, login, make
     assert (await client.get(api(f"/computers/{comp.id}"))).json()["attributes"] == {"Secret": "x"}
 
 
+async def test_employee_card_has_no_insight_service_fields(client, login, make_user, make_pool, make_computer, api):
+    comp = await make_computer("A1", await make_pool("P"), cpu="i5", ram_gb=16, storage="SSD", hostname="a1.local",
+                               insight_key="ITAM-1", insight_status="In use", ip_address="10.0.0.1",
+                               serial_number="SN-1", note="заметка", location="Офис")
+    login(await make_user("emp"))
+    body = (await client.get(api(f"/computers/{comp.id}"))).json()
+    for field in ("hostname", "insight_key", "insight_status", "ip_address", "serial_number", "note"):
+        assert body[field] is None, field
+    assert (body["cpu"], body["ram_gb"], body["storage"], body["location"]) == ("i5", 16, "SSD", "Офис")
+    client.cookies.clear()
+    login(await make_user("boss", role=ADMIN))
+    body = (await client.get(api(f"/computers/{comp.id}"))).json()
+    assert (body["hostname"], body["insight_key"], body["ip_address"], body["serial_number"]) == ("a1.local", "ITAM-1", "10.0.0.1", "SN-1")
+
+
 # ---------- Фильтры, поиск, сортировка ----------
 
 @pytest.fixture
@@ -100,19 +115,23 @@ async def fleet(make_pool, make_computer, make_user, login):
     await mk("A10", ram_gb=64, tier="powerful", gpu="RTX 4090", hostname="beast-host")
     await mk("A150", ram_gb=8, tier="weak", status=ComputerStatus.booked.value)
     await mk("A2", ram_gb=32, tier="powerful", status=ComputerStatus.maintenance.value)
-    await mk("vm-1", ram_gb=2, tier="vm", is_virtual=True)
-    await mk("Z-noram", ram_gb=None, tier="medium")
-    await mk("tiny", ram_gb=4, tier="weak")  # слабее порога RAM_FLOOR — в каталог не попадает
+    await mk("vm-1", ram_gb=2, tier="vm", is_virtual=True, cpu=None, storage=None)
+    await mk("Z-noram", ram_gb=None, tier="medium")  # железо не описано — в каталог не попадает
+    await mk("Z-nocpu", ram_gb=16, tier="medium", cpu=None)
+    await mk("Z-nostorage", ram_gb=16, tier="medium", storage=None)
+    await mk("Z-empty", ram_gb=16, tier="medium", cpu="", storage="")
+    await mk("tiny", ram_gb=4, tier="weak")  # слабее порога HARDWARE_SHOWN — в каталог не попадает
     login(await make_user("emp"))
 
 
 async def test_default_list_only_available_natural_sorted_and_ram_floor(client, fleet, api):
-    # занятые/в резерве скрыты, «слабее 8 ГБ» скрыт, но ВМ с 2 ГБ и ПК с неизвестной ОЗУ видны; A9 < A10 (натуральный порядок)
-    assert await _names(client, api) == ["A9", "A10", "vm-1", "Z-noram"]
+    # занятые/в резерве скрыты, «слабее 8 ГБ» и ПК без описанного железа скрыты, ВМ с 2 ГБ без процессора и диска видна;
+    # видеокарта необязательна (у A9 её нет); A9 < A10 (натуральный порядок)
+    assert await _names(client, api) == ["A9", "A10", "vm-1"]
 
 
 async def test_only_available_false_shows_booked_and_reserved(client, fleet, api):
-    assert await _names(client, api, only_available="false") == ["A2", "A9", "A10", "A150", "vm-1", "Z-noram"]
+    assert await _names(client, api, only_available="false") == ["A2", "A9", "A10", "A150", "vm-1"]
 
 
 @pytest.mark.parametrize("params,expected", [
@@ -127,9 +146,9 @@ async def test_only_available_false_shows_booked_and_reserved(client, fleet, api
     ({"q": "floor 1"}, ["A9"]),         # location
     ({"q": "  a9  "}, ["A9"]),          # пробелы по краям обрезаются
     ({"q": "nothing-like-this"}, []),
-    ({"q": "ram", "tier": "medium"}, ["Z-noram"]),
-    ({"sort": "ram_desc"}, ["A10", "A9", "vm-1", "Z-noram"]),
-    ({"sort": "ram_asc"}, ["Z-noram", "vm-1", "A9", "A10"]),  # None считается как 0
+    ({"q": "ram", "tier": "medium"}, []),  # Z-noram без железа в каталоге не показывается даже по поиску
+    ({"sort": "ram_desc"}, ["A10", "A9", "vm-1"]),
+    ({"sort": "ram_asc"}, ["vm-1", "A9", "A10"]),
 ])
 async def test_list_filters(client, fleet, api, params, expected):
     assert await _names(client, api, **params) == expected
@@ -147,7 +166,8 @@ async def test_summary_counts_per_tier(client, fleet, api):
     assert list(got) == [t.value for t in Tier]  # все категории присутствуют всегда
     # powerful: A10 свободен, A2 в резерве -> available=1, total=2; min/max ОЗУ только по свободным
     assert got["powerful"] == {"tier": "powerful", "available": 1, "total": 2, "min_ram_gb": 64, "max_ram_gb": 64}
-    assert got["medium"]["available"] == 2 and got["medium"]["total"] == 2 and got["medium"]["min_ram_gb"] == 16
+    # medium: A9 (Z-noram, Z-nocpu, Z-nostorage, Z-empty без описанного железа не считаются)
+    assert got["medium"]["available"] == 1 and got["medium"]["total"] == 1 and got["medium"]["min_ram_gb"] == 16
     assert (got["weak"]["available"], got["weak"]["total"]) == (0, 1)  # A150 занят; tiny отсечён порогом ОЗУ
     assert got["weak"]["min_ram_gb"] is None
     assert (got["vm"]["available"], got["vm"]["total"]) == (1, 1)

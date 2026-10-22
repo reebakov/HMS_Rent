@@ -56,7 +56,8 @@ describe('ComputerSheet', () => {
     expect(screen.queryByRole('button', { name: 'Забронировать' })).not.toBeInTheDocument()
   })
 
-  it('рисует шапку: имя, категория, статус, ключ Insight', async () => {
+  it('рисует шапку: имя, категория, статус, ключ Insight (админу)', async () => {
+    session = makeSession({ role: 'admin' })
     setup()
     const dialog = await screen.findByRole('dialog', { name: 'PC-010' })
     expect(await within(dialog).findByText('Средний')).toBeInTheDocument()
@@ -65,13 +66,27 @@ describe('ComputerSheet', () => {
   })
 
   it('без ключа Insight его в шапке нет', async () => {
+    session = makeSession({ role: 'admin' })
     detail = makeDetail({ insight_key: null })
     setup()
     await screen.findByText('Свободен')
     expect(screen.queryByText('INS-10')).not.toBeInTheDocument()
   })
 
-  it('показывает характеристики и блок реквизитов', async () => {
+  it('заказчик видит характеристики, ОС и расположение, но не служебные данные Insight', async () => {
+    detail = makeDetail({ gpu: 'RTX 3060', insight_status: 'In use', synced_at: null })
+    setup()
+    await screen.findByText('Intel Core i5 · 6 ядер')
+    expect(screen.getByText('RTX 3060')).toBeInTheDocument()
+    expect(screen.getByText('Windows 11')).toBeInTheDocument()
+    expect(screen.getByText('Офис, 3 этаж')).toBeInTheDocument()
+    for (const hidden of ['Hostname', 'IP-адрес', 'Статус в Insight', 'pc-010.local', '10.1.2.3', 'In use', 'INS-10']) {
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+    }
+  })
+
+  it('администратор видит характеристики и блок реквизитов', async () => {
+    session = makeSession({ role: 'admin' })
     detail = makeDetail({ gpu: 'RTX 3060', insight_status: 'In use', synced_at: null })
     setup()
     await screen.findByText('Intel Core i5 · 6 ядер')
@@ -86,6 +101,7 @@ describe('ComputerSheet', () => {
   })
 
   it('пустые поля заменяются прочерком', async () => {
+    session = makeSession({ role: 'admin' })
     detail = makeDetail({ hostname: null, os: null, location: null, ip_address: null, insight_status: null, synced_at: null })
     setup()
     await screen.findByText('Hostname')
@@ -125,7 +141,7 @@ describe('ComputerSheet', () => {
     it.each(['booked', 'in_use', 'maintenance', 'retired', 'unknown'] as const)('при статусе %s кнопки нет', async (status) => {
       detail = makeDetail({ status })
       setup()
-      await screen.findByText('Hostname')
+      await screen.findByText('Обновлено')
       expect(screen.queryByRole('button', { name: 'Забронировать' })).not.toBeInTheDocument()
     })
   })
@@ -133,7 +149,7 @@ describe('ComputerSheet', () => {
   describe('атрибуты Insight', () => {
     it('обычному пользователю не показываются', async () => {
       setup()
-      await screen.findByText('Hostname')
+      await screen.findByText('Обновлено')
       expect(screen.queryByText('Все атрибуты Insight')).not.toBeInTheDocument()
       expect(screen.queryByText('Manufacturer')).not.toBeInTheDocument()
     })
@@ -157,7 +173,7 @@ describe('ComputerSheet', () => {
 
   it('закрытие панели (Escape) вызывает onClose', async () => {
     const { onClose, user } = setup()
-    await screen.findByText('Hostname')
+    await screen.findByText('Обновлено')
     await user.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
   })
