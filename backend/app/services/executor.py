@@ -24,7 +24,14 @@ from app.models import (
     User,
     VirtualMachine,
 )
-from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorProblemOut, ExecutorReject, ExecutorResult
+from app.schemas.booking import (
+    FAULTY_REASON,
+    ExecutorOrderOut,
+    ExecutorProblemOut,
+    ExecutorReject,
+    ExecutorResult,
+    ProblemTransitionOut,
+)
 from app.services import cleaning, notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
 from app.services.events import add_event
@@ -76,6 +83,10 @@ async def list_problems(session: AsyncSession) -> list[ExecutorProblemOut]:
                   ServiceRequest.id.desc())
         .limit(LIST_LIMIT)
     )).unique().all()
+    return await _problems_out(session, list(requests))
+
+
+async def _problems_out(session: AsyncSession, requests: list[ServiceRequest]) -> list[ExecutorProblemOut]:
     bookings = {b.id: b for b in (await session.scalars(
         select(Booking).where(Booking.id.in_([r.booking_id for r in requests if r.booking_id])))).unique()}
     vms = {v.id: v for v in (await session.scalars(
@@ -93,6 +104,30 @@ async def list_problems(session: AsyncSession) -> list[ExecutorProblemOut]:
             booking_id=booking.id if booking else None,
         ))
     return rows
+
+
+async def _problem(session: AsyncSession, request_id: int) -> ServiceRequest:
+    req = await session.get(ServiceRequest, request_id)
+    if req is None or req.kind != ServiceRequestKind.problem.value:
+        raise NotFound("Проблема не найдена")
+    if not req.issue_key:
+        raise Conflict("Задача в Jira не создана: переводить нечего")
+    return req
+
+
+async def problem_transitions(session: AsyncSession, request_id: int) -> list[ProblemTransitionOut]:
+    """Переходы задачи по проблеме, доступные из её статуса в Jira."""
+    req = await _problem(session, request_id)
+    return [ProblemTransitionOut(id=str(t["id"]), name=t.get("name") or "", to_status=(t.get("to") or {}).get("name") or "",
+                                 closes=service_requests.sd.is_done_transition(t))
+            for t in await service_requests.available_transitions(req)]
+
+
+async def move_problem(session: AsyncSession, request_id: int, transition_id: str) -> ExecutorProblemOut:
+    """Исполнитель переводит задачу по проблеме в новый статус прямо из портала."""
+    req = await _problem(session, request_id)
+    await service_requests.move_issue(session, req, transition_id)
+    return (await _problems_out(session, [req]))[0]
 
 
 async def list_orders(session: AsyncSession) -> list[Booking]:

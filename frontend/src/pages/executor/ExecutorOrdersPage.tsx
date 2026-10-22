@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Wrench } from 'lucide-react'
+import { Archive, Wrench } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
@@ -11,10 +12,12 @@ import { useConfirmCleaned, useExecutorOrders, useExecutorReturns } from '@/lib/
 import type { ExecutorOrder } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime, plural } from '@/lib/utils'
 
-/** Очередь исполнителя: выданные ПК, которые нужно подготовить, и уже подготовленные */
+/** Очередь исполнителя: выданные ПК, которые нужно подготовить; подготовленные убраны в «Архив заказов» */
 export function ExecutorOrdersPage() {
   const orders = useExecutorOrders()
-  const waiting = orders.data?.filter((o) => !o.prepared_at).length ?? 0
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const waiting = orders.data?.filter((o) => !o.prepared_at) ?? []
+  const archive = orders.data?.filter((o) => o.prepared_at) ?? []
 
   return (
     <>
@@ -22,8 +25,8 @@ export function ExecutorOrdersPage() {
         title="Заказы на подготовку"
         description={
           orders.data
-            ? waiting
-              ? `Ждут подготовки: ${waiting} ${plural(waiting, ['заказ', 'заказа', 'заказов'])}`
+            ? waiting.length
+              ? `Ждут подготовки: ${waiting.length} ${plural(waiting.length, ['заказ', 'заказа', 'заказов'])}`
               : 'Все выданные ПК подготовлены'
             : 'Выданные ПК: установите ОС, настройте и внесите данные для подключения'
         }
@@ -35,54 +38,77 @@ export function ExecutorOrdersPage() {
           loading={<RowsSkeleton rows={5} className="h-12" />}
           empty={<EmptyState icon={Wrench} title="Выданных ПК нет" description="Новые брони появятся здесь автоматически" />}
         >
-          {(data) => (
-            <DataTable
-              className="min-w-[1000px]"
-              head={
-                <>
-                  <Th>№ заказа</Th>
-                  <Th>ПК</Th>
-                  <Th>ОС</Th>
-                  <Th>Команда и заказчик</Th>
-                  <Th>Взят</Th>
-                  <Th>Вернуть до</Th>
-                  <Th>Подготовка</Th>
-                  <Th>Заявка в Jira</Th>
-                </>
-              }
-            >
-              {data.map((o) => (
-                <tr key={o.id} className="hover:bg-muted/40">
-                  <td className="px-4 py-3 tabular text-muted-foreground">№{o.order_number}</td>
-                  <td className="px-4 py-3">
-                    <Link to={`/executor/orders/${o.id}`} className="font-semibold text-primary hover:underline">
-                      {o.computer.name}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">{computerSpecs(o.computer)}</p>
-                  </td>
-                  <td className="px-4 py-3">{o.os_label ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium">{o.department.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {o.requester_name} ({o.requester_nick})
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 tabular">{formatDateTime(o.booked_at)}</td>
-                  <td className="px-4 py-3 tabular">{formatDate(o.expected_return_at)}</td>
-                  <td className="px-4 py-3">
-                    <PreparationBadge order={o} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <JiraRequestLink order={o} />
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
-          )}
+          {() =>
+            waiting.length ? (
+              <OrdersTable rows={waiting} />
+            ) : (
+              <EmptyState icon={Wrench} title="Нет заказов на подготовку" description="Подготовленные ПК — в архиве заказов ниже" />
+            )
+          }
         </DataState>
       </Card>
+      {archive.length > 0 && (
+        <div className="mt-4">
+          <Button variant="outline" aria-expanded={archiveOpen} onClick={() => setArchiveOpen((v) => !v)}>
+            <Archive className="h-4 w-4" />
+            Архив заказов ({archive.length})
+          </Button>
+          {archiveOpen && (
+            <Card className="mt-3">
+              <OrdersTable rows={archive} />
+            </Card>
+          )}
+        </div>
+      )}
       <ReturnsCard />
     </>
+  )
+}
+
+function OrdersTable({ rows }: { rows: ExecutorOrder[] }) {
+  return (
+    <DataTable
+      className="min-w-[1000px]"
+      head={
+        <>
+          <Th>№ заказа</Th>
+          <Th>ПК</Th>
+          <Th>ОС</Th>
+          <Th>Команда и заказчик</Th>
+          <Th>Взят</Th>
+          <Th>Вернуть до</Th>
+          <Th>Подготовка</Th>
+          <Th>Заявка в Jira</Th>
+        </>
+      }
+    >
+      {rows.map((o) => (
+        <tr key={o.id} className="hover:bg-muted/40">
+          <td className="px-4 py-3 tabular text-muted-foreground">№{o.order_number}</td>
+          <td className="px-4 py-3">
+            <Link to={`/executor/orders/${o.id}`} className="font-semibold text-primary hover:underline">
+              {o.computer.name}
+            </Link>
+            <p className="text-xs text-muted-foreground">{computerSpecs(o.computer)}</p>
+          </td>
+          <td className="px-4 py-3">{o.os_label ?? '—'}</td>
+          <td className="px-4 py-3">
+            <p className="font-medium">{o.department.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {o.requester_name} ({o.requester_nick})
+            </p>
+          </td>
+          <td className="px-4 py-3 tabular">{formatDateTime(o.booked_at)}</td>
+          <td className="px-4 py-3 tabular">{formatDate(o.expected_return_at)}</td>
+          <td className="px-4 py-3">
+            <PreparationBadge order={o} />
+          </td>
+          <td className="px-4 py-3">
+            <JiraRequestLink order={o} />
+          </td>
+        </tr>
+      ))}
+    </DataTable>
   )
 }
 

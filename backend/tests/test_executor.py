@@ -10,6 +10,7 @@ import pytest_asyncio
 from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.integrations import servicedesk as real_sd
 from app.models import (
     AssetEvent,
     BookingStatus,
@@ -122,6 +123,103 @@ async def test_problems_list_open_first_with_target_and_jira_link(client, api, e
     assert on_pc["issue_url"] == "https://jira.test/browse/DR-2" and on_pc["status"] == "In Progress"
     assert (on_pc["reporter"]["username"], on_pc["department"]["name"]) == ("owner", "QA")
     assert closed["status_category"] == "done" and closed["order_number"] == env.early.order_number
+
+
+PROBLEM_TRANSITIONS = [
+    {"id": "161", "name": "In Progress", "to": {"name": "В работе", "statusCategory": {"key": "indeterminate"}}},
+    {"id": "151", "name": "Done", "to": {"name": "Готово", "statusCategory": {"key": "done"}}},
+]
+
+
+async def _open_problem(session, env, **kw) -> ServiceRequest:
+    kw.setdefault("issue_key", "DR-5")
+    kw.setdefault("status", "Backlog")
+    kw.setdefault("status_category", "new")
+    req = _problem(env, booking_id=env.early.id, **kw)
+    session.add(req)
+    await session.commit()
+    return req
+
+
+async def test_problem_transitions_are_listed_from_jira(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    rows = (await client.get(api(f"/executor/problems/{req.id}/transitions"))).json()
+    assert rows == [{"id": "161", "name": "In Progress", "to_status": "В работе", "closes": False},
+                    {"id": "151", "name": "Done", "to_status": "Готово", "closes": True}]
+
+
+async def test_problem_moved_to_new_status_without_resolution(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    sd.status = real_sd.SdStatus("In Progress", "indeterminate")  # так Jira ответит после перехода
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "161"})
+    assert r.status_code == 200, r.text
+    assert sd.moved == [("DR-5", "161", None)]
+    assert (r.json()["status"], r.json()["status_category"]) == ("In Progress", "indeterminate")
+    await session.refresh(req)
+    assert req.status == "In Progress"  # сохранён, список не вернёт старый статус
+
+
+async def test_problem_closing_transition_sets_resolution_done(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    sd.status = real_sd.SdStatus("Done", "done")
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "151"})
+    assert r.status_code == 200 and sd.moved == [("DR-5", "151", "Done")]
+    assert r.json()["status_category"] == "done"
+
+
+async def test_problem_transition_unknown_or_stale_is_conflict(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "999"})
+    assert r.status_code == 409 and "Такого перехода уже нет" in r.json()["detail"] and sd.moved == []
+
+
+@pytest.mark.parametrize("body", [{}, {"transition_id": ""}, {"transition_id": "x" * 17}], ids=["no_id", "empty", "too_long"])
+async def test_problem_transition_validation_422(client, api, env, session, sd, body):  # noqa: F811
+    req = await _open_problem(session, env)
+    assert (await client.post(api(f"/executor/problems/{req.id}/transition"), json=body)).status_code == 422
+
+
+async def test_problem_transition_for_missing_other_kind_or_not_created(client, api, env, session, sd):  # noqa: F811
+    other = ServiceRequest(kind="return", user_id=env.owner.id, booking_id=env.early.id, summary="s", description="d",
+                           issue_key="DR-9")
+    failed = _problem(env, booking_id=env.early.id, issue_key=None, error="Service Desk недоступен")
+    session.add_all([other, failed])
+    await session.commit()
+    body = {"transition_id": "161"}
+    assert (await client.post(api("/executor/problems/999999/transition"), json=body)).status_code == 404
+    assert (await client.get(api(f"/executor/problems/{other.id}/transitions"))).status_code == 404
+    assert (await client.post(api(f"/executor/problems/{failed.id}/transition"), json=body)).status_code == 409
+
+
+async def test_problem_transition_jira_failures_are_clear_errors(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.transitions_error = boom()
+    r = await client.get(api(f"/executor/problems/{req.id}/transitions"))
+    assert r.status_code == 400 and r.json()["detail"].startswith("Не удалось получить переходы")
+
+    sd.transitions_error, sd.available, sd.move_error = None, PROBLEM_TRANSITIONS, boom()
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "161"})
+    assert r.status_code == 400 and r.json()["detail"].startswith("Не удалось сменить статус")
+    assert "boom" not in r.json()["detail"] and "Service Desk 500" not in r.json()["detail"]  # подробностей Jira нет
+
+
+async def test_problem_moved_even_if_status_cannot_be_read_back(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    sd.status_errors["DR-5"] = boom()
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "161"})
+    assert r.status_code == 200 and sd.moved == [("DR-5", "161", None)]  # новый статус подтянет worker
+
+
+async def test_customer_cannot_move_problem(client, api, env, session, login):
+    req = await _open_problem(session, env)
+    login(env.owner)
+    assert (await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "161"})).status_code == 403
+    assert (await client.get(api(f"/executor/problems/{req.id}/transitions"))).status_code == 403
 
 
 async def test_problems_empty(client, api, env):

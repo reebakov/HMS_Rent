@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { ExecutorProblemsPage } from './ExecutorProblemsPage'
-import { api } from '@/lib/api'
+import { toast } from 'sonner'
+import { api, ApiError } from '@/lib/api'
 import { failGetOnce, renderWithProviders } from '@/test/helpers'
-import type { ExecutorProblem } from '@/lib/types'
+import type { ExecutorProblem, ProblemTransition } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -30,7 +31,10 @@ const makeProblem = (over: Partial<ExecutorProblem> = {}): ExecutorProblem => ({
   ...over,
 })
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
 let problems: ExecutorProblem[]
+let transitions: ProblemTransition[]
 
 const mount = () =>
   renderWithProviders(
@@ -42,10 +46,19 @@ const mount = () =>
   )
 
 beforeEach(() => {
+  localStorage.clear()
   problems = [makeProblem()]
+  transitions = [
+    { id: '161', name: 'In Progress', to_status: 'В работе', closes: false },
+    { id: '151', name: 'Done', to_status: 'Готово', closes: true },
+  ]
   vi.mocked(api.get).mockReset()
+  vi.mocked(api.post).mockReset()
+  vi.mocked(toast.success).mockReset()
+  vi.mocked(toast.error).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/executor/problems') return problems
+    if (path === '/executor/problems/1/transitions') return transitions
     throw new Error(`неожиданный GET ${path}`)
   })
 })
@@ -107,5 +120,78 @@ describe('ExecutorProblemsPage', () => {
     expect(screen.queryByText('Проблем нет')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(await screen.findByRole('link', { name: 'DR-501' })).toBeInTheDocument()
+  })
+})
+
+describe('ExecutorProblemsPage: новые проблемы', () => {
+  it('непросмотренная открытая проблема помечена «Новая», после просмотра пометка запоминается как просмотренная', async () => {
+    problems = [makeProblem({ id: 4 }), makeProblem({ id: 3, issue_key: 'DR-502', status: 'Done', status_category: 'done' })]
+    mount()
+    expect(await screen.findAllByText('Новая')).toHaveLength(1) // закрытая не «новая»
+    await waitFor(() => expect(localStorage.getItem('hmsrent:problems-seen')).toBe('4'))
+  })
+
+  it('уже просмотренные проблемы без пометки', async () => {
+    localStorage.setItem('hmsrent:problems-seen', '1')
+    mount()
+    await screen.findByRole('link', { name: 'DR-501' })
+    expect(screen.queryByText('Новая')).not.toBeInTheDocument()
+  })
+})
+
+describe('ExecutorProblemsPage: смена статуса', () => {
+  const open = async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(await screen.findByRole('button', { name: 'Сменить статус' }))
+    return user
+  }
+
+  it('кнопка раскрывает переходы из Jira; переходы грузятся только по клику', async () => {
+    mount()
+    await screen.findByRole('link', { name: 'DR-501' })
+    expect(api.get).not.toHaveBeenCalledWith('/executor/problems/1/transitions')
+    await userEvent.click(screen.getByRole('button', { name: 'Сменить статус' }))
+    expect(await screen.findByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Готово' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Сменить статус' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('выбор перехода: POST, тост, меню закрывается', async () => {
+    vi.mocked(api.post).mockResolvedValue(makeProblem({ status: 'В работе' }))
+    const user = await open()
+    await user.click(await screen.findByRole('button', { name: 'В работе' }))
+    expect(api.post).toHaveBeenCalledWith('/executor/problems/1/transition', { transition_id: '161' })
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Задача DR-501: В работе'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument())
+  })
+
+  it('ошибка Jira показана тостом, меню остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(400, 'Не удалось сменить статус: Service Desk недоступен'))
+    const user = await open()
+    await user.click(await screen.findByRole('button', { name: 'Готово' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Не удалось сменить статус: Service Desk недоступен'))
+    expect(screen.getByRole('button', { name: 'Готово' })).toBeInTheDocument()
+  })
+
+  it('переходов нет — об этом сказано', async () => {
+    transitions = []
+    await open()
+    expect(await screen.findByText('Из этого статуса переходов нет')).toBeInTheDocument()
+  })
+
+  it('переходы не загрузились — ошибка и «Повторить»', async () => {
+    failGetOnce(vi.mocked(api.get), '/executor/problems/1/transitions', 'Jira недоступна')
+    const user = await open()
+    expect(await screen.findByText('Jira недоступна')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('button', { name: 'Готово' })).toBeInTheDocument()
+  })
+
+  it('у проблемы без задачи в Jira кнопки смены статуса нет', async () => {
+    problems = [makeProblem({ issue_key: null, issue_url: null, status: null, status_category: null, error: 'Service Desk недоступен' })]
+    mount()
+    await screen.findByText('Заявка в Jira не создана')
+    expect(screen.queryByRole('button', { name: 'Сменить статус' })).not.toBeInTheDocument()
   })
 })

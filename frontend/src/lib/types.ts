@@ -154,6 +154,14 @@ export interface ExecutorProblem {
   booking_id: number | null // у ПК — заказ со страницей исполнителя
 }
 
+/** Переход задачи Jira из её текущего статуса (кнопка «Сменить статус» в «Проблемах по заказам») */
+export interface ProblemTransition {
+  id: string
+  name: string
+  to_status: string
+  closes: boolean // ведёт в закрытый статус
+}
+
 export interface ExecutorReject {
   reason: string
   comment: string

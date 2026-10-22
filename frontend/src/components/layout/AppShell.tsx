@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, LifeBuoy, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
 import { useExecutorOrders, useExecutorProblems, useExecutorReturns, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
 import { canExecute, isOpenProblem, ROLE_LABELS } from '@/lib/dictionaries'
+import { useSeenProblemId } from '@/lib/seen-problems'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { NotificationBell } from './NotificationBell'
 import { ShortcutsButton } from './Shortcuts'
@@ -77,8 +78,9 @@ export function AppShell() {
   // заказы, ждущие подготовки, и вернувшиеся ПК, ждущие очистки диска
   const waitingCount =
     (useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0) + (useExecutorReturns(isExecutor).data?.length ?? 0)
-  // открытые проблемы по заказам: задачи Jira, которые ещё не закрыты
-  const problemsCount = useExecutorProblems(isExecutor).data?.filter(isOpenProblem).length ?? 0
+  // новые открытые проблемы по заказам: пришедшие после последнего просмотра вкладки
+  const seenProblemId = useSeenProblemId()
+  const problemsCount = useExecutorProblems(isExecutor).data?.filter((p) => isOpenProblem(p) && p.id > seenProblemId).length ?? 0
   // «Сроки аренды» требуют внимания: просрочки, заявки на срок и продления, которые ещё не отметили «Принято»
   const deadlinesCount =
     (useOverdue(isAdmin).data?.length ?? 0) +

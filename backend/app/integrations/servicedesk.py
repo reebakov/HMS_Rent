@@ -272,9 +272,16 @@ async def close_issue(issue_key: str, resolution: str) -> bool:
     found = [t for t in await transitions(issue_key) if is_done_transition(t)]
     if not found:
         raise ServiceDeskError(f"Из статуса «{status.get('name')}» нет перехода в Done")
+    await transition_issue(issue_key, found[0]["id"], resolution)
+    return True
+
+
+async def transition_issue(issue_key: str, transition_id: str, resolution: str | None = None) -> None:
+    """Выполняет переход; резолюция нужна переходам в закрытый статус (у остальных её передавать нельзя)."""
+    payload: dict = {"transition": {"id": str(transition_id)}}
+    if resolution:
+        payload["fields"] = {"resolution": {"name": resolution}}
     async with _client(JIRA_API) as http:
-        resp = await _send(http, "POST", f"/issue/{issue_key}/transitions",
-                           json={"transition": {"id": found[0]["id"]}, "fields": {"resolution": {"name": resolution}}})
+        resp = await _send(http, "POST", f"/issue/{issue_key}/transitions", json=payload)
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
-    return True

@@ -51,9 +51,10 @@ let termRequests: TermRequestOut[]
 const order = (id: number, prepared: boolean) => ({ id, prepared_at: prepared ? '2026-10-02T10:00:00Z' : null }) as ExecutorOrder
 let executorOrders: ExecutorOrder[]
 let executorReturns: ExecutorOrder[]
-let executorProblems: { status_category: string | null }[]
+let executorProblems: { id: number; status_category: string | null }[]
 
 beforeEach(() => {
+  localStorage.clear()
   session = makeSession()
   overdue = []
   extensions = []
@@ -127,13 +128,32 @@ describe('AppShell: меню по роли', () => {
     expect(screen.queryByRole('link', { name: /Проблемы по заказам/ })).not.toBeInTheDocument()
   })
 
-  it('«Проблемы по заказам» у исполнителя: ссылка и счётчик открытых проблем (закрытые не считаются)', async () => {
+  it('«Проблемы по заказам» у исполнителя: ссылка и счётчик новых открытых проблем (закрытые не считаются)', async () => {
     session = makeSession({ role: 'executor' })
-    executorProblems = [{ status_category: 'new' }, { status_category: null }, { status_category: 'indeterminate' }, { status_category: 'done' }]
+    executorProblems = [{ id: 1, status_category: 'new' }, { id: 2, status_category: null }, { id: 3, status_category: 'indeterminate' }, { id: 4, status_category: 'done' }]
     mountShell()
     const link = screen.getByRole('link', { name: /Проблемы по заказам/ })
     expect(link).toHaveAttribute('href', '/problems')
     await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
+  })
+
+  it('проблемы, которые исполнитель уже видел, в счётчик не входят; новые — входят', async () => {
+    session = makeSession({ role: 'executor' })
+    localStorage.setItem('hmsrent:problems-seen', '2')
+    executorProblems = [{ id: 1, status_category: 'new' }, { id: 2, status_category: 'new' }, { id: 3, status_category: 'new' }, { id: 4, status_category: 'done' }]
+    mountShell()
+    const link = screen.getByRole('link', { name: /Проблемы по заказам/ })
+    await waitFor(() => expect(within(link).getByText('1')).toBeInTheDocument()) // только №3
+  })
+
+  it('просмотренные все — счётчика у «Проблем по заказам» нет', async () => {
+    session = makeSession({ role: 'executor' })
+    localStorage.setItem('hmsrent:problems-seen', '9')
+    executorProblems = [{ id: 1, status_category: 'new' }]
+    mountShell()
+    const link = screen.getByRole('link', { name: /Проблемы по заказам/ })
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/executor/problems'))
+    expect(within(link).queryByText('1')).not.toBeInTheDocument()
   })
 
   it('админу раздел исполнителя тоже доступен', () => {

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from ipaddress import IPv4Address
 from typing import Literal
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.schemas.common import ComputerShort, DepartmentShort, InputModel, ORMModel, ReturnDate, UserShort
 
@@ -79,6 +79,19 @@ class ExecutorProblemOut(ORMModel):
     target_name: str  # имя ПК или ВМ
     is_vm: bool
     booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя
+
+
+class ProblemTransitionOut(BaseModel):
+    """Переход задачи Jira, доступный из её текущего статуса."""
+
+    id: str
+    name: str
+    to_status: str
+    closes: bool  # ведёт в закрытый статус: портал поставит резолюцию Done
+
+
+class ProblemTransitionIn(InputModel):
+    transition_id: str = Field(min_length=1, max_length=16)
 
 
 REJECT_REASONS = ("Сервер неисправен", "Заказчик не ответил", "Некорректный заказ")
