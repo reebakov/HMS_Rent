@@ -10,8 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.core import clock
+from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
+from app.integrations import servicedesk as real_sd
 from app.integrations.insight.base import InsightObject
 from app.integrations.insight.factory import get_mapping
 from app.models import (
@@ -22,12 +24,14 @@ from app.models import (
     Computer,
     ComputerStatus,
     EventType,
+    ServiceRequest,
     UserRole,
 )
 from app.schemas.booking import BookingCreate, BookingExtend
-from app.services import bookings, executor, runtime
+from app.services import bookings, executor, runtime, service_requests
 from app.services.runtime import RuntimeConfig
 from tests.sync_fakes import add_booking
+from tests.test_service_requests import FakeSd, boom
 
 # ---------- Фикстуры и хелперы ----------
 
@@ -539,6 +543,133 @@ async def test_status_after_cleaning(session, env, make_computer, make_user, mon
     assert db.writeback_pending is writeback
     [ev] = await events_of(comp.id, EventType.cleaned)
     assert (ev.from_status, ev.to_status) == (ComputerStatus.cleaning, expected)
+
+
+# ---------- отмена заказа, который исполнитель не взял в работу (DR-15072) ----------
+
+@pytest.fixture
+def sd(monkeypatch):
+    """Service Desk подключён, клиент Jira подменён."""
+    for k, v in dict(sd_jira_url="https://jira.test", sd_token="tok", sd_username="").items():
+        monkeypatch.setattr(settings, k, v)
+    fake = FakeSd()
+    monkeypatch.setattr(service_requests, "sd", fake)
+    return fake
+
+
+async def add_prepare_task(booked, status, category="new", key="DR-7") -> None:
+    async with SessionLocal() as s:
+        s.add(ServiceRequest(kind="prepare", user_id=booked.user.id, booking_id=booked.booking.id, issue_key=key,
+                             summary="s", description="d", status=status, status_category=category))
+        await s.commit()
+
+
+async def test_return_of_untouched_order_is_cancellation(session, booked, sd, notify_mock, monkeypatch):
+    set_writeback(monkeypatch, True)
+    await add_prepare_task(booked, "Backlog")
+    sd.status = real_sd.SdStatus("Backlog", "new")
+    notify_mock.reset_mock()
+    b = await bookings.return_booking(session, booked.user, booked.booking.id, "  передумали  ")
+
+    assert sd.status_calls == ["DR-7"]  # статус прочитан из Jira, а не взят из базы
+    assert b.status == BookingStatus.cancelled and b.return_comment == "передумали"
+    assert b.returned_by_id == booked.user.id and b.returned_at is not None
+    comp = await db_get(Computer, booked.comp.id)
+    assert comp.status == ComputerStatus.available  # ПК не выдавали: очистка не нужна
+    assert (comp.department_id, comp.usage_until, comp.order_number) == (None, None, None)
+    assert comp.writeback_pending is True  # статус «Ожидает» уйдёт в Insight сразу
+    [ev] = await events_of(booked.comp.id, EventType.returned)
+    assert (ev.from_status, ev.to_status) == (ComputerStatus.booked, ComputerStatus.available)
+    assert "отменён до подготовки" in ev.message and "Ждёт очистки" not in ev.message
+    assert "отменён до подготовки" in notify_mock.await_args.args[0]
+
+
+async def test_cancelled_pc_can_be_booked_again_at_once(session, booked, sd, make_user, make_department):
+    await add_prepare_task(booked, "Backlog")
+    sd.status = real_sd.SdStatus("Backlog", "new")
+    await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    ops = await make_department("Ops")
+    other = await make_user("petrov", department=ops)
+    again = await bookings.create_booking(session, other, payload(booked.comp, ops))
+    assert again.status == BookingStatus.active
+
+
+async def test_task_returned_to_backlog_can_still_be_cancelled(session, booked, sd):
+    await add_prepare_task(booked, "In Progress", "indeterminate")
+    sd.status = real_sd.SdStatus("Backlog", "new")  # «Снято с исполнителя»: Jira уже отвечает Backlog
+    sd.details = real_sd.SdDetails(taken=True, resolution=None)
+    assert (await bookings.return_booking(session, booked.user, booked.booking.id, None)).status == BookingStatus.cancelled
+
+
+@pytest.mark.parametrize("status", ["In Progress", "To Do", "Frozen", "Validation", "Escalated"])
+async def test_taken_order_cannot_be_cancelled(session, booked, sd, status):
+    await add_prepare_task(booked, "Backlog")
+    sd.status = real_sd.SdStatus(status, "indeterminate")
+    with pytest.raises(Conflict, match="Исполнитель уже взял заказ в работу, отменить его нельзя"):
+        await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    assert (await db_get(Booking, booked.booking.id)).status == BookingStatus.active
+    assert (await db_get(Computer, booked.comp.id)).status == ComputerStatus.booked
+
+
+async def test_admin_returns_taken_order_with_cleaning(session, booked, sd, make_user):
+    """Задача застряла у исполнителя: администратор возвращает ПК обычным возвратом, диск придётся очистить."""
+    await add_prepare_task(booked, "Backlog")
+    sd.status = real_sd.SdStatus("In Progress", "indeterminate")
+    admin = await make_user("boss", role=UserRole.admin.value)
+    b = await bookings.return_booking(session, admin, booked.booking.id, None)
+    assert b.status == BookingStatus.returned
+    assert (await db_get(Computer, booked.comp.id)).status == ComputerStatus.cleaning
+
+
+async def test_cancellation_refused_while_jira_is_down(session, booked, sd, caplog):
+    await add_prepare_task(booked, "Backlog")
+    sd.status_errors["DR-7"] = boom("Service Desk недоступен")
+    with pytest.raises(DomainError, match="Не удалось проверить, взял ли исполнитель заказ"):
+        await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    assert (await db_get(Booking, booked.booking.id)).status == BookingStatus.active
+    assert "статус перед отменой заказа не получен" in caplog.text
+
+
+@pytest.mark.parametrize("task", [None, ("Решено", "done")], ids=["задачи нет", "задача закрыта вручную"])
+async def test_return_without_open_task_is_regular(session, booked, sd, task):
+    if task:
+        await add_prepare_task(booked, *task)
+        sd.status = real_sd.SdStatus(*task)
+    b = await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    assert b.status == BookingStatus.returned
+    assert (await db_get(Computer, booked.comp.id)).status == ComputerStatus.cleaning
+
+
+async def test_prepared_order_return_does_not_ask_jira(session, booked, sd):
+    await add_prepare_task(booked, "Done", "done")
+    async with SessionLocal() as s:
+        (await s.get(Booking, booked.booking.id)).prepared_at = clock.now()
+        await s.commit()
+    b = await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    assert sd.status_calls == [] and b.status == BookingStatus.returned
+
+
+async def test_stranger_is_denied_before_jira_is_asked(session, booked, sd, make_user):
+    await add_prepare_task(booked, "Backlog")
+    stranger = await make_user("stranger")
+    with pytest.raises(Forbidden):
+        await bookings.return_booking(session, stranger, booked.booking.id, None)
+    assert sd.status_calls == []
+
+
+async def test_data_entered_while_jira_is_checked_makes_it_regular_return(session, booked, sd):
+    """Исполнитель внёс данные подключения между проверкой Jira и блокировкой брони: ПК выдан, нужна очистка."""
+    await add_prepare_task(booked, "Backlog")
+
+    async def prepared_meanwhile(key):
+        async with SessionLocal() as s:
+            (await s.get(Booking, booked.booking.id)).prepared_at = clock.now()
+            await s.commit()
+        return real_sd.SdStatus("Backlog", "new")
+    sd.get_status = prepared_meanwhile
+    b = await bookings.return_booking(session, booked.user, booked.booking.id, None)
+    assert b.status == BookingStatus.returned
+    assert (await db_get(Computer, booked.comp.id)).status == ComputerStatus.cleaning
 
 
 # ---------- extend_booking ----------

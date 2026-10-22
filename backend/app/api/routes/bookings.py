@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, status
 
 from app.api.deps import DB, CurrentUser
-from app.models import Booking
+from app.models import Booking, BookingStatus
 from app.schemas.booking import BookingCreate, BookingExtend, BookingOut, BookingReturn
 from app.services import bookings as service
 
@@ -27,7 +27,8 @@ async def return_booking(
 ) -> Booking:
     booking = await service.return_booking(session, user, booking_id, data.comment)
     tasks.add_task(service.push_to_insight)
-    tasks.add_task(service.create_return_request, booking.id, user.id)
+    if booking.status == BookingStatus.returned:  # отменённому заказу возвращать нечего: ПК не выдавали
+        tasks.add_task(service.create_return_request, booking.id, user.id)
     return booking
 
 

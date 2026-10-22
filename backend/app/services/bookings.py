@@ -126,6 +126,13 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
     return await get_booking(session, booking.id)
 
 
+RETURN_ACTION = "Вернуть ПК"
+
+
+def _denied(action: str) -> str:
+    return f"{action} может тот, кто бронировал ПК, участник его команды или администратор"
+
+
 async def _lock_active(session: AsyncSession, user: User, booking_id: int, action: str) -> tuple[Booking, Computer]:
     """Активная бронь и её ПК под блокировкой; менять её может арендатор, участник его команды или администратор."""
     booking = await session.scalar(
@@ -134,8 +141,7 @@ async def _lock_active(session: AsyncSession, user: User, booking_id: int, actio
     )
     if booking is None:
         raise NotFound("Бронирование не найдено")
-    ensure_access(user, booking.user_id, booking.department_id,
-                  f"{action} может тот, кто бронировал ПК, участник его команды или администратор")
+    ensure_access(user, booking.user_id, booking.department_id, _denied(action))
     if booking.status != BookingStatus.active:
         raise Conflict("Бронирование уже закрыто")
     comp = await session.scalar(
@@ -144,14 +150,36 @@ async def _lock_active(session: AsyncSession, user: User, booking_id: int, actio
     return booking, comp
 
 
-async def return_booking(session: AsyncSession, user: User, booking_id: int, comment: str | None) -> Booking:
-    booking, comp = await _lock_active(session, user, booking_id, "Вернуть ПК")
+async def _is_cancellation(session: AsyncSession, user: User, booking_id: int) -> bool:
+    """Возврат ПК, который исполнитель ещё не взял в работу, — отмена заказа (задача «подготовить ПК» в Backlog).
 
-    booking.status = BookingStatus.returned.value
+    Статус задачи читается из Jira до блокировки брони, чтобы не держать блокировку на время запроса к внешней системе.
+    """
+    booking = await session.get(Booking, booking_id, populate_existing=True)
+    if booking is None or booking.status != BookingStatus.active or booking.prepared_at is not None:
+        return False  # решит _lock_active или обычный возврат
+    ensure_access(user, booking.user_id, booking.department_id, _denied(RETURN_ACTION))
+    try:
+        return await service_requests.is_untouched(session, booking_id)
+    except Conflict:
+        if user.is_admin:
+            return False  # администратор вернёт ПК и при застрявшей задаче, но с очисткой диска: ПК уже трогали
+        raise
+
+
+async def return_booking(session: AsyncSession, user: User, booking_id: int, comment: str | None) -> Booking:
+    """Возврат ПК: ПК ждёт очистки диска; заказ, который исполнитель не успел взять в работу, отменяется, и ПК сразу свободен."""
+    cancelled = await _is_cancellation(session, user, booking_id)
+    booking, comp = await _lock_active(session, user, booking_id, RETURN_ACTION)
+    cancelled = cancelled and booking.prepared_at is None  # исполнитель мог внести данные, пока проверяли Jira
+
+    booking.status = (BookingStatus.cancelled if cancelled else BookingStatus.returned).value
     booking.returned_at = datetime.now(timezone.utc)
     booking.returned_by_id = user.id
     booking.return_comment = (comment or "").strip() or None
-    new_status = ComputerStatus.cleaning.value  # свободным ПК станет, когда исполнитель очистит диск и подтвердит
+    # Выдавался ПК — свободным станет, когда исполнитель очистит диск и подтвердит; не выдавался — сразу
+    new_status = status_after_return(comp) if cancelled else ComputerStatus.cleaning.value
+    closed = "отменён до подготовки" if cancelled else "закрыт"
     add_event(
         session,
         computer_id=comp.id,
@@ -160,17 +188,20 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
         event_type=EventType.returned,
         from_status=comp.status,
         to_status=new_status,
-        message=f"Заказ №{booking.order_number} закрыт. Возвращён отделом «{booking.department.name}»"
-                + (f": {booking.return_comment}" if booking.return_comment else "") + ". Ждёт очистки диска",
+        message=f"Заказ №{booking.order_number} {closed}. Вернул отдел «{booking.department.name}»"
+                + (f": {booking.return_comment}" if booking.return_comment else "")
+                + ("" if cancelled else ". Ждёт очистки диска"),
     )
     comp.status = new_status
     comp.department_id = None
     comp.usage_until = None
     comp.order_number = None
-    comp.writeback_pending = False  # пока ПК на очистке, в Insight остаётся «Используется»: запись пойдёт после подтверждения
+    # На очистке в Insight остаётся «Используется»: запись пойдёт после подтверждения; при отмене пишем сразу
+    comp.writeback_pending = cancelled and runtime.current().insight_writeback
     await session.commit()
 
-    await notify(f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")
+    await notify(f"🚫 Заказ №{booking.order_number} на **{comp.name}** отменён до подготовки ({booking.department.name})"
+                 if cancelled else f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")
     return await get_booking(session, booking.id)
 
 

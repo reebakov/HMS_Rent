@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { MyBookingsPage } from './MyBookingsPage'
 import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
-import { failGetOnce, makeServiceRequest, makeSession, renderWithProviders, unprepared } from '@/test/helpers'
+import { failGetOnce, makeServiceRequest, makeSession, prepared, renderWithProviders, unprepared } from '@/test/helpers'
 import { formatDate } from '@/lib/utils'
 import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
@@ -34,7 +34,7 @@ const makeBooking = (over: Partial<Booking> = {}): Booking => ({
   returned_at: null,
   returned_by: null,
   return_comment: null,
-  ...unprepared,
+  ...prepared,
   ...over,
 })
 
@@ -663,20 +663,64 @@ describe('MyBookingsPage: сборки по запросу и ОС', () => {
 
 describe('MyBookingsPage: данные для подключения к ПК', () => {
   it('пока исполнитель не подготовил ПК — подсказка, что данные появятся', async () => {
-    bookings = [makeBooking()]
+    bookings = [makeBooking(unprepared)]
     renderPage()
     expect(await screen.findByText('Исполнитель готовит ПК — данные для подключения появятся здесь.')).toBeInTheDocument()
   })
 
   it('подготовленный ПК: имя, IP, логин, способ и напоминание сменить пароль', async () => {
-    bookings = [makeBooking({
-      connection_host: 'A032.ff.local', connection_ip: '10.1.2.3', connection_method: 'RDP', connection_login: 'user',
-      prepared_at: '2026-10-21T10:00:00Z',
-    })]
+    bookings = [makeBooking()]
     renderPage()
     expect(await screen.findByText('10.1.2.3')).toBeInTheDocument()
     expect(screen.getByText(/A032\.ff\.local/)).toBeInTheDocument()
     expect(screen.getByText(/Логин user · RDP\. Пароль сообщит исполнитель — смените его при первом входе\./)).toBeInTheDocument()
     expect(screen.queryByText(/Исполнитель готовит ПК/)).not.toBeInTheDocument()
+  })
+})
+
+describe('MyBookingsPage: отмена заказа до подготовки', () => {
+  it('у неподготовленного ПК кнопка «Отменить заказ», у подготовленного — «Вернуть компьютер»', async () => {
+    bookings = [makeBooking(unprepared)]
+    renderPage()
+    expect(await screen.findByRole('button', { name: /Отменить заказ/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Вернуть компьютер/ })).not.toBeInTheDocument()
+  })
+
+  it('подтверждение: POST возврата, тост об отмене, диалог закрыт', async () => {
+    const user = userEvent.setup()
+    bookings = [makeBooking(unprepared)]
+    vi.mocked(api.post).mockResolvedValue(makeBooking({ ...unprepared, status: 'cancelled', returned_by: { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' } }))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: /Отменить заказ/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Отменить заказ на PC-010?' })
+    expect(within(dialog).getByText(/Если он не взял заказ в работу, заказ отменится/)).toBeInTheDocument()
+    await user.type(within(dialog).getByRole('textbox'), 'Передумали')
+    await user.click(within(dialog).getByRole('button', { name: 'Отменить заказ' }))
+    expect(api.post).toHaveBeenCalledWith('/bookings/1/return', { comment: 'Передумали' })
+    expect(toast.success).toHaveBeenCalledWith('Заказ на PC-010 отменён')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('исполнитель уже взял заказ: причина показана, диалог остаётся открытым', async () => {
+    const user = userEvent.setup()
+    bookings = [makeBooking(unprepared)]
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Исполнитель уже взял заказ в работу, отменить его нельзя'))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: /Отменить заказ/ }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Отменить заказ' }))
+    expect(toast.error).toHaveBeenCalledWith('Исполнитель уже взял заказ в работу, отменить его нельзя')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('в истории: отменённый заказчиком — «Отменён», отклонённый исполнителем — «Отклонён»', async () => {
+    bookings = [
+      makeBooking({ id: 2, order_number: 90, status: 'cancelled', returned_at: '2024-01-12T09:00:00Z', return_comment: 'Передумали',
+        returned_by: { id: 1, username: 'i.ivanov', display_name: 'Иван Иванов' } }),
+      makeBooking({ id: 3, order_number: 91, status: 'cancelled', returned_at: '2024-01-12T09:00:00Z', return_comment: 'Некорректный заказ: дубль' }),
+    ]
+    renderPage()
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('Отменён')).toBeInTheDocument()
+    expect(within(table).getByText('Отклонён')).toBeInTheDocument()
   })
 })

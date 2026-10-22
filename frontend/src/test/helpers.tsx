@@ -86,6 +86,15 @@ export const unprepared = {
   prepared_at: null,
 } satisfies Partial<Booking>
 
+/** Те же поля у подготовленного ПК: исполнитель внёс данные подключения */
+export const prepared = {
+  connection_host: 'A032.ff.local',
+  connection_ip: '10.1.2.3',
+  connection_method: 'RDP',
+  connection_login: 'user',
+  prepared_at: '2026-10-21T10:00:00Z',
+} satisfies Partial<Booking>
+
 /** Заказ в разделе «Исполнитель»: по умолчанию активный и ещё не подготовленный */
 export const makeExecutorOrder = (over: Partial<ExecutorOrder> = {}): ExecutorOrder => ({
   id: 7,

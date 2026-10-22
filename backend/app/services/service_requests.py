@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.errors import DomainError, Forbidden, NotFound
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
 from app.models import Booking, BookingStatus, ServiceRequest, ServiceRequestKind, User, VirtualMachine
@@ -271,6 +271,36 @@ async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
 async def _last_staff_comment(issue_key: str) -> str | None:
     comments = [c for c in await sd.get_comments(issue_key) if not c.from_portal]
     return comments[-1].body if comments else None
+
+
+async def is_untouched(session: AsyncSession, booking_id: int) -> bool:
+    """Задача «подготовить ПК» по заказу ещё в Backlog, значит, заказ можно отменить (DR-15072).
+
+    False — задачи нет (Service Desk выключен, заявка не создалась) или она закрыта: возврат обычный. Исполнитель уже
+    взял заказ — Conflict. Статус читается из Jira; если проверить не удалось, отмена отклоняется: иначе можно
+    отменить заказ, который уже в работе.
+    """
+    if not settings.service_desk_configured:
+        return False
+    req = await session.scalar(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.booking_id == booking_id, ServiceRequest.issue_key.is_not(None))
+        .order_by(ServiceRequest.id.desc()).limit(1)
+    )
+    if req is None:
+        return False
+    try:
+        await _sync_status(req)
+    except sd.ServiceDeskError as exc:
+        log.warning("Заявка %s: статус перед отменой заказа не получен: %s", req.issue_key, exc)
+        raise DomainError("Не удалось проверить, взял ли исполнитель заказ: Service Desk недоступен. "
+                          "Попробуйте через несколько минут") from exc
+    await session.commit()
+    if req.status_category == "done":
+        return False
+    if req.status != "Backlog":
+        raise Conflict("Исполнитель уже взял заказ в работу, отменить его нельзя. Дождитесь подготовки ПК и верните его")
+    return True
 
 
 async def get_with_comments(session: AsyncSession, user: User, request_id: int) -> tuple[ServiceRequest, list]:

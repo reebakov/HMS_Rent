@@ -34,11 +34,11 @@ export function MyBookingsPage() {
   const confirmReturn = async (comment: string) => {
     if (!returning) return
     try {
-      await returnMutation.mutateAsync({ id: returning.id, comment: comment || undefined })
-      toast.success(`${returning.computer.name} возвращён`)
+      const closed = await returnMutation.mutateAsync({ id: returning.id, comment: comment || undefined })
+      toast.success(closed.status === 'cancelled' ? `Заказ на ${returning.computer.name} отменён` : `${returning.computer.name} возвращён`)
       setReturning(null)
     } catch (e) {
-      toast.error(errorMessage(e, 'Не удалось вернуть'))
+      toast.error(errorMessage(e, returning.prepared_at ? 'Не удалось вернуть' : 'Не удалось отменить заказ'))
     }
   }
 
@@ -168,7 +168,7 @@ export function MyBookingsPage() {
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setReturning(b)}>
                       <Undo2 className="h-3.5 w-3.5" />
-                      Вернуть компьютер
+                      {b.prepared_at ? 'Вернуть компьютер' : 'Отменить заказ'}
                     </Button>
                     </div>
                   </div>
@@ -203,7 +203,7 @@ export function MyBookingsPage() {
                       {b.computer.name}
                       {b.status === 'cancelled' && (
                         <span className="mt-0.5 flex items-center gap-1.5 text-xs font-normal">
-                          <Badge tone="danger">Отклонён</Badge>
+                          <Badge tone="danger">{b.returned_by ? 'Отменён' : 'Отклонён'}</Badge>
                           <span className="text-muted-foreground">{b.return_comment}</span>
                         </span>
                       )}
@@ -230,7 +230,8 @@ export function MyBookingsPage() {
 
       <ReturnDialog
         open={!!returning}
-        title={returning ? `Вернуть ${returning.computer.name}?` : ''}
+        title={returning ? `${returning.prepared_at ? 'Вернуть' : 'Отменить заказ на'} ${returning.computer.name}?` : ''}
+        cancel={!!returning && !returning.prepared_at}
         pending={returnMutation.isPending}
         onConfirm={confirmReturn}
         onClose={() => setReturning(null)}
