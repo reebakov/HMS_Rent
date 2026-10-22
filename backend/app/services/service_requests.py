@@ -242,11 +242,11 @@ async def _sync_status(req: ServiceRequest) -> None:
     req.status, req.status_category = status.status, status.category
     req.last_checked_at = datetime.now(timezone.utc)
     try:
-        if req.status in ("Backlog", "To Do") and not req.was_taken or req.status_category == "done" and req.resolution is None:
+        if req.workflow_status in ("Backlog", "To Do") and not req.was_taken or req.status_category == "done" and req.resolution is None:
             details = await sd.get_details(req.issue_key)
             req.was_taken = req.was_taken or details.taken
             req.resolution = details.resolution
-        req.status_note = await _last_staff_comment(req.issue_key) if req.status == "Frozen" else None
+        req.status_note = await _last_staff_comment(req.issue_key) if req.workflow_status == "Frozen" else None
     except sd.ServiceDeskError as exc:
         log.warning("Заявка %s: история и комментарий не получены: %s", req.issue_key, exc)
 
@@ -303,7 +303,7 @@ async def is_untouched(session: AsyncSession, booking_id: int) -> bool:
     await session.commit()
     if req.status_category == "done":
         return False
-    if req.status != "Backlog":
+    if req.workflow_status != "Backlog":
         raise Conflict("Исполнитель уже взял заказ в работу, отменить его нельзя. Дождитесь подготовки ПК и верните его")
     return True
 
