@@ -158,6 +158,17 @@ async def test_summary_counts_per_tier(client, fleet, api):
     assert (got["vm"]["available"], got["vm"]["total"]) == (1, 1)
 
 
+async def test_executors_department_sees_all_published_pools_in_catalog_and_can_book(client, login, make_user, world, make_department, api):
+    """Отдел с кодом HMS видит и бронирует ПК из пулов других отделов; черновик, архив и ПК без пула — нет."""
+    hms = await make_department("Исполнители", code="HMS")
+    login(await make_user("exec", department=hms))
+    assert await _names(client, api) == ["A-dev", "A-open", "A-qa"]
+    comp = world["c"]["dev"]
+    assert (await client.get(api(f"/computers/{comp.id}"))).status_code == 200
+    r = await client.post(api("/bookings"), json=_payload(comp, hms))
+    assert r.status_code == 201, r.text
+
+
 async def test_summary_respects_visibility(client, login, make_user, world, api):
     login(await make_user("emp", department=world["dev"]))
     got = {x["tier"]: x for x in (await client.get(api("/catalog/summary"))).json()}

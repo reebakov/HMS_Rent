@@ -1,6 +1,7 @@
 """Чистая логика пулов: без БД, модели создаются в памяти."""
 import pytest
 
+from app.core.config import settings
 from app.models import Department, Pool, User, UserRole
 from app.services.pools import parse_names, pool_visible
 
@@ -46,3 +47,24 @@ def test_pool_with_departments_only_for_own(dept_id, expected):
 
 def test_admin_sees_restricted_pool():
     assert pool_visible(make_pool(dept_ids=(1,)), make_user(dept_id=None, role=UserRole.admin.value)) is True
+
+
+def _in_dept(code) -> User:
+    return User(username="u", role=UserRole.user.value, department_id=7, department=Department(id=7, name="HMS", code=code))
+
+
+@pytest.mark.parametrize("code, sees", [("HMS", True), (" hms ", True), ("QA", False), (None, False), ("", False)])
+def test_executors_department_sees_restricted_pool(code, sees):
+    assert pool_visible(make_pool(dept_ids=(1,)), _in_dept(code)) is sees
+    assert _in_dept(code).sees_all_pools is sees
+
+
+def test_executors_department_still_does_not_see_unpublished(monkeypatch):
+    assert pool_visible(make_pool(published=False), _in_dept("HMS")) is False
+
+
+def test_executors_department_rule_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(settings, "executors_department_code", "")
+    assert pool_visible(make_pool(dept_ids=(1,)), _in_dept("HMS")) is False
+    monkeypatch.setattr(settings, "executors_department_code", "OPS")
+    assert pool_visible(make_pool(dept_ids=(1,)), _in_dept("OPS")) is True  # код настраивается

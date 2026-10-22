@@ -15,9 +15,10 @@ NAME_TAKEN = "Пул с таким названием уже есть"
 
 
 def visible_pool_ids(user: User):
-    """Подзапрос: пулы, чьи ПК видит сотрудник. Пул без отделов — для всех, с отделами — только им."""
+    """Подзапрос: пулы, чьи ПК видит сотрудник. Пул без отделов — для всех, с отделами — только им; админ и отдел
+    исполнителей видят все опубликованные."""
     stmt = select(Pool.id).where(Pool.is_published.is_(True))
-    if user.is_admin:
+    if user.sees_all_pools:
         return stmt
     open_to_all = ~Pool.departments.any()
     if user.department_id:
@@ -28,7 +29,7 @@ def visible_pool_ids(user: User):
 def pool_visible(pool: Pool | None, user: User) -> bool:
     if pool is None or not pool.is_published:
         return False
-    if user.is_admin or not pool.departments:
+    if user.sees_all_pools or not pool.departments:
         return True
     return any(d.id == user.department_id for d in pool.departments)
 
