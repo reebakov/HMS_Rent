@@ -94,8 +94,6 @@ async def get_computer(session: AsyncSession, user: User, computer_id: int) -> C
         raise NotFound("Компьютер не найден")
     detail = ComputerDetail.model_validate(comp)
     if not user.is_admin:
-        # Служебные данные Insight — только администраторам: обычному сотруднику не отдаём их и через API
+        # «Все атрибуты Insight» — только для администраторов: обычному сотруднику не отдаём их и через API
         detail.attributes = {}
-        detail.serial_number = detail.ip_address = detail.note = None
-        detail.hostname = detail.insight_key = detail.insight_status = None
     return detail

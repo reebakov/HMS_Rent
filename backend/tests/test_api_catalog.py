@@ -90,21 +90,6 @@ async def test_attributes_hidden_from_employee_but_not_admin(client, login, make
     assert (await client.get(api(f"/computers/{comp.id}"))).json()["attributes"] == {"Secret": "x"}
 
 
-async def test_employee_card_has_no_insight_service_fields(client, login, make_user, make_pool, make_computer, api):
-    comp = await make_computer("A1", await make_pool("P"), cpu="i5", ram_gb=16, storage="SSD", hostname="a1.local",
-                               insight_key="ITAM-1", insight_status="In use", ip_address="10.0.0.1",
-                               serial_number="SN-1", note="заметка", location="Офис")
-    login(await make_user("emp"))
-    body = (await client.get(api(f"/computers/{comp.id}"))).json()
-    for field in ("hostname", "insight_key", "insight_status", "ip_address", "serial_number", "note"):
-        assert body[field] is None, field
-    assert (body["cpu"], body["ram_gb"], body["storage"], body["location"]) == ("i5", 16, "SSD", "Офис")
-    client.cookies.clear()
-    login(await make_user("boss", role=ADMIN))
-    body = (await client.get(api(f"/computers/{comp.id}"))).json()
-    assert (body["hostname"], body["insight_key"], body["ip_address"], body["serial_number"]) == ("a1.local", "ITAM-1", "10.0.0.1", "SN-1")
-
-
 # ---------- Фильтры, поиск, сортировка ----------
 
 @pytest.fixture
