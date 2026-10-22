@@ -32,6 +32,8 @@ class FakeSd:
     """Подмена модуля servicedesk: запоминает вызовы, ответы и ошибки задаются в тесте."""
 
     ServiceDeskError = real_sd.ServiceDeskError
+    RESOLUTION_DONE = real_sd.RESOLUTION_DONE
+    RESOLUTION_REJECTED = real_sd.RESOLUTION_REJECTED
 
     def __init__(self):
         self.created: list[tuple] = []
@@ -44,6 +46,9 @@ class FakeSd:
         self.details = real_sd.SdDetails(taken=False, resolution=None)
         self.details_error: Exception | None = None
         self.details_calls: list[str] = []
+        self.closed: list[tuple] = []
+        self.close_error: Exception | None = None
+        self.close_result = True
         self.sent: list[tuple] = []
         self.send_error: Exception | None = None
 
@@ -64,6 +69,13 @@ class FakeSd:
         if self.details_error:
             raise self.details_error
         return self.details
+
+    async def close_issue(self, key, resolution):
+        if self.close_error:
+            raise self.close_error
+        self.closed.append((key, resolution))
+        self.status = real_sd.SdStatus("Done", "done")  # закрыли мы или успел исполнитель — в Jira теперь Done
+        return self.close_result
 
     async def get_comments(self, key):
         if self.comments_error:
@@ -508,6 +520,82 @@ async def test_refresh_open_without_history_access_still_updates_status(session,
     saved = await fresh(req.id)
     assert (saved.status, saved.was_taken, saved.customer_status) == ("Backlog", False, "Принят")
     assert saved.last_checked_at is not None and "история и комментарий не получены" in caplog.text
+
+
+# ---------- закрытие задач «подготовить ПК» ----------
+
+async def _prepare_req(session, env, **booking_fields):
+    for k, v in booking_fields.items():
+        setattr(env.booking, k, v)
+    return await add_req(session, env.owner, booking=env.booking, kind="prepare", key="DR-7", status="In Progress",
+                         status_category="indeterminate")
+
+
+async def test_prepared_order_closes_task_as_done(session, env, sd):
+    req = await _prepare_req(session, env, prepared_at=_now())
+    await svc.refresh_open(session)
+    assert sd.closed == [("DR-7", "Done")]
+    assert (await fresh(req.id)).customer_status == "Выполнен"
+    assert await _notes() == []  # «ПК готов» заказчик уже получил, второе уведомление об итоге не нужно
+
+
+@pytest.mark.parametrize("fields", [{"status": "cancelled"}, {"status": "returned"}], ids=["отклонён", "отменён до подготовки"])
+async def test_closed_unprepared_order_closes_task_as_rejected(session, env, sd, fields):
+    await _prepare_req(session, env, **fields)
+    await svc.refresh_open(session)
+    assert sd.closed == [("DR-7", "Rejected")]
+
+
+async def test_prepared_then_returned_order_is_done_not_rejected(session, env, sd):
+    await _prepare_req(session, env, prepared_at=_now(), status="returned")
+    await svc.refresh_open(session)
+    assert sd.closed == [("DR-7", "Done")]
+
+
+async def test_waiting_order_keeps_task_open(session, env, sd):
+    await _prepare_req(session, env)  # заказ активен, данных подключения ещё нет
+    await svc.refresh_open(session)
+    assert sd.closed == []
+
+
+@pytest.mark.parametrize("kind", ["return", "problem", "build", "diagnose"])
+async def test_only_prepare_tasks_are_closed_by_portal(session, env, sd, kind):
+    env.booking.prepared_at = _now()
+    await add_req(session, env.owner, booking=env.booking, kind=kind, key="DR-8", status="In Progress",
+                  status_category="indeterminate")
+    await svc.refresh_open(session)
+    assert sd.closed == []
+
+
+async def test_task_closed_by_hand_is_left_alone(session, env, sd):
+    """Исполнитель закрыл задачу в Jira сам: портал видит категорию done и ничего не меняет."""
+    env.booking.prepared_at = _now()
+    await add_req(session, env.owner, booking=env.booking, kind="prepare", key="DR-7", status="In Progress",
+                  status_category="indeterminate")
+    sd.status = real_sd.SdStatus("Done", "done")
+    await svc.refresh_open(session)
+    assert sd.closed == []
+
+
+async def test_close_race_with_manual_close_is_harmless(session, env, sd):
+    req = await _prepare_req(session, env, prepared_at=_now())
+    sd.close_result = False  # между проверкой и переходом задачу закрыли вручную
+    await svc.refresh_open(session)
+    assert (await fresh(req.id)).status_category == "done"
+
+
+async def test_close_failure_is_logged_and_retried(session, env, sd, caplog):
+    req = await _prepare_req(session, env, prepared_at=_now())
+    sd.close_error = boom("Из статуса «Frozen» нет перехода в Done")
+    await svc.refresh_open(session)
+    assert "Задача DR-7 не закрыта (Done)" in caplog.text
+    assert (await fresh(req.id)).status_category != "done"  # останется открытой: следующий круг попробует снова
+    sd.close_error = None
+    async with SessionLocal() as other:
+        (await other.get(ServiceRequest, req.id)).last_checked_at = None
+        await other.commit()
+    await svc.refresh_open(session)
+    assert sd.closed == [("DR-7", "Done")]
 
 
 async def _notes() -> list[Notification]:

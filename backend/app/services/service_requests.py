@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
 from app.integrations.servicedesk import portal_url
-from app.models import Booking, ServiceRequest, ServiceRequestKind, User, VirtualMachine
+from app.models import Booking, BookingStatus, ServiceRequest, ServiceRequestKind, User, VirtualMachine
 from app.schemas.service_request import BuildCreate, RequestOut
 from app.services import departments, notifications, runtime, term_limit
 from app.services.access import ensure_access, mine_or_team
@@ -246,6 +246,28 @@ async def _sync_status(req: ServiceRequest) -> None:
         log.warning("Заявка %s: история и комментарий не получены: %s", req.issue_key, exc)
 
 
+async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
+    """Задачу «подготовить ПК» закрывает портал: Done, когда исполнитель внёс данные подключения, Rejected, когда
+    заказ отклонён или отменён до подготовки. Закрытие вручную не мешает: уже закрытую задачу портал пропускает.
+
+    Делает это worker, а не обработчики запросов: при недоступной Jira закрытие просто повторится в следующий круг.
+    """
+    if req.kind != ServiceRequestKind.prepare.value or req.booking_id is None or req.status_category == "done":
+        return
+    booking = await session.get(Booking, req.booking_id)
+    if booking.prepared_at is not None:
+        resolution = sd.RESOLUTION_DONE
+    elif booking.status != BookingStatus.active:
+        resolution = sd.RESOLUTION_REJECTED
+    else:
+        return
+    try:
+        await sd.close_issue(req.issue_key, resolution)
+        await _sync_status(req)
+    except sd.ServiceDeskError as exc:
+        log.warning("Задача %s не закрыта (%s): %s", req.issue_key, resolution, exc)
+
+
 async def _last_staff_comment(issue_key: str) -> str | None:
     comments = [c for c in await sd.get_comments(issue_key) if not c.from_portal]
     return comments[-1].body if comments else None
@@ -292,6 +314,7 @@ async def refresh_open(session: AsyncSession, batch: int = 20) -> None:
         old = req.customer_status
         try:
             await _sync_status(req)
+            await _close_if_settled(session, req)
             notifications.request_status(session, req, old)
         except sd.ServiceDeskError as exc:
             log.warning("Статус %s не обновлён: %s", req.issue_key, exc)
