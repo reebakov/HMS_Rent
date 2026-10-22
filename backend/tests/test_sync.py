@@ -163,6 +163,19 @@ async def test_writeback_pending_ignores_foreign_status(session, monkeypatch, ma
     assert c.pool_id == old_pool.id and c.order_number is None  # поля аренды тоже не тянем
 
 
+async def test_cleaning_status_survives_sync(session, monkeypatch, make_computer, make_pool, make_department):
+    """ПК на очистке: в Insight ещё «занят» и с полями аренды, но портал ждёт исполнителя и ничего не подтягивает."""
+    await make_department("QA")
+    pool = await make_pool("Main")
+    await make_computer("A001", status="cleaning", insight_object_id=1, pool=pool, order_number=None)
+    use(monkeypatch, insight_obj(1, "A001", status="В использовании",
+                                 **{"Команда-получатель": "qa", "Номер заказа": "9", "Срок использования": "20.10.2030"}))
+    await run_sync(session)
+    c = (await reload_computers(session))["A001"]
+    assert c.status == "cleaning" and c.insight_status == "В использовании"
+    assert (c.department_id, c.order_number, c.usage_until) == (None, None, None)
+
+
 async def test_non_booked_pulls_rental_fields(session, monkeypatch, make_department):
     dept = await make_department("QA")
     use(monkeypatch, insight_obj(1, "A001", **{"Команда-получатель": "qa", "Срок использования": "20.10.2030",

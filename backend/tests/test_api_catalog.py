@@ -346,7 +346,7 @@ async def _book(client, api, shop):
     return r.json()["id"]
 
 
-async def test_return_by_owner(client, shop, session, api):
+async def test_return_by_owner(client, shop, session, api, make_user, login):
     bid = await _book(client, api, shop)
     r = await client.post(api(f"/bookings/{bid}/return"), json={"comment": " всё ок "})
     assert r.status_code == 200, r.text
@@ -354,7 +354,14 @@ async def test_return_by_owner(client, shop, session, api):
     assert body["status"] == "returned" and body["return_comment"] == "всё ок"
     assert body["returned_at"] and body["returned_by"]["id"] == shop["emp"].id
     comp = await session.scalar(select(Computer).where(Computer.id == shop["comp"].id).execution_options(populate_existing=True))
-    assert comp.status == ComputerStatus.available and comp.department_id is None and comp.order_number is None
+    assert comp.status == ComputerStatus.cleaning and comp.department_id is None and comp.order_number is None
+    assert await _names(client, api) == []  # пока ПК на очистке, в каталоге его нет
+    assert (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).status_code == 409
+
+    worker = await make_user("worker", role=UserRole.executor.value)
+    login(worker)
+    assert (await client.post(api(f"/executor/returns/{bid}/cleaned"))).status_code == 200  # исполнитель очистил диск
+    login(shop["emp"])
     assert await _names(client, api) == ["A1"]  # снова в каталоге
     assert (await client.post(api("/bookings"), json=_payload(shop["comp"], shop["dept"]))).status_code == 201
 

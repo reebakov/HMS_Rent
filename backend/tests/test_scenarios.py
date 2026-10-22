@@ -85,7 +85,8 @@ async def test_pc_from_booking_to_return(client, login, api, world):
     for action, body in (("extend", {"expected_return_at": (later + timedelta(days=1)).isoformat()}), ("return", {})):
         assert (await client.post(api(f"/bookings/{booking['id']}/{action}"), json=body)).status_code == 403
 
-    # коллега возвращает ПК: заказ закрыт, в очереди исполнителя его нет, данные подключения изменить нельзя, ПК свободен
+    # коллега возвращает ПК: заказ закрыт, в очереди подготовки его нет, данные подключения изменить нельзя;
+    # ПК не свободен, пока исполнитель не очистит диск
     login(world.mate)
     back = await client.post(api(f"/bookings/{booking['id']}/return"), json={"comment": "всё работает"})
     assert back.status_code == 200 and back.json()["status"] == "returned"
@@ -94,6 +95,13 @@ async def test_pc_from_booking_to_return(client, login, api, world):
     late = await client.post(api(f"/executor/orders/{booking['id']}/result"),
                              json={"host": "A001.ff.local", "ip": "10.1.2.4", "method": "RDP"})
     assert late.status_code == 409
+    login(world.stranger)
+    assert await free_pcs(client, api) == []
+    login(world.executor)
+    (waiting,) = (await client.get(api("/executor/returns"))).json()
+    assert waiting["id"] == booking["id"] and waiting["computer"]["name"] == "A001"
+    assert (await client.post(api(f"/executor/returns/{booking['id']}/cleaned"))).status_code == 200
+    assert (await client.get(api("/executor/returns"))).json() == []
     login(world.stranger)
     assert await free_pcs(client, api) == ["A001"]
 

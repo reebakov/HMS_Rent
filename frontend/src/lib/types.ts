@@ -1,7 +1,7 @@
 // Типы ответов API (зеркало pydantic-схем из backend/app/schemas)
 
 export type Tier = 'weak' | 'medium' | 'powerful' | 'vm'
-export type ComputerStatus = 'available' | 'booked' | 'in_use' | 'maintenance' | 'retired' | 'unknown'
+export type ComputerStatus = 'available' | 'booked' | 'cleaning' | 'in_use' | 'maintenance' | 'retired' | 'unknown'
 export type BookingStatus = 'active' | 'returned' | 'cancelled'
 export type UserRole = 'user' | 'executor' | 'admin' // исполнитель видит раздел «Исполнитель», админ — всё
 

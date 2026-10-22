@@ -142,15 +142,17 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
             comp.tier = comp.tier_override or data.tier or classify(
                 is_virtual=data.is_virtual, ram_gb=data.ram_gb, gpu=data.gpu
             )
+            # ПК на очистке (портал ждёт подтверждения исполнителя) и изменения, не доехавшие до Insight: его статус и
+            # поля аренды устарели, портал их не трогает
+            ours = comp.writeback_pending or comp.status == ComputerStatus.cleaning
             comp.status = (
                 ComputerStatus.booked.value
                 if comp.id in booked_ids
-                # пока изменения портала не доехали до Insight, статус Insight устаревший — не трогаем
-                else comp.status if comp.writeback_pending
+                else comp.status if ours
                 else data.status
             )
             comp.synced_at = now
-            if not comp.writeback_pending:  # наши изменения ещё не доехали до Insight — его значения устарели
+            if not ours:
                 changed |= await _pull_rental_fields(
                     session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments
                 )

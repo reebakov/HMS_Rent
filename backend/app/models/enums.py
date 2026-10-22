@@ -14,6 +14,7 @@ class ComputerStatus(StrEnum):
     available = "available"      # свободен, можно бронировать
     booked = "booked"            # закреплён за отделом через портал
     in_use = "in_use"            # по Insight занят (выдан мимо портала)
+    cleaning = "cleaning"        # вернули, ждёт очистки диска исполнителем (портал держит статус до подтверждения)
     maintenance = "maintenance"  # ремонт / обслуживание
     retired = "retired"          # списан
     unknown = "unknown"          # статус Insight не распознан
@@ -62,6 +63,7 @@ class EventType(StrEnum):
     extended = "extended"
     prepared = "prepared"  # исполнитель подготовил ПК и внёс данные для подключения
     rejected = "rejected"  # исполнитель отклонил заказ ПК (в том числе «Сервер неисправен»)
+    cleaned = "cleaned"    # исполнитель очистил диск вернувшегося ПК, ПК свободен
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"

@@ -376,3 +376,17 @@ async def test_reminders_prune_old_notifications(session, make_computer, owner, 
     clock(12)
     await overdue.daily_reminders(session)
     assert await titles() == ["свежее"]
+
+
+async def test_digest_reports_pcs_waiting_for_cleaning_over_a_day(session, make_computer, owner, clock, mm):
+    user, dept = owner
+    old = await make_computer("PC-OLD", status="cleaning")
+    fresh = await make_computer("PC-NEW", status="cleaning")
+    for comp, hours in ((old, 30), (fresh, 3)):
+        b = await add_booking(session, comp, user, dept, status="returned", expected_return_at=TODAY + timedelta(days=30))
+        b.returned_at = app_clock.now() - timedelta(hours=hours)
+    await session.commit()
+    clock(12)
+    await overdue.daily_digest(session)
+    text = "\n".join(call.args[0] for call in mm.await_args_list)
+    assert "ждут очистки дольше суток" in text and "PC-OLD" in text and "PC-NEW" not in text

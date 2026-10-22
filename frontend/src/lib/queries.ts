@@ -430,6 +430,24 @@ export const useExecutorOrders = (enabled = true) =>
 export const useExecutorOrder = (id: number) =>
   useQuery({ queryKey: ['executor', 'order', id], queryFn: () => api.get<ExecutorOrder>(`/executor/orders/${id}`) })
 
+/** Вернувшиеся ПК, ждущие очистки диска */
+export const useExecutorReturns = (enabled = true) =>
+  useQuery({
+    queryKey: ['executor', 'returns'],
+    queryFn: () => api.get<ExecutorOrder[]>('/executor/returns'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+export function useConfirmCleaned() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<ExecutorOrder>(`/executor/returns/${id}/cleaned`),
+    onSettled: () =>
+      Promise.all(['executor', 'computers', 'catalog-summary', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
+
 export function useRejectExecutorOrder() {
   const qc = useQueryClient()
   return useMutation({

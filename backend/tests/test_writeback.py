@@ -185,3 +185,11 @@ async def test_faulty_pc_is_written_as_maintenance(session, fake, wb_on, make_co
     await pending(make_computer, status="maintenance")
     await push_pending(session)
     assert fake.calls[0]["values"]["Статус"] == "В ремонте"  # в демо-маппинге; в боевом — «ТО»
+
+
+async def test_cleaning_pc_is_not_written_and_flag_is_cleared(session, fake, wb_on, make_computer):
+    """На очистке в Insight остаётся прежнее состояние; запись идёт после подтверждения исполнителя."""
+    await pending(make_computer, status="cleaning")
+    assert await push_pending(session) == 0
+    assert fake.calls == []
+    assert (await reload_computers(session))["A001"].writeback_pending is False

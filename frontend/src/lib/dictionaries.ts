@@ -40,6 +40,7 @@ export const TIER_ORDER: Tier[] = ['weak', 'medium', 'powerful', 'vm']
 export const STATUSES: Record<ComputerStatus, { label: string; tone: 'success' | 'primary' | 'warning' | 'danger' | 'muted' }> = {
   available: { label: 'Свободен', tone: 'success' },
   booked: { label: 'Забронирован', tone: 'primary' },
+  cleaning: { label: 'Очистка', tone: 'warning' },
   in_use: { label: 'Занят (Insight)', tone: 'warning' },
   maintenance: { label: 'Резерв', tone: 'warning' },
   retired: { label: 'Списан', tone: 'muted' },
@@ -71,6 +72,7 @@ export const EVENT_LABELS: Record<string, string> = {
   extended: 'Продление',
   prepared: 'Подготовка ПК',
   rejected: 'Отклонение заказа',
+  cleaned: 'Очистка диска',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',

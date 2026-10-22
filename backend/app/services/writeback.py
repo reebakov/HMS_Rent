@@ -53,6 +53,10 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
     done = 0
     try:
         for comp in computers:
+            if comp.status == ComputerStatus.cleaning:
+                # на очистке в Insight остаётся «Используется»; запись пойдёт после подтверждения исполнителя
+                await clear_pending(session, comp, "writeback_pending")
+                continue
             booking = await session.scalar(
                 select(Booking).where(Booking.computer_id == comp.id, Booking.status == BookingStatus.active)
             )

@@ -50,6 +50,7 @@ const termRequest = (id: number) => ({ id }) as TermRequestOut
 let termRequests: TermRequestOut[]
 const order = (id: number, prepared: boolean) => ({ id, prepared_at: prepared ? '2026-10-02T10:00:00Z' : null }) as ExecutorOrder
 let executorOrders: ExecutorOrder[]
+let executorReturns: ExecutorOrder[]
 
 beforeEach(() => {
   session = makeSession()
@@ -57,6 +58,7 @@ beforeEach(() => {
   extensions = []
   termRequests = []
   executorOrders = []
+  executorReturns = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
   // меню админа запрашивает просрочки, заявки на срок и продления для счётчика
@@ -65,6 +67,7 @@ beforeEach(() => {
     if (path === '/admin/extensions') return extensions
     if (path === '/admin/term-requests') return termRequests
     if (path === '/executor/orders') return executorOrders
+    if (path === '/executor/returns') return executorReturns
     if (path === '/notifications') return { items: [], unread: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
@@ -103,10 +106,20 @@ describe('AppShell: меню по роли', () => {
     expect(screen.getByText(/исполнитель$/)).toBeInTheDocument()
   })
 
+  it('счётчик исполнителя: ждущие подготовки и ждущие очистки вместе', async () => {
+    session = makeSession({ role: 'executor' })
+    executorOrders = [order(1, false), order(3, true)]
+    executorReturns = [order(4, true), order(5, true)]
+    mountShell()
+    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
+  })
+
   it('сотрудник не видит блок «Исполнитель» и не запрашивает очередь', () => {
     mountShell()
     expect(screen.queryByRole('link', { name: /Заказы на подготовку/ })).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/executor/orders')
+    expect(api.get).not.toHaveBeenCalledWith('/executor/returns')
   })
 
   it('админу раздел исполнителя тоже доступен', () => {

@@ -23,17 +23,18 @@ from app.models import (
     User,
 )
 from app.schemas.booking import FAULTY_REASON, ExecutorOrderOut, ExecutorReject, ExecutorResult
-from app.services import notifications, runtime, service_requests
+from app.services import cleaning, notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
 from app.services.events import add_event
 
 LIST_LIMIT = 200
 
 
-async def orders_out(session: AsyncSession, bookings: list[Booking]) -> list[ExecutorOrderOut]:
-    """Заказы со ссылкой на заявку «подготовить ПК» в Jira: исполнитель идёт из портала в задачу и обратно."""
+async def orders_out(session: AsyncSession, bookings: list[Booking],
+                     kind: ServiceRequestKind = ServiceRequestKind.prepare) -> list[ExecutorOrderOut]:
+    """Заказы со ссылкой на заявку Service Desk («подготовить ПК», для возвратов — «Возврат ПК»): из портала в Jira."""
     requests = await session.scalars(
-        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+        select(ServiceRequest).where(ServiceRequest.kind == kind.value,
                                      ServiceRequest.booking_id.in_([b.id for b in bookings])).order_by(ServiceRequest.id)
     )
     by_booking = {r.booking_id: r for r in requests.unique()}  # при нескольких заявках — последняя
@@ -47,8 +48,9 @@ async def orders_out(session: AsyncSession, bookings: list[Booking]) -> list[Exe
     return rows
 
 
-async def order_out(session: AsyncSession, booking: Booking) -> ExecutorOrderOut:
-    return (await orders_out(session, [booking]))[0]
+async def order_out(session: AsyncSession, booking: Booking,
+                    kind: ServiceRequestKind = ServiceRequestKind.prepare) -> ExecutorOrderOut:
+    return (await orders_out(session, [booking], kind))[0]
 
 
 async def list_orders(session: AsyncSession) -> list[Booking]:
@@ -145,3 +147,38 @@ async def create_diagnose_request(booking_id: int, user_id: int, comment: str) -
         actor = await session.get(User, user_id)
         if actor is not None:
             await service_requests.create_diagnose(session, booking_id, actor, comment)
+
+
+async def list_returns(session: AsyncSession) -> list[Booking]:
+    """Вернувшиеся ПК, ждущие очистки диска: давние первыми."""
+    return await cleaning.list_waiting(session)
+
+
+async def confirm_cleaned(session: AsyncSession, user: User, booking_id: int) -> Booking:
+    """Исполнитель очистил диск вернувшегося ПК: ПК становится свободным, в Insight пишется «Ожидает»."""
+    booking = await session.get(Booking, booking_id)
+    if booking is None:
+        raise NotFound("Заказ не найден")
+    comp = await session.scalar(
+        select(Computer).where(Computer.id == booking.computer_id).with_for_update(of=Computer)
+        .execution_options(populate_existing=True)
+    )
+    if comp.status != ComputerStatus.cleaning:
+        raise Conflict(f"{comp.name} не ждёт очистки")
+    new_status = status_after_return(comp)
+    add_event(
+        session,
+        computer_id=comp.id,
+        booking_id=booking.id,
+        actor_id=user.id,
+        event_type=EventType.cleaned,
+        from_status=comp.status,
+        to_status=new_status,
+        message=f"Заказ №{booking.order_number}: диск очищен, ПК свободен",
+    )
+    comp.status = new_status
+    comp.writeback_pending = runtime.current().insight_writeback
+    await session.commit()
+
+    await notify(f"🧹 **{comp.name}** очищен и свободен (заказ №{booking.order_number})")
+    return await get_booking(session, booking.id)

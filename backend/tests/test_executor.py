@@ -15,12 +15,14 @@ from app.models import (
     BookingStatus,
     Computer,
     ComputerStatus,
+    Department,
     EventType,
     Notification,
     NotificationKind,
     ServiceRequest,
     UserRole,
 )
+from app.services import cleaning, executor, runtime
 
 from .sync_fakes import add_booking
 from .test_service_requests import boom, sd  # noqa: F401 — sd: фикстура «Service Desk подключён, вызовы записываются»
@@ -243,3 +245,68 @@ async def test_orders_link_to_prepare_request_in_jira(client, api, env, session,
 async def test_order_without_request_has_no_link(client, api, env):
     page = (await client.get(api(f"/executor/orders/{env.early.id}"))).json()
     assert (page["request_key"], page["request_url"], page["request_status"], page["request_error"]) == (None,) * 4
+
+
+# ---------- очистка вернувшихся ПК ----------
+
+async def test_returns_queue_and_confirm_cleaned(client, api, env, session, monkeypatch):
+    monkeypatch.setattr(settings, "sd_jira_url", "https://jira.test")
+    # A003 вернули, на нём бронь env.closed; ПК ждёт очистки, у возврата есть заявка Service Desk
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003"))).one()
+    comp.status = ComputerStatus.cleaning
+    env.closed.returned_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    session.add(ServiceRequest(kind="return", user_id=env.owner.id, booking_id=env.closed.id, summary="s", description="d",
+                               issue_key="HMS-90", status="Ожидает поддержки"))
+    await session.commit()
+
+    (row,) = (await client.get(api("/executor/returns"))).json()
+    assert row["id"] == env.closed.id and row["computer"]["name"] == "A003"
+    assert (row["request_key"], row["request_url"]) == ("HMS-90", "https://jira.test/browse/HMS-90")  # заявка «Возврат ПК»
+
+    done = await client.post(api(f"/executor/returns/{env.closed.id}/cleaned"))
+    assert done.status_code == 200
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003").execution_options(populate_existing=True))).one()
+    assert comp.status == ComputerStatus.available
+    (event,) = await session.scalars(select(AssetEvent).where(AssetEvent.event_type == EventType.cleaned))
+    assert event.actor_id == env.worker.id
+    assert (await client.get(api("/executor/returns"))).json() == []
+
+
+async def test_confirm_cleaned_conflicts_and_access(client, api, env, login, session):
+    # ПК A003 свободен (очистка не требуется): подтверждать нечего
+    assert (await client.post(api(f"/executor/returns/{env.closed.id}/cleaned"))).status_code == 409
+    assert (await client.post(api("/executor/returns/999999/cleaned"))).status_code == 404
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003"))).one()
+    comp.status = ComputerStatus.cleaning
+    await session.commit()
+    login(env.owner)  # заказчик очистку подтвердить не может
+    assert (await client.post(api(f"/executor/returns/{env.closed.id}/cleaned"))).status_code == 403
+    assert (await client.get(api("/executor/returns"))).status_code == 403
+    login(env.worker)
+    assert (await client.post(api(f"/executor/returns/{env.closed.id}/cleaned"))).status_code == 200
+    assert (await client.post(api(f"/executor/returns/{env.closed.id}/cleaned"))).status_code == 409  # повтор
+
+
+async def test_confirm_cleaned_queues_insight_write_only_when_enabled(session, env):
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003"))).one()
+    comp.status = ComputerStatus.cleaning
+    await session.commit()
+    await runtime.update(session, {"insight_writeback": True})
+    await executor.confirm_cleaned(session, env.worker, env.closed.id)
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003").execution_options(populate_existing=True))).one()
+    assert (comp.status, comp.writeback_pending) == (ComputerStatus.available, True)  # «Ожидает» уйдёт в Insight
+
+
+async def test_waiting_list_keeps_latest_return_per_pc_and_filters_by_age(session, env):
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A003"))).one()
+    comp.status = ComputerStatus.cleaning
+    dept = await session.get(Department, env.closed.department_id)
+    first = await add_booking(session, comp, env.owner, dept, status="returned")
+    second = await add_booking(session, comp, env.owner, dept, status="returned")
+    now = datetime.now(timezone.utc)
+    env.closed.returned_at, first.returned_at, second.returned_at = now - timedelta(days=3), now - timedelta(days=2), now - timedelta(hours=30)
+    await session.commit()
+    rows = await cleaning.list_waiting(session)
+    assert [b.id for b in rows] == [second.id]  # последний возврат этого ПК
+    assert [b.id for b in await cleaning.list_waiting(session, older_than=timedelta(days=2))] == []
+    assert [b.id for b in await cleaning.list_waiting(session, older_than=timedelta(days=1))] == [second.id]

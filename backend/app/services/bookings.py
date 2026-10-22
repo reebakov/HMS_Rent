@@ -151,7 +151,7 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
     booking.returned_at = datetime.now(timezone.utc)
     booking.returned_by_id = user.id
     booking.return_comment = (comment or "").strip() or None
-    new_status = status_after_return(comp)
+    new_status = ComputerStatus.cleaning.value  # свободным ПК станет, когда исполнитель очистит диск и подтвердит
     add_event(
         session,
         computer_id=comp.id,
@@ -160,13 +160,14 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
         event_type=EventType.returned,
         from_status=comp.status,
         to_status=new_status,
-        message=f"Заказ №{booking.order_number} закрыт. Возвращён отделом «{booking.department.name}»" + (f": {booking.return_comment}" if booking.return_comment else ""),
+        message=f"Заказ №{booking.order_number} закрыт. Возвращён отделом «{booking.department.name}»"
+                + (f": {booking.return_comment}" if booking.return_comment else "") + ". Ждёт очистки диска",
     )
     comp.status = new_status
     comp.department_id = None
     comp.usage_until = None
     comp.order_number = None
-    comp.writeback_pending = runtime.current().insight_writeback
+    comp.writeback_pending = False  # пока ПК на очистке, в Insight остаётся «Используется»: запись пойдёт после подтверждения
     await session.commit()
 
     await notify(f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")

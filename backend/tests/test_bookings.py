@@ -25,7 +25,7 @@ from app.models import (
     UserRole,
 )
 from app.schemas.booking import BookingCreate, BookingExtend
-from app.services import bookings, runtime
+from app.services import bookings, executor, runtime
 from app.services.runtime import RuntimeConfig
 from tests.sync_fakes import add_booking
 
@@ -448,12 +448,12 @@ async def test_return_by_owner(session, booked, notify_mock):
     assert b.returned_by_id == booked.user.id and b.returned_at is not None
     assert b.return_comment == "всё ок"
     comp = await db_get(Computer, booked.comp.id)
-    assert comp.status == ComputerStatus.available
+    assert comp.status == ComputerStatus.cleaning  # свободным станет после подтверждения очистки исполнителем
     assert (comp.department_id, comp.usage_until, comp.order_number) == (None, None, None)
 
     [ev] = await events_of(booked.comp.id, EventType.returned)
     assert (ev.booking_id, ev.actor_id) == (b.id, booked.user.id)
-    assert (ev.from_status, ev.to_status) == (ComputerStatus.booked, ComputerStatus.available)
+    assert (ev.from_status, ev.to_status) == (ComputerStatus.booked, ComputerStatus.cleaning)
     notify_mock.assert_awaited_once()
 
 
@@ -502,9 +502,13 @@ async def test_return_missing_not_found(session, env):
         await bookings.return_booking(session, env.user, 9999, None)
 
 
-async def test_rebook_after_return(session, booked, make_user):
+async def test_rebook_only_after_cleaning_confirmed(session, booked, make_user):
     await bookings.return_booking(session, booked.user, booked.booking.id, None)
     other = await make_user("petrov", department=booked.dept)
+    with pytest.raises(Conflict, match="занят или недоступен"):  # ПК на очистке в каталоге не предлагается
+        await bookings.create_booking(session, other, payload(booked.comp, booked.dept))
+    worker = await make_user("worker", role=UserRole.executor.value)
+    await executor.confirm_cleaned(session, worker, booked.booking.id)
     b2 = await bookings.create_booking(session, other, payload(booked.comp, booked.dept))
     assert b2.status == BookingStatus.active and b2.order_number == 2
     assert await count_bookings(computer_id=booked.comp.id, status="active") == 1
@@ -520,17 +524,21 @@ async def test_rebook_after_return(session, booked, make_user):
     (False, "Что-то новое", ComputerStatus.unknown),
     (False, None, ComputerStatus.unknown),
 ])
-async def test_status_after_return(session, env, make_computer, monkeypatch, writeback, insight_status, expected):
+async def test_status_after_cleaning(session, env, make_computer, make_user, monkeypatch, writeback, insight_status, expected):
+    """Возврат ставит «очистка» и ничего не пишет в Insight; после подтверждения статус решает Insight, запись идёт при writeback."""
     comp = await make_computer(pool=env.pool, insight_status=insight_status)
     b = await bookings.create_booking(session, env.user, payload(comp, env.dept))
     set_writeback(monkeypatch, writeback)
     await bookings.return_booking(session, env.user, b.id, None)
+    db = await db_get(Computer, comp.id)
+    assert (db.status, db.writeback_pending) == (ComputerStatus.cleaning, False)
 
+    await executor.confirm_cleaned(session, await make_user("worker", role=UserRole.executor.value), b.id)
     db = await db_get(Computer, comp.id)
     assert db.status == expected
     assert db.writeback_pending is writeback
-    [ev] = await events_of(comp.id, EventType.returned)
-    assert ev.to_status == expected
+    [ev] = await events_of(comp.id, EventType.cleaned)
+    assert (ev.from_status, ev.to_status) == (ComputerStatus.cleaning, expected)
 
 
 # ---------- extend_booking ----------

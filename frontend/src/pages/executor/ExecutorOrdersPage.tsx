@@ -5,8 +5,11 @@ import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
-import { useExecutorOrders } from '@/lib/queries'
-import { computerSpecs, formatDate, formatDateTime, plural } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
+import { useConfirmCleaned, useExecutorOrders, useExecutorReturns } from '@/lib/queries'
+import type { ExecutorOrder } from '@/lib/types'
+import { computerSpecs, errorMessage, formatDate, formatDateTime, plural } from '@/lib/utils'
 
 /** Очередь исполнителя: выданные ПК, которые нужно подготовить, и уже подготовленные */
 export function ExecutorOrdersPage() {
@@ -78,6 +81,76 @@ export function ExecutorOrdersPage() {
           )}
         </DataState>
       </Card>
+      <ReturnsCard />
     </>
+  )
+}
+
+/** Вернувшиеся ПК: заказчик вернул, исполнитель очищает диск и подтверждает, тогда ПК снова свободен */
+function ReturnsCard() {
+  const returns = useExecutorReturns()
+  const confirm = useConfirmCleaned()
+
+  const done = async (o: ExecutorOrder) => {
+    try {
+      await confirm.mutateAsync(o.id)
+      toast.success(`${o.computer.name} очищен и снова свободен`)
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  return (
+    <Card className="mt-6">
+      <div className="border-b px-5 py-4">
+        <p className="font-semibold">Ждут очистки</p>
+        <p className="text-[13px] text-muted-foreground">Вернули заказчики: отформатируйте диски и подтвердите, тогда ПК снова появится в каталоге</p>
+      </div>
+      <DataState
+        query={returns}
+        errorTitle="Не удалось загрузить возвраты"
+        loading={<RowsSkeleton rows={2} className="h-12" />}
+        empty={<p className="px-5 py-6 text-[13px] text-muted-foreground">Все вернувшиеся ПК очищены</p>}
+      >
+        {(data) => (
+          <DataTable
+            className="min-w-[900px]"
+            head={
+              <>
+                <Th>№ заказа</Th>
+                <Th>ПК</Th>
+                <Th>Команда и заказчик</Th>
+                <Th>Вернули</Th>
+                <Th>Заявка в Jira</Th>
+                <Th>{''}</Th>
+              </>
+            }
+          >
+            {data.map((o) => (
+              <tr key={o.id} className="hover:bg-muted/40">
+                <td className="px-4 py-3 tabular text-muted-foreground">№{o.order_number}</td>
+                <td className="px-4 py-3 font-semibold">{o.computer.name}</td>
+                <td className="px-4 py-3">
+                  <p className="font-medium">{o.department.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {o.requester_name} ({o.requester_nick})
+                  </p>
+                  {o.return_comment && <p className="text-xs text-muted-foreground">«{o.return_comment}»</p>}
+                </td>
+                <td className="px-4 py-3 tabular">{formatDateTime(o.returned_at)}</td>
+                <td className="px-4 py-3">
+                  <JiraRequestLink order={o} />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Button size="sm" variant="outline" loading={confirm.isPending && confirm.variables === o.id} onClick={() => done(o)}>
+                    Диск очищен
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </DataState>
+    </Card>
   )
 }

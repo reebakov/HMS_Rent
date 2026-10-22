@@ -15,7 +15,7 @@ from app.core.errors import Conflict, NotFound
 from app.integrations.notify import notify
 from app.models import AppSetting, Booking, BookingExtension, BookingStatus, User, VirtualMachine, VmStatus
 from app.schemas.admin import OverdueItem
-from app.services import notifications, runtime
+from app.services import cleaning, notifications, runtime
 
 DIGEST_KEY = "overdue_digest_last"  # дата последней сводки (в app_settings)
 REMINDERS_KEY = "term_reminders_last"  # дата последних напоминаний о сроке (в app_settings)
@@ -23,6 +23,7 @@ DIGEST_HOUR = 10  # во сколько слать сводку и напоми�
 REMIND_WORKDAYS = 5  # за сколько рабочих дней до конца срока напоминать (DR-15060)
 REMIND_HORIZON_DAYS = 31  # дальше этого конец срока заведомо не попадает в напоминание
 REMIND_OVERDUE_LOOKBACK_DAYS = 14  # сколько дней назад искать срок, закончившийся перед выходными и праздниками
+CLEANING_ALERT_DAYS = 1  # через сколько дней ПК без подтверждения очистки попадает в ежедневную сводку
 RECENT_EXTENSIONS_DAYS = 14  # сколько дней принятые продления остаются в списке
 
 
@@ -123,6 +124,13 @@ async def daily_digest(session: AsyncSession) -> None:
     if today is None:
         return
     bookings, vms = await list_overdue(session)
+    stale = await cleaning.list_waiting(session, older_than=timedelta(days=CLEANING_ALERT_DAYS))
+    if stale:
+        lines = [f"🧹 **ПК ждут очистки дольше суток**: {len(stale)}"] + [
+            f"- **{b.computer.name}** — вернули {b.returned_at.astimezone(clock.display_tz()):%d.%m %H:%M}, заказ №{b.order_number}"
+            for b in stale[:30]
+        ]
+        await notify("\n".join(lines))
     if bookings or vms:
         lines = [f"⏰ **Просрочки HMS Rent на {today:%d.%m.%Y}**: ПК — {len(bookings)}, виртуалок — {len(vms)}"]
         for b in bookings[:30]:

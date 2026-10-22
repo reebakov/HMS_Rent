@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { ExecutorOrdersPage } from './ExecutorOrdersPage'
-import { api } from '@/lib/api'
+import { toast } from 'sonner'
+import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeExecutorOrder, renderWithProviders } from '@/test/helpers'
 import type { ExecutorOrder } from '@/lib/types'
 
@@ -12,7 +13,10 @@ vi.mock('@/lib/api', async (orig) => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
 }))
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
 let orders: ExecutorOrder[]
+let returns: ExecutorOrder[]
 
 const mount = () =>
   renderWithProviders(
@@ -28,9 +32,14 @@ beforeEach(() => {
     makeExecutorOrder(),
     makeExecutorOrder({ id: 8, order_number: 1043, computer: { ...makeExecutorOrder().computer, name: 'A065' }, prepared_at: '2026-10-21T10:00:00Z' }),
   ]
+  returns = []
   vi.mocked(api.get).mockReset()
+  vi.mocked(api.post).mockReset()
+  vi.mocked(toast.success).mockReset()
+  vi.mocked(toast.error).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/executor/orders') return orders
+    if (path === '/executor/returns') return returns
     throw new Error(`неожиданный GET ${path}`)
   })
 })
@@ -82,5 +91,55 @@ describe('ExecutorOrdersPage', () => {
     expect(screen.queryByText('Выданных ПК нет')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     expect(await screen.findByRole('link', { name: 'A032' })).toBeInTheDocument()
+  })
+})
+
+describe('ExecutorOrdersPage: ждут очистки', () => {
+  const returned = (over: Partial<ExecutorOrder> = {}) =>
+    makeExecutorOrder({
+      id: 20, order_number: 900, status: 'returned', returned_at: '2026-10-21T12:00:00Z', return_comment: 'Шумит кулер',
+      computer: { ...makeExecutorOrder().computer, name: 'A077' }, ...over,
+    })
+
+  it('вернувшиеся ПК: данные заказа, заявка «Возврат ПК» и кнопка «Диск очищен»', async () => {
+    returns = [returned({ request_key: 'HMS-90', request_url: 'https://jira.test/browse/HMS-90' })]
+    mount()
+    const row = (await screen.findByText('A077')).closest('tr')!
+    expect(within(row).getByText('№900')).toBeInTheDocument()
+    expect(within(row).getByText('«Шумит кулер»')).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: 'HMS-90' })).toHaveAttribute('href', 'https://jira.test/browse/HMS-90')
+  })
+
+  it('«Диск очищен»: POST, тост, ПК уходит из списка', async () => {
+    returns = [returned()]
+    vi.mocked(api.post).mockImplementation(async () => {
+      returns = []
+      return returned()
+    })
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: 'Диск очищен' }))
+    expect(api.post).toHaveBeenCalledWith('/executor/returns/20/cleaned')
+    expect(toast.success).toHaveBeenCalledWith('A077 очищен и снова свободен')
+    await waitFor(() => expect(screen.getByText('Все вернувшиеся ПК очищены')).toBeInTheDocument())
+  })
+
+  it('ошибка подтверждения показывается тостом, ПК остаётся в списке', async () => {
+    returns = [returned()]
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'A077 не ждёт очистки'))
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: 'Диск очищен' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A077 не ждёт очистки'))
+    expect(screen.getByText('A077')).toBeInTheDocument()
+  })
+
+  it('нет вернувшихся — так и написано', async () => {
+    mount()
+    expect(await screen.findByText('Все вернувшиеся ПК очищены')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки возвратов — «Повторить», а не пустой список', async () => {
+    failGetOnce(vi.mocked(api.get), '/executor/returns')
+    mount()
+    expect(await screen.findByText('Не удалось загрузить возвраты')).toBeInTheDocument()
   })
 })
