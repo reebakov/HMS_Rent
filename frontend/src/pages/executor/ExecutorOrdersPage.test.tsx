@@ -45,6 +45,13 @@ beforeEach(() => {
 })
 
 describe('ExecutorOrdersPage', () => {
+  it('задача закрыта в Jira, а данных нет — подсказка внести данные; у подготовленного заказа подсказки нет', async () => {
+    orders = [makeExecutorOrder({ request_done: true }), makeExecutorOrder({ id: 8, order_number: 1043, request_done: true, prepared_at: '2026-10-21T10:00:00Z' })]
+    mount()
+    await screen.findAllByRole('row')
+    expect(await screen.findAllByText('Задача закрыта в Jira — внесите данные подключения')).toHaveLength(1)
+  })
+
   it('показывает заказы со статусом подготовки и число ждущих', async () => {
     mount()
     const waiting = (await screen.findByRole('link', { name: 'A032' })).closest('tr')!

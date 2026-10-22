@@ -12,7 +12,7 @@ import time
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.services import overdue, runtime, service_requests, vm_insight, vm_jobs
+from app.services import jira_closure, overdue, runtime, service_requests, vm_insight, vm_jobs
 from app.services.sync import run_sync
 from app.services.writeback import push_pending
 
@@ -40,6 +40,7 @@ async def _tick(next_sync: float, clock=time.monotonic) -> float:
     await _step("Запись в Insight", push_pending)
     await _step("Запись ВМ в Insight", vm_insight.push_pending)
     await _step("Заявки Service Desk", service_requests.refresh_open)
+    await _step("Закрытия в Jira", jira_closure.apply_closures)
     await _step("Сводка просрочек", overdue.daily_digest)
     await _step("Напоминания о сроке", overdue.daily_reminders)
     return next_sync

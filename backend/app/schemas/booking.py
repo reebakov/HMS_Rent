@@ -59,6 +59,7 @@ class ExecutorOrderOut(BookingOut):
     request_url: str | None = None
     request_status: str | None = None
     request_error: str | None = None
+    request_done: bool = False  # задача в Jira закрыта: у неподготовленного заказа это сигнал внести данные подключения
 
 
 class ExecutorProblemOut(ORMModel):

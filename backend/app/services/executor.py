@@ -55,6 +55,7 @@ async def orders_out(session: AsyncSession, bookings: list[Booking],
         if req := by_booking.get(booking.id):
             row.request_key, row.request_status, row.request_error = req.issue_key, req.status, req.error
             row.request_url = agent_url(req.issue_key) if req.issue_key else None
+            row.request_done = req.status_category == "done"
         rows.append(row)
     return rows
 
@@ -135,10 +136,15 @@ async def save_result(session: AsyncSession, user: User, booking_id: int, data: 
 
 
 async def reject_order(session: AsyncSession, user: User, booking_id: int, data: ExecutorReject) -> Booking:
-    """Исполнитель отклоняет заказ ПК: бронь закрывается как cancelled, ПК освобождается, заказчик видит причину.
+    return await reject(session, user, booking_id, data.reason, data.comment)
+
+
+async def reject(session: AsyncSession, user: User | None, booking_id: int, reason: str, comment: str) -> Booking:
+    """Заказ ПК отклонён: бронь закрывается как cancelled, ПК освобождается, заказчик видит причину.
 
     «Сервер неисправен» дополнительно выводит ПК из пула и ставит ему статус «Обслуживание»; заявку «Диагностика
     комплекта» создаёт маршрут в фоне. Имя исполнителя остаётся только в журнале ПК: заказчику оно не показывается.
+    `user` пуст, если заказ закрыт в Jira тем, кого нет в портале.
     """
     booking = await session.scalar(
         select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
@@ -151,21 +157,21 @@ async def reject_order(session: AsyncSession, user: User, booking_id: int, data:
     comp = await session.scalar(
         select(Computer).where(Computer.id == booking.computer_id).with_for_update(of=Computer)
     )
-    faulty = data.reason == FAULTY_REASON
+    faulty = reason == FAULTY_REASON
 
     booking.status = BookingStatus.cancelled.value
     booking.returned_at = datetime.now(timezone.utc)
-    booking.return_comment = f"{data.reason}: {data.comment}"  # returned_by не заполняем: заказчик не должен видеть исполнителя
+    booking.return_comment = f"{reason}: {comment}"  # returned_by не заполняем: заказчик не должен видеть исполнителя
     new_status = ComputerStatus.maintenance.value if faulty else status_after_return(comp)
     add_event(
         session,
         computer_id=comp.id,
         booking_id=booking.id,
-        actor_id=user.id,
+        actor_id=user.id if user else None,
         event_type=EventType.rejected,
         from_status=comp.status,
         to_status=new_status,
-        message=f"Заказ №{booking.order_number} отклонён: {data.reason}. {data.comment}"
+        message=f"Заказ №{booking.order_number} отклонён: {reason}. {comment}"
                 + (" ПК выведен из пула." if faulty else ""),
     )
     comp.status = new_status
@@ -175,10 +181,10 @@ async def reject_order(session: AsyncSession, user: User, booking_id: int, data:
     if faulty:
         comp.pool_id = None
     comp.writeback_pending = runtime.current().insight_writeback
-    notifications.order_rejected(session, booking, data.reason, data.comment)
+    notifications.order_rejected(session, booking, reason, comment)
     await session.commit()
 
-    await notify(f"🚫 Заказ №{booking.order_number} на **{comp.name}** отклонён исполнителем: {data.reason}")
+    await notify(f"🚫 Заказ №{booking.order_number} на **{comp.name}** отклонён исполнителем: {reason}")
     return await get_booking(session, booking.id)
 
 
@@ -195,8 +201,11 @@ async def list_returns(session: AsyncSession) -> list[Booking]:
     return await cleaning.list_waiting(session)
 
 
-async def confirm_cleaned(session: AsyncSession, user: User, booking_id: int) -> Booking:
-    """Исполнитель очистил диск вернувшегося ПК: ПК становится свободным, в Insight пишется «Ожидает»."""
+async def confirm_cleaned(session: AsyncSession, user: User | None, booking_id: int) -> Booking:
+    """Исполнитель очистил диск вернувшегося ПК: ПК становится свободным, в Insight пишется «Ожидает».
+
+    `user` пуст, если задачу «Возврат ПК» закрыл в Jira тот, кого нет в портале.
+    """
     booking = await session.get(Booking, booking_id)
     if booking is None:
         raise NotFound("Заказ не найден")
@@ -211,7 +220,7 @@ async def confirm_cleaned(session: AsyncSession, user: User, booking_id: int) ->
         session,
         computer_id=comp.id,
         booking_id=booking.id,
-        actor_id=user.id,
+        actor_id=user.id if user else None,
         event_type=EventType.cleaned,
         from_status=comp.status,
         to_status=new_status,

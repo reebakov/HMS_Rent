@@ -133,6 +133,7 @@ export interface ExecutorOrder extends Booking {
   request_url: string | null
   request_status: string | null
   request_error: string | null
+  request_done: boolean // задача в Jira закрыта: у неподготовленного заказа — сигнал внести данные подключения
 }
 
 /** Проблема по заказу: заявка «Сообщить о проблеме» от заказчика и её задача в Jira */

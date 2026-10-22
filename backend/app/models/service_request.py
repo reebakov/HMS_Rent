@@ -44,6 +44,7 @@ class ServiceRequest(Base, TimestampMixin):
     was_taken: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())  # задачу брали в работу (по истории Jira)
     resolution: Mapped[str | None] = mapped_column(String(64))  # резолюция закрытой задачи: Done, Rejected…
     status_note: Mapped[str | None] = mapped_column(Text)  # для «Заморожено»: последний публичный комментарий исполнителя
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # реакция портала на закрытие задачи в Jira отработала
     error: Mapped[str | None] = mapped_column(Text)  # короткая причина для сотрудника, если Jira не приняла заявку (подробности — в логе)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

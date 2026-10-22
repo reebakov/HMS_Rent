@@ -86,6 +86,13 @@ def order_rejected(session: AsyncSession, booking: Booking, reason: str, comment
         f"{comment}\nОформите новый заказ или напишите администратору.")
 
 
+def work_done_without_data(session: AsyncSession, booking: Booking, comment: str | None) -> None:
+    """Исполнитель закрыл задачу в Jira, но данные подключения в портал не внёс."""
+    add(session, booking.user_id, NotificationKind.request_status,
+        f"Исполнитель завершил работу по заказу №{booking.order_number} на ПК {booking.computer.name}",
+        "Уточните дополнительно, если нужны данные подключения." + (f"\n\nКомментарий исполнителя: {comment}" if comment else ""))
+
+
 def vm_ready(session: AsyncSession, vm: VirtualMachine) -> None:
     add(session, vm.user_id, NotificationKind.vm_ready, f"ВМ {vm.name} готова",
         f"Заказ №{vm.order_number}, аренда до {_until(vm)}. Адрес и логин — в «Моей аренде», пароль сообщит исполнитель.")

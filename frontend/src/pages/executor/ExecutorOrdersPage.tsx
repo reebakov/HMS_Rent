@@ -3,8 +3,8 @@ import { Wrench } from 'lucide-react'
 import { Card, EmptyState, PageHeader } from '@/components/ui/card'
 import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
+import { PreparationBadge } from '@/features/executor/PreparationBadge'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useConfirmCleaned, useExecutorOrders, useExecutorReturns } from '@/lib/queries'
@@ -70,7 +70,7 @@ export function ExecutorOrdersPage() {
                   <td className="px-4 py-3 tabular">{formatDateTime(o.booked_at)}</td>
                   <td className="px-4 py-3 tabular">{formatDate(o.expected_return_at)}</td>
                   <td className="px-4 py-3">
-                    {o.prepared_at ? <Badge tone="success">Подготовлен</Badge> : <Badge tone="warning" dot>Ждёт подготовки</Badge>}
+                    <PreparationBadge order={o} />
                   </td>
                   <td className="px-4 py-3">
                     <JiraRequestLink order={o} />
