@@ -131,25 +131,34 @@ async def get_status(issue_key: str) -> SdStatus:
 
 
 async def get_comments(issue_key: str) -> list[SdComment]:
-    """Только публичные комментарии — внутренние заметки агентов сотрудник не видит."""
+    """Только публичные комментарии — внутренние заметки агентов сотрудник не видит. Читает все страницы (до COMMENT_PAGES)."""
+    comments: list[SdComment] = []
+    start = 0
     async with _client() as http:
-        resp = await _send(http, "GET", f"/request/{issue_key}/comment",
-                           params={"public": "true", "internal": "false", "limit": 100})
-        if resp.status_code >= 400:
-            raise ServiceDeskError(_error(resp))
-        comments = []
-        for c in _json_object(resp).get("values") or []:
-            body = c.get("body") or ""
-            comments.append(SdComment(
-                author=(c.get("author") or {}).get("displayName") or "Поддержка",
-                body=body,
-                created=(c.get("created") or {}).get("iso8601"),
-                from_portal=body.startswith(PORTAL_PREFIX),
-            ))
-        return comments
+        for _ in range(COMMENT_PAGES):
+            resp = await _send(http, "GET", f"/request/{issue_key}/comment",
+                               params={"public": "true", "internal": "false", "start": start, "limit": COMMENT_PAGE_SIZE})
+            if resp.status_code >= 400:
+                raise ServiceDeskError(_error(resp))
+            page = _json_object(resp)
+            values = page.get("values") or []
+            for c in values:
+                body = c.get("body") or ""
+                comments.append(SdComment(
+                    author=(c.get("author") or {}).get("displayName") or "Поддержка",
+                    body=body,
+                    created=(c.get("created") or {}).get("iso8601"),
+                    from_portal=body.startswith(PORTAL_PREFIX),
+                ))
+            if page.get("isLastPage", True) or not values:
+                break
+            start += len(values)
+    return comments
 
 
 PORTAL_PREFIX = "[HMS Rent] "
+COMMENT_PAGE_SIZE = 100
+COMMENT_PAGES = 10  # потолок: переписка длиннее 1000 комментариев не нужна, а цикл не должен быть бесконечным
 
 
 async def add_comment(issue_key: str, author_name: str, text: str) -> None:

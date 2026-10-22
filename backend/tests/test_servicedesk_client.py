@@ -132,13 +132,38 @@ async def test_get_comments_public_only_and_flags(jira):
     ]})
     comments = await sd.get_comments("HMS-5")
     # Внутренние заметки отсекает сама Jira по параметрам запроса: проверяем, что мы их запросили именно так
-    assert dict(route.calls.last.request.url.params) == {"public": "true", "internal": "false", "limit": "100"}
+    assert dict(route.calls.last.request.url.params) == {"public": "true", "internal": "false", "start": "0", "limit": "100"}
     assert comments == [
         sd.SdComment("Админ", "Починили", "2026-01-02T10:00:00+0000", False),
         sd.SdComment("Сервис", "[HMS Rent] Иван: спасибо", "2026-01-02T11:00:00+0000", True),
         sd.SdComment("Поддержка", "", None, False),
         sd.SdComment("Админ", "про [HMS Rent] внутри", None, False),
     ]
+
+
+async def test_get_comments_reads_all_pages(jira):
+    def page(n, last):
+        return {"isLastPage": last, "values": [{"author": {"displayName": "А"}, "body": f"№{n}-{i}"} for i in range(2)]}
+
+    route = jira.get(f"{API}/request/HMS-5/comment").mock(side_effect=[
+        httpx.Response(200, json=page(1, False)), httpx.Response(200, json=page(2, False)),
+        httpx.Response(200, json=page(3, True)),
+    ])
+    comments = await sd.get_comments("HMS-5")
+    assert [c.body for c in comments] == ["№1-0", "№1-1", "№2-0", "№2-1", "№3-0", "№3-1"]
+    assert [call.request.url.params["start"] for call in route.calls] == ["0", "2", "4"]  # старт сдвигается на прочитанное
+
+
+async def test_get_comments_stops_at_page_limit(jira):
+    route = jira.get(f"{API}/request/HMS-5/comment").respond(
+        200, json={"isLastPage": False, "values": [{"body": "x"}]})  # сервер «никогда не заканчивает»
+    comments = await sd.get_comments("HMS-5")
+    assert len(comments) == len(route.calls) == sd.COMMENT_PAGES
+
+
+async def test_get_comments_stops_on_empty_page_even_without_last_flag(jira):
+    route = jira.get(f"{API}/request/HMS-5/comment").respond(200, json={"isLastPage": False, "values": []})
+    assert await sd.get_comments("HMS-5") == [] and len(route.calls) == 1
 
 
 async def test_get_comments_empty(jira):
