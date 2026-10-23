@@ -19,6 +19,7 @@ from app.models import (
     Computer,
     ComputerStatus,
     EventType,
+    Pool,
     ServiceRequest,
     ServiceRequestKind,
     User,
@@ -27,6 +28,7 @@ from app.models import (
 )
 from app.schemas.booking import (
     FAULTY_REASON,
+    ExecutorDiagnosticOut,
     ExecutorOrderOut,
     ExecutorProblemOut,
     ExecutorReject,
@@ -216,6 +218,7 @@ async def reject(session: AsyncSession, user: User | None, booking_id: int, reas
     comp.usage_until = None
     comp.order_number = None
     if faulty:
+        session.add(service_requests.new_diagnose(booking, comp.pool, user, comment))  # помнит прежний пул ПК
         comp.pool_id = None
     comp.writeback_pending = runtime.current().insight_writeback
     notifications.order_rejected(session, booking, reason, comment)
@@ -225,12 +228,76 @@ async def reject(session: AsyncSession, user: User | None, booking_id: int, reas
     return await get_booking(session, booking.id)
 
 
-async def create_diagnose_request(booking_id: int, user_id: int, comment: str) -> None:
+async def send_diagnose_request(computer_id: int, user_id: int) -> None:
     """Заявка «Диагностика комплекта» в Service Desk — в фоне, после отметки «Сервер неисправен»."""
     async with SessionLocal() as session:
         actor = await session.get(User, user_id)
         if actor is not None:
-            await service_requests.create_diagnose(session, booking_id, actor, comment)
+            await service_requests.send_diagnose(session, computer_id, actor)
+
+
+def _comment_of(req: ServiceRequest) -> str:
+    """Комментарий исполнителя из описания заявки: строка после «Комментарий исполнителя:»."""
+    for line in req.description.splitlines():
+        if line.startswith("Комментарий исполнителя:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+async def list_diagnostics(session: AsyncSession) -> list[ExecutorDiagnosticOut]:
+    """ПК на диагностике: заявка «Диагностика комплекта» с привязкой к ПК, который ещё не вернули в пул."""
+    requests = (await session.scalars(
+        select(ServiceRequest).join(Computer, Computer.id == ServiceRequest.computer_id)
+        .where(ServiceRequest.kind == ServiceRequestKind.diagnose.value, ServiceRequest.portal_done_at.is_(None),
+               Computer.status == ComputerStatus.maintenance)
+        .order_by(ServiceRequest.created_at, ServiceRequest.id).limit(LIST_LIMIT)
+    )).unique().all()
+    return [await _diagnostic_out(session, req) for req in requests]
+
+
+async def _diagnostic_out(session: AsyncSession, req: ServiceRequest) -> ExecutorDiagnosticOut:
+    computer = await session.get(Computer, req.computer_id)
+    pool = await session.get(Pool, req.pool_id) if req.pool_id else None
+    return ExecutorDiagnosticOut(
+        id=req.id, computer=computer, pool_name=pool.name if pool else None, comment=_comment_of(req),
+        created_at=req.created_at, issue_key=req.issue_key,
+        issue_url=agent_url(req.issue_key) if req.issue_key else None, status=req.status, error=req.error,
+        request_done=req.status_category == "done",
+    )
+
+
+async def repair_computer(session: AsyncSession, user: User | None, request_id: int) -> ExecutorDiagnosticOut:
+    """Диагностика закончена: ПК возвращается в прежний пул и становится свободным, в Insight пишется «Ожидает».
+
+    `user` пуст, если задачу закрыл в Jira тот, кого нет в портале.
+    """
+    req = await session.get(ServiceRequest, request_id)
+    if req is None or req.kind != ServiceRequestKind.diagnose.value or req.computer_id is None:
+        raise NotFound("Диагностика не найдена")
+    comp = await session.scalar(
+        select(Computer).where(Computer.id == req.computer_id).with_for_update(of=Computer)
+        .execution_options(populate_existing=True)
+    )
+    if comp.status != ComputerStatus.maintenance:
+        raise Conflict(f"{comp.name} уже не на диагностике")
+    pool = await session.get(Pool, req.pool_id) if req.pool_id else None
+    add_event(
+        session,
+        computer_id=comp.id,
+        actor_id=user.id if user else None,
+        event_type=EventType.repaired,
+        from_status=comp.status,
+        to_status=ComputerStatus.available.value,
+        message="Диагностика закончена, ПК свободен" + (f" и возвращён в пул «{pool.name}»" if pool else ", прежний пул не известен"),
+    )
+    comp.status = ComputerStatus.available.value
+    if pool is not None:
+        comp.pool_id = pool.id
+    comp.writeback_pending = runtime.current().insight_writeback
+    req.portal_done_at = datetime.now(timezone.utc)
+    await session.commit()
+    await notify(f"🛠 **{comp.name}** после диагностики свободен" + (f", возвращён в пул «{pool.name}»" if pool else ""))
+    return await _diagnostic_out(session, req)
 
 
 async def _vm_requests(session: AsyncSession, vms: list[VirtualMachine]) -> dict[int, ServiceRequest]:

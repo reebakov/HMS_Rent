@@ -4,6 +4,7 @@
 """
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -344,6 +345,23 @@ async def test_faulty_removes_pc_from_pool_and_opens_diagnose_request(client, ap
     assert (req.kind, req.booking_id, req.department_id, req.user_id) == ("diagnose", None, None, env.worker.id)
 
 
+async def test_diagnose_request_remembers_computer_and_previous_pool(client, api, env, session, sd):  # noqa: F811
+    comp = (await session.scalars(select(Computer).where(Computer.name == "A001"))).one()
+    pool_id = comp.pool_id
+    await client.post(api(f"/executor/orders/{env.early.id}/reject"), json={"reason": "Сервер неисправен", "comment": "Не включается"})
+    (req,) = await session.scalars(select(ServiceRequest))
+    assert (req.computer_id, req.pool_id, req.issue_key, req.portal_done_at) == (comp.id, pool_id, "HMS-1", None)
+    assert "Прежний пул: Main" in req.description and "Вернуть в пул" in req.description
+
+
+async def test_diagnose_request_is_kept_even_without_service_desk(client, api, env, session, monkeypatch):
+    """Без Jira задачи нет, но ПК и прежний пул запомнены: вернуть ПК в пул можно кнопкой в портале."""
+    monkeypatch.setattr(settings, "sd_token", "")
+    await client.post(api(f"/executor/orders/{env.early.id}/reject"), json={"reason": "Сервер неисправен", "comment": "Не включается"})
+    (req,) = await session.scalars(select(ServiceRequest))
+    assert req.kind == "diagnose" and req.issue_key is None and req.computer_id == env.early.computer_id and req.pool_id
+
+
 async def test_plain_rejection_creates_no_diagnose_request(client, api, env, sd):  # noqa: F811
     await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)
     assert sd.created == []
@@ -377,6 +395,100 @@ async def test_reject_closed_missing_and_repeated(client, api, env):
 async def test_customer_cannot_reject(client, api, env, login):
     login(env.owner)
     assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 403
+
+
+# ---------- диагностика: вернуть ПК в пул ----------
+
+async def _faulty(client, api, env, session) -> ServiceRequest:
+    await client.post(api(f"/executor/orders/{env.early.id}/reject"), json={"reason": "Сервер неисправен", "comment": "Не включается"})
+    return (await session.scalars(select(ServiceRequest).where(ServiceRequest.kind == "diagnose",
+                                                               ServiceRequest.computer_id.is_not(None)))).one()
+
+
+async def _pc(session, name="A001") -> Computer:
+    return (await session.scalars(select(Computer).where(Computer.name == name).execution_options(populate_existing=True))).one()
+
+
+async def test_diagnostics_list_and_return_to_pool(client, api, env, session, sd, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(settings, "sd_jira_url", "https://jira.test")
+    req = await _faulty(client, api, env, session)
+    (row,) = (await client.get(api("/executor/diagnostics"))).json()
+    assert (row["id"], row["computer"]["name"], row["pool_name"], row["comment"]) == (req.id, "A001", "Main", "Не включается")
+    assert (row["issue_key"], row["issue_url"]) == ("HMS-1", "https://jira.test/browse/HMS-1")
+
+    done = await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))
+    assert done.status_code == 200 and done.json()["id"] == req.id
+    comp = await _pc(session)
+    assert (comp.status, comp.pool_id) == (ComputerStatus.available, req.pool_id)
+    (event,) = await session.scalars(select(AssetEvent).where(AssetEvent.event_type == EventType.repaired))
+    assert event.actor_id == env.worker.id and "возвращён в пул «Main»" in event.message
+    assert (event.from_status, event.to_status) == (ComputerStatus.maintenance, ComputerStatus.available)
+    await session.refresh(req)
+    assert req.portal_done_at is not None
+    assert (await client.get(api("/executor/diagnostics"))).json() == []  # из списка ушла
+
+
+async def test_repair_queues_insight_write_only_when_enabled(session, env, client, api, sd, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(executor, "notify", AsyncMock())
+    req = await _faulty(client, api, env, session)
+    comp = await _pc(session)
+    comp.writeback_pending = False
+    await session.commit()
+    await runtime.update(session, {"insight_writeback": True})
+    await executor.repair_computer(session, env.worker, req.id)
+    comp = await _pc(session)
+    assert (comp.status, comp.writeback_pending) == (ComputerStatus.available, True)  # «Ожидает» и пул уйдут в Insight
+
+
+async def test_repair_is_idempotent_conflict_and_validated(client, api, env, session, sd):  # noqa: F811
+    req = await _faulty(client, api, env, session)
+    assert (await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))).status_code == 200
+    assert (await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))).status_code == 409
+    assert (await client.post(api("/executor/diagnostics/999999/repaired"))).status_code == 404
+    other = ServiceRequest(kind="return", user_id=env.owner.id, summary="s", description="d", issue_key="X-1")
+    session.add(other)
+    await session.commit()
+    assert (await client.post(api(f"/executor/diagnostics/{other.id}/repaired"))).status_code == 404  # не диагностика
+
+
+async def test_repair_when_pool_was_deleted_keeps_pc_out_of_pools(client, api, env, session, sd):  # noqa: F811
+    from app.models import Pool
+    req = await _faulty(client, api, env, session)
+    gone = Pool(name="Удалённый")
+    session.add(gone)
+    await session.commit()
+    req.pool_id = gone.id  # прежний пул ПК удалили после того, как его вывели
+    await session.commit()
+    await session.delete(gone)
+    await session.commit()
+    await session.refresh(req)
+    assert req.pool_id is None  # FK ON DELETE SET NULL
+    (row,) = (await client.get(api("/executor/diagnostics"))).json()
+    assert row["pool_name"] is None
+    assert (await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))).status_code == 200
+    comp = await _pc(session)
+    assert (comp.status, comp.pool_id) == (ComputerStatus.available, None)
+    (event,) = await session.scalars(select(AssetEvent).where(AssetEvent.event_type == EventType.repaired))
+    assert "прежний пул не известен" in event.message
+
+
+async def test_diagnostics_list_skips_returned_pcs_and_legacy_requests(client, api, env, session, sd):  # noqa: F811
+    legacy = ServiceRequest(kind="diagnose", user_id=env.worker.id, summary="s", description="d", issue_key="HMS-50")
+    session.add(legacy)  # создана до привязки к ПК: показать нечего
+    await session.commit()
+    req = await _faulty(client, api, env, session)
+    comp = await _pc(session)
+    comp.status = ComputerStatus.available  # администратор вернул ПК вручную
+    await session.commit()
+    assert (await client.get(api("/executor/diagnostics"))).json() == []
+    assert req.id != legacy.id
+
+
+async def test_customer_cannot_see_or_close_diagnostics(client, api, env, session, login, sd):  # noqa: F811
+    req = await _faulty(client, api, env, session)
+    login(env.owner)
+    assert (await client.get(api("/executor/diagnostics"))).status_code == 403
+    assert (await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))).status_code == 403
 
 
 # ---------- ссылка на заявку в Jira ----------

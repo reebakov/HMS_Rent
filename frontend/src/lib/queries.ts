@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition,
 } from './types'
 
 export interface ComputerFilters {
@@ -434,6 +434,24 @@ export const useExecutorProblems = (enabled = true) =>
     enabled,
     refetchInterval: 60_000,
   })
+
+/** ПК на диагностике: выведены из пула как неисправные */
+export const useExecutorDiagnostics = (enabled = true) =>
+  useQuery({
+    queryKey: ['executor', 'diagnostics'],
+    queryFn: () => api.get<ExecutorDiagnostic[]>('/executor/diagnostics'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+export function useRepairComputer() {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll() // ПК снова в каталоге
+  return useMutation({
+    mutationFn: (id: number) => api.post<ExecutorDiagnostic>(`/executor/diagnostics/${id}/repaired`),
+    onSettled: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['executor'] })]),
+  })
+}
 
 /** ВМ, созданные в vSphere и ждущие проверки исполнителем */
 export const useExecutorVms = (enabled = true) =>

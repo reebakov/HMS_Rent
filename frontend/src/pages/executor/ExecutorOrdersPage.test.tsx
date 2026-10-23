@@ -41,6 +41,7 @@ beforeEach(() => {
     if (path === '/executor/orders') return orders
     if (path === '/executor/returns') return returns
     if (path === '/executor/vms') return []
+    if (path === '/executor/diagnostics') return []
     throw new Error(`неожиданный GET ${path}`)
   })
 })

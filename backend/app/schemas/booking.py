@@ -81,6 +81,21 @@ class ExecutorProblemOut(ORMModel):
     booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя
 
 
+class ExecutorDiagnosticOut(ORMModel):
+    """ПК на диагностике: выведен из пула как неисправный; после ремонта исполнитель возвращает его в прежний пул."""
+
+    id: int  # заявка «Диагностика комплекта»
+    computer: ComputerShort
+    pool_name: str | None  # пул, из которого вывели ПК (пусто — пул удалён или не известен)
+    comment: str  # что написал исполнитель при отметке «Сервер неисправен»
+    created_at: datetime
+    issue_key: str | None
+    issue_url: str | None
+    status: str | None
+    error: str | None
+    request_done: bool = False
+
+
 class ProblemTransitionOut(BaseModel):
     """Переход задачи Jira, доступный из её текущего статуса."""
 

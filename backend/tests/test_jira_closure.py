@@ -202,7 +202,9 @@ async def test_only_unhandled_closed_prepare_and_return_tasks_are_taken(session,
     handled = await _task(session, env, env.early, handled_at=datetime.now(timezone.utc))
     await _task(session, env, env.early, status="In Progress", status_category="indeterminate")
     await _task(session, env, env.early, kind="problem")
-    await _task(session, env, env.early, kind="diagnose")
+    session.add(ServiceRequest(kind="diagnose", user_id=env.worker.id, summary="s", description="d", issue_key="DR-30",
+                               status="Done", status_category="done"))  # создана до привязки к ПК: разбирать нечего
+    await session.commit()
     await jira_closure.apply_closures(session)
     assert sd.details_calls == []
     assert (await _fresh(ServiceRequest, handled.id)).handled_at is not None
@@ -263,3 +265,64 @@ async def test_portal_closes_return_task_after_cleaning(session, env, sd):  # no
     before = len(await _notes())  # «Заявка DR-7: Выполнен» о смене статуса
     await jira_closure.apply_closures(session)  # портал сам закрыл: реагировать не на что
     assert len(await _notes()) == before and (await _fresh(ServiceRequest, req.id)).handled_at is not None
+
+
+# ---------- «Диагностика комплекта» ----------
+
+async def _diagnosis(session, env) -> ServiceRequest:  # noqa: F811
+    """ПК A001 выведен из пула как неисправный: заявка помнит ПК и прежний пул."""
+    comp = await _fresh(Computer, env.early.computer_id)
+    comp = await session.merge(comp)
+    pool_id = comp.pool_id
+    comp.status, comp.pool_id = ComputerStatus.maintenance, None
+    req = ServiceRequest(kind="diagnose", user_id=env.worker.id, computer_id=comp.id, pool_id=pool_id,
+                         summary="HMS Rent: диагностика комплекта A001", description="d", issue_key="DR-9",
+                         status="Done", status_category="done")
+    session.add(req)
+    await session.commit()
+    return req
+
+
+async def test_diagnosis_closed_in_jira_returns_pc_to_its_pool(session, env, sd):  # noqa: F811
+    req = await _diagnosis(session, env)
+    sd.details = real_sd.SdDetails(taken=True, resolution="Done", closed_by=("worker", ""))
+    await jira_closure.apply_closures(session)
+    comp = await _fresh(Computer, env.early.computer_id)
+    assert (comp.status, comp.pool_id) == (ComputerStatus.available, req.pool_id) and req.pool_id
+    (event,) = [e for e in (await session.scalars(select(AssetEvent))).all() if e.event_type == EventType.repaired]
+    assert event.actor_id == env.worker.id
+    assert (await _fresh(ServiceRequest, req.id)).handled_at is not None
+
+
+async def test_diagnosis_rejected_in_jira_leaves_pc_out_of_pool(session, env, sd):  # noqa: F811
+    req = await _diagnosis(session, env)
+    sd.details = real_sd.SdDetails(taken=True, resolution="Rejected")
+    await jira_closure.apply_closures(session)
+    comp = await _fresh(Computer, env.early.computer_id)
+    assert (comp.status, comp.pool_id) == (ComputerStatus.maintenance, None)
+    assert (await _fresh(ServiceRequest, req.id)).handled_at is not None
+
+
+async def test_diagnosis_closed_when_pc_is_already_back_changes_nothing(session, env, sd):  # noqa: F811
+    req = await _diagnosis(session, env)
+    comp = await session.merge(await _fresh(Computer, env.early.computer_id))
+    comp.status = ComputerStatus.available  # вернули вручную
+    await session.commit()
+    sd.details = real_sd.SdDetails(taken=True, resolution="Done")
+    await jira_closure.apply_closures(session)
+    assert [e for e in (await session.scalars(select(AssetEvent))).all() if e.event_type == EventType.repaired] == []
+    assert (await _fresh(ServiceRequest, req.id)).handled_at is not None
+
+
+async def test_portal_closes_diagnosis_task_after_return_to_pool(session, env, sd):  # noqa: F811
+    req = await _diagnosis(session, env)
+    req.status, req.status_category, req.last_checked_at = "In Progress", "indeterminate", None
+    await session.commit()
+    sd.status = real_sd.SdStatus("In Progress", "indeterminate")
+    await service_requests.refresh_open(session)
+    assert sd.closed == []  # ПК ещё на диагностике
+
+    req.portal_done_at, req.last_checked_at = datetime.now(timezone.utc), None  # исполнитель вернул ПК в пул в портале
+    await session.commit()
+    await service_requests.refresh_open(session)
+    assert sd.closed == [("DR-9", "Done")]
