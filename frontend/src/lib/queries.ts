@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ProblemTransition,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition,
 } from './types'
 
 export interface ComputerFilters {
@@ -243,7 +243,7 @@ export const useMyVms = () =>
     queryFn: () => api.get<Vm[]>('/vms/my'),
     // пока ВМ создаётся или удаляется — обновляем чаще
     refetchInterval: (q) =>
-      q.state.data?.some((v) => ['queued', 'creating', 'deleting'].includes(v.status) || (v.status === 'ready' && !v.ip_address))
+      q.state.data?.some((v) => ['queued', 'creating', 'checking', 'deleting'].includes(v.status) || (v.status === 'ready' && !v.ip_address))
         ? 5000
         : false,
   })
@@ -434,6 +434,32 @@ export const useExecutorProblems = (enabled = true) =>
     enabled,
     refetchInterval: 60_000,
   })
+
+/** ВМ, созданные в vSphere и ждущие проверки исполнителем */
+export const useExecutorVms = (enabled = true) =>
+  useQuery({
+    queryKey: ['executor', 'vms'],
+    queryFn: () => api.get<ExecutorVm[]>('/executor/vms'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+
+function useVmDecision<V>(path: (id: number) => string, body: (v: V) => unknown, idOf: (v: V) => number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: V) => api.post<ExecutorVm>(path(idOf(v)), body(v)),
+    onSettled: () => Promise.all(['executor', 'my-vms', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
+
+export const useConfirmVm = () => useVmDecision<number>((id) => `/executor/vms/${id}/confirm`, () => undefined, (id) => id)
+export const useRecreateVm = () => useVmDecision<number>((id) => `/executor/vms/${id}/recreate`, () => undefined, (id) => id)
+export const useRejectVm = () =>
+  useVmDecision<ExecutorVmReject & { id: number }>(
+    (id) => `/executor/vms/${id}/reject`,
+    ({ reason, comment }) => ({ reason, comment }),
+    (v) => v.id,
+  )
 
 /** Переходы задачи Jira по проблеме; грузятся, только когда исполнитель открыл «Сменить статус» */
 export const useProblemTransitions = (id: number, enabled: boolean) =>

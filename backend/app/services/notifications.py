@@ -98,6 +98,12 @@ def vm_ready(session: AsyncSession, vm: VirtualMachine) -> None:
         f"Заказ №{vm.order_number}, аренда до {_until(vm)}. Адрес и логин — в «Моей аренде», пароль сообщит исполнитель.")
 
 
+def vm_rejected(session: AsyncSession, vm: VirtualMachine, reason: str, comment: str) -> None:
+    """Исполнитель отклонил созданную ВМ при проверке."""
+    add(session, vm.user_id, NotificationKind.order_rejected, f"Заказ №{vm.order_number} на ВМ {vm.name} отклонён: {reason}",
+        f"{comment}\nОформите новый заказ или напишите администратору.")
+
+
 def vm_failed(session: AsyncSession, vm: VirtualMachine) -> None:
     add(session, vm.user_id, NotificationKind.vm_failed, f"ВМ {vm.name} не создана",
         f"Заказ №{vm.order_number}. Исполнители уведомлены, причина — в «Моей аренде». Заказ можно удалить и оформить заново.")

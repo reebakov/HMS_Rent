@@ -52,6 +52,7 @@ const order = (id: number, prepared: boolean) => ({ id, prepared_at: prepared ? 
 let executorOrders: ExecutorOrder[]
 let executorReturns: ExecutorOrder[]
 let executorProblems: { id: number; status_category: string | null }[]
+let executorVms: { id: number }[]
 
 beforeEach(() => {
   localStorage.clear()
@@ -62,6 +63,7 @@ beforeEach(() => {
   executorOrders = []
   executorReturns = []
   executorProblems = []
+  executorVms = []
   logout.mockReset()
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
   // меню админа запрашивает просрочки, заявки на срок и продления для счётчика
@@ -72,6 +74,7 @@ beforeEach(() => {
     if (path === '/executor/orders') return executorOrders
     if (path === '/executor/returns') return executorReturns
     if (path === '/executor/problems') return executorProblems
+    if (path === '/executor/vms') return executorVms
     if (path === '/notifications') return { items: [], unread: 0 }
     throw new Error(`неожиданный GET ${path}`)
   })
@@ -119,12 +122,22 @@ describe('AppShell: меню по роли', () => {
     await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
   })
 
+  it('счётчик исполнителя включает ВМ, ждущие проверки', async () => {
+    session = makeSession({ role: 'executor' })
+    executorOrders = [order(1, false)]
+    executorVms = [{ id: 7 }, { id: 8 }]
+    mountShell()
+    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
+  })
+
   it('сотрудник не видит блок «Исполнитель» и не запрашивает очередь', () => {
     mountShell()
     expect(screen.queryByRole('link', { name: /Заказы на подготовку/ })).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/executor/orders')
     expect(api.get).not.toHaveBeenCalledWith('/executor/returns')
     expect(api.get).not.toHaveBeenCalledWith('/executor/problems')
+    expect(api.get).not.toHaveBeenCalledWith('/executor/vms')
     expect(screen.queryByRole('link', { name: /Проблемы по заказам/ })).not.toBeInTheDocument()
   })
 

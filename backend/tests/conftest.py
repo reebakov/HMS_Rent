@@ -67,6 +67,12 @@ async def _clean_db(_migrated_db):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _vm_without_executor_check(monkeypatch):
+    """Большинство тестов ВМ про создание и выдачу: проверка исполнителем в них выключена, её тесты включают её сами."""
+    monkeypatch.setattr(settings, "vm_executor_check", False)
+
+
 @pytest_asyncio.fixture
 async def session():
     async with SessionLocal() as s:

@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.integrations.notify import notify
 from app.integrations.vsphere import client as vsphere
 from app.models import VirtualMachine, VmStatus
-from app.services import capacity, notifications, runtime
+from app.services import capacity, notifications, runtime, service_requests
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +69,20 @@ async def _take(session: AsyncSession, status: VmStatus) -> VirtualMachine | Non
     )
 
 
+async def _created(session: AsyncSession, vm: VirtualMachine) -> None:
+    """ВМ создана в vSphere: с проверкой исполнителем она ждёт его решения (и появляется задача в Jira), иначе сразу готова."""
+    if settings.vm_executor_check:
+        vm.status = VmStatus.checking.value
+        await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name}), ждёт проверки исполнителем")
+        await session.commit()
+        await service_requests.create_prepare_vm(session, vm.id)
+        return
+    vm.status, vm.ready_at = VmStatus.ready.value, datetime.now(timezone.utc)
+    notifications.vm_ready(session, vm)
+    await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
+    await session.commit()
+
+
 async def create_next(session: AsyncSession) -> bool:
     vm = await _take(session, VmStatus.queued)
     if vm is None:
@@ -82,7 +97,10 @@ async def create_next(session: AsyncSession) -> bool:
             return await _fail(session, vm, f"Шаблон ОС «{vm.os_label or vm.template_key}» больше не доступен")
         template, spec = tmpl.template, tmpl.customization_spec
     if problem := await _cluster_shortage(vm):
-        return await _fail(session, vm, problem)
+        await _fail(session, vm, problem)
+        # задача исполнителям с пометкой: ВМ не создаётся; портал закроет её с резолюцией Rejected (ВМ в статусе failed)
+        await service_requests.create_prepare_vm(session, vm.id, f"ВМ не создана: {problem}")
+        return True
     annotated_until = vm.expected_return_at  # срок попадёт в Notes; если его продлят во время клона, upkeep обновит
     annotation = _annotation(vm)
     for attempt in range(1, CREATE_ATTEMPTS + 1):
@@ -97,14 +115,11 @@ async def create_next(session: AsyncSession) -> bool:
             if attempt < CREATE_ATTEMPTS:
                 await _pause(CREATE_RETRY_DELAY_SEC)
             continue
-        vm.status, vm.error = VmStatus.ready.value, None
+        vm.error = None
         vm.notes_return_at = annotated_until
         vm.insight_pending = True  # в Insight известен IP
         vm.vsphere_moid, vm.ip_address, vm.power_state = info.moid, info.ip_address, info.power_state
-        vm.ready_at = datetime.now(timezone.utc)
-        notifications.vm_ready(session, vm)
-        await notify(f"🖥 ВМ **{vm.name}** создана для {vm.requester_name} ({vm.department.name})")
-        await session.commit()
+        await _created(session, vm)
         return True
     return await _fail(session, vm, vm.error or "Не удалось создать ВМ")  # error — ошибка последней попытки
 
@@ -116,8 +131,12 @@ async def delete_next(session: AsyncSession) -> bool:
     try:
         if vm.vsphere_moid:  # без moid в vCenter нечего удалять: ВМ не создавалась, а по имени искать нельзя
             await asyncio.to_thread(vsphere.delete_vm, vm.vsphere_moid)
-        vm.status, vm.deleted_at, vm.error = VmStatus.deleted.value, datetime.now(timezone.utc), None
-        vm.insight_pending = True  # номер освободится в Insight
+        if vm.recreate:  # исполнитель попросил «Пересоздать»: тот же номер и имя, заново из шаблона
+            vm.status, vm.recreate, vm.error = VmStatus.queued.value, False, None
+            vm.vsphere_moid = vm.ip_address = vm.power_state = None
+        else:
+            vm.status, vm.deleted_at, vm.error = VmStatus.deleted.value, datetime.now(timezone.utc), None
+            vm.insight_pending = True  # номер освободится в Insight
     except Exception as exc:  # noqa: BLE001 — оставляем в deleting, повторим на следующем круге
         log.exception("Не удалось удалить ВМ %s", vm.name)
         vm.error = str(exc)[:1000]
@@ -128,8 +147,8 @@ async def delete_next(session: AsyncSession) -> bool:
 async def refresh_ips(session: AsyncSession, batch: int = 10) -> None:
     """IP появляется, когда Windows загрузилась и VMware Tools отчитались."""
     vms = (await session.scalars(
-        select(VirtualMachine).where(VirtualMachine.status == VmStatus.ready, VirtualMachine.ip_address.is_(None))
-        .limit(batch)
+        select(VirtualMachine).where(VirtualMachine.status.in_((VmStatus.ready, VmStatus.checking)),
+                                     VirtualMachine.ip_address.is_(None)).limit(batch)
     )).unique().all()
     for vm in vms:
         try:
@@ -155,9 +174,9 @@ async def recover(session: AsyncSession) -> None:
         if info is None:
             vm.status = VmStatus.queued.value
         elif info.power_state == POWERED_ON:
-            vm.status, vm.vsphere_moid, vm.ready_at = VmStatus.ready.value, info.moid, datetime.now(timezone.utc)
+            vm.vsphere_moid = info.moid
             vm.ip_address, vm.power_state, vm.insight_pending = info.ip_address, info.power_state, True
-            notifications.vm_ready(session, vm)
+            await _created(session, vm)
         else:
             await _fail(session, vm, f"Создание прервано перезапуском сервиса: ВМ «{vm.name}» в vCenter не доведена до "
                                      "конца. Проверьте и удалите её вручную, затем закажите ВМ заново")
@@ -174,7 +193,7 @@ async def refresh_annotations(session: AsyncSession, batch: int = 10) -> None:
     """Продление меняет срок заказа, а в Notes ВМ в vCenter остаётся прежний: перезаписываем описание."""
     vms = (await session.scalars(
         select(VirtualMachine).where(
-            VirtualMachine.status == VmStatus.ready, VirtualMachine.vsphere_moid.is_not(None),
+            VirtualMachine.status.in_((VmStatus.ready, VmStatus.checking)), VirtualMachine.vsphere_moid.is_not(None),
             VirtualMachine.notes_return_at.is_distinct_from(VirtualMachine.expected_return_at),
         ).order_by(VirtualMachine.id).limit(batch)
     )).unique().all()

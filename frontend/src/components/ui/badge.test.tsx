@@ -6,6 +6,7 @@ describe('VmStatusBadge', () => {
   it.each([
     ['queued', 'В очереди', true],
     ['creating', 'Создаётся', true],
+    ['checking', 'Проверяется', true],
     ['ready', 'Готова', false],
     ['failed', 'Ошибка', false],
     ['deleting', 'Удаляется', true],

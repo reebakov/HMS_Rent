@@ -50,14 +50,15 @@ export const STATUSES: Record<ComputerStatus, { label: string; tone: 'success' |
 export const VM_STATUS: Record<VmStatus, { label: string; tone: Tone; busy?: boolean }> = {
   queued: { label: 'В очереди', tone: 'muted', busy: true },
   creating: { label: 'Создаётся', tone: 'primary', busy: true },
+  checking: { label: 'Проверяется', tone: 'primary', busy: true },
   ready: { label: 'Готова', tone: 'success' },
   failed: { label: 'Ошибка', tone: 'danger' },
   deleting: { label: 'Удаляется', tone: 'warning', busy: true },
   deleted: { label: 'Удалена', tone: 'muted' },
 }
 
-/** Отказаться от ВМ (или отменить заявку) можно, пока она не создаётся и не удаляется */
-export const canReleaseVm = (status: VmStatus) => status === 'ready' || status === 'failed' || status === 'queued'
+/** Отказаться от ВМ (или отменить заявку) можно, пока она не создаётся и не удаляется; на проверке — пока её не взял исполнитель */
+export const canReleaseVm = (status: VmStatus) => status === 'ready' || status === 'failed' || status === 'queued' || status === 'checking'
 
 /** Продлить срок ВМ можно, пока она не удаляется и не удалена */
 export const canExtendVm = (status: VmStatus) => status !== 'deleting' && status !== 'deleted'
@@ -65,6 +66,9 @@ export const canExtendVm = (status: VmStatus) => status !== 'deleting' && status
 /** Основания отклонения заказа ПК исполнителем (регламент); первое ещё и выводит ПК из пула */
 export const REJECT_REASONS = ['Сервер неисправен', 'Заказчик не ответил', 'Некорректный заказ'] as const
 export const FAULTY_REASON = REJECT_REASONS[0]
+
+/** Основания отклонения ВМ исполнителем при проверке (регламент) */
+export const VM_REJECT_REASONS = ['Не удалось подготовить ВМ', 'Недостаточно мощностей кластера', 'Заказчик не ответил', 'Некорректный заказ'] as const
 
 export const EVENT_LABELS: Record<string, string> = {
   booked: 'Бронирование',

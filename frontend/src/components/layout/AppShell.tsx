@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, LifeBuoy, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
-import { useExecutorOrders, useExecutorProblems, useExecutorReturns, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
+import { useExecutorOrders, useExecutorProblems, useExecutorReturns, useExecutorVms, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
 import { canExecute, isOpenProblem, ROLE_LABELS } from '@/lib/dictionaries'
 import { useSeenProblemId } from '@/lib/seen-problems'
 import { useAuth, useSession } from '@/auth/AuthProvider'
@@ -75,9 +75,11 @@ export function AppShell() {
   const isAdmin = session.user.role === 'admin'
   const isExecutor = canExecute(session.user.role)
   // счётчик у «Заказов на подготовку»: выданные ПК, по которым исполнитель ещё не внёс данные для подключения
-  // заказы, ждущие подготовки, и вернувшиеся ПК, ждущие очистки диска
+  // заказы, ждущие подготовки, вернувшиеся ПК, ждущие очистки диска, и ВМ, ждущие проверки
   const waitingCount =
-    (useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0) + (useExecutorReturns(isExecutor).data?.length ?? 0)
+    (useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0) +
+    (useExecutorReturns(isExecutor).data?.length ?? 0) +
+    (useExecutorVms(isExecutor).data?.length ?? 0)
   // новые открытые проблемы по заказам: пришедшие после последнего просмотра вкладки
   const seenProblemId = useSeenProblemId()
   const problemsCount = useExecutorProblems(isExecutor).data?.filter((p) => isOpenProblem(p) && p.id > seenProblemId).length ?? 0

@@ -16,15 +16,16 @@ from app.models import User, VirtualMachine, VmStatus
 from app.schemas.admin import VmNumbers
 from app.schemas.settings import RuntimeConfig, VmTemplate
 from app.schemas.vm import VmCreate, VmExtend, VmOptions, VmTemplateOption
-from app.services import departments, overdue, runtime, term_limit
+from app.services import departments, overdue, runtime, service_requests, term_limit
 from app.services.access import ensure_access, mine_or_team
 from app.services.orders import next_order_number, requester_name
 
 log = logging.getLogger(__name__)
 
-ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.ready, VmStatus.deleting)
+ALIVE = (VmStatus.queued, VmStatus.creating, VmStatus.checking, VmStatus.ready, VmStatus.deleting)
 VM_LIMIT_LOCK_KEY = 73010002  # пространство ключей advisory-lock для лимита ВМ на пользователя (свой ключ у sync.py)
 LOW_VM_NUMBERS = 5  # столько номеров и меньше — в «Обзоре парка» предупреждение
+RELEASE_DENIED = "Удалить ВМ может тот, кто её заказывал, участник его команды или администратор"
 VM_NUMBER_LOCK_KEY = 73010003  # выбор свободного номера ВМ: заказы разных людей не должны взять один объект
 
 
@@ -189,10 +190,23 @@ async def _lock_vm(session: AsyncSession, user: User, vm_id: int, forbidden: str
     return vm
 
 
+async def _ensure_release_allowed(session: AsyncSession, user: User, vm_id: int) -> None:
+    """ВМ на проверке исполнителем можно удалить, пока его задача в Backlog; администратору — всегда.
+
+    Статус задачи читается из Jira до блокировки ВМ, чтобы не держать блокировку на время запроса во внешнюю систему.
+    """
+    vm = await session.get(VirtualMachine, vm_id, populate_existing=True)
+    if vm is None or vm.status != VmStatus.checking or user.is_admin:
+        return  # остальное решит _lock_vm
+    ensure_access(user, vm.user_id, vm.department_id, RELEASE_DENIED)
+    await service_requests.is_untouched(session, vm_id=vm_id)
+
+
 async def release(session: AsyncSession, user: User, vm_id: int) -> VirtualMachine:
     """Отказ от ВМ: worker выключит и удалит её в vSphere."""
+    await _ensure_release_allowed(session, user, vm_id)
     vm = await _lock_vm(session, user, vm_id,
-                        "Удалить ВМ может тот, кто её заказывал, участник его команды или администратор")
+                        RELEASE_DENIED)
     if vm.status in (VmStatus.deleting, VmStatus.deleted):
         raise Conflict("Виртуалка уже удаляется")
     if vm.status == VmStatus.creating:

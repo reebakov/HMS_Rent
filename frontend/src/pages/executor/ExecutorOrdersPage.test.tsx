@@ -40,6 +40,7 @@ beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/executor/orders') return orders
     if (path === '/executor/returns') return returns
+    if (path === '/executor/vms') return []
     throw new Error(`неожиданный GET ${path}`)
   })
 })

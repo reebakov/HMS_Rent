@@ -32,8 +32,9 @@ CONNECTION_METHODS = {"windows": "RDP", "linux": "VNC"}
 class VirtualMachine(Base, TimestampMixin):
     """Виртуалка из конструктора: клон шаблона в vSphere, закреплённый за сотрудником.
 
-    Жизненный цикл (поле status): queued → creating → ready → deleting → deleted;
-    при ошибке — failed (текст в error). Создание и удаление выполняет worker.
+    Жизненный цикл (поле status): queued → creating → checking → ready → deleting → deleted;
+    при ошибке — failed (текст в error). Создание и удаление выполняет worker; в checking ВМ проверяет исполнитель
+    (подтверждает, пересоздаёт или отклоняет), заказчику данные для подключения до подтверждения не показываются.
     """
 
     __tablename__ = "virtual_machines"
@@ -73,7 +74,10 @@ class VirtualMachine(Base, TimestampMixin):
     notes_return_at: Mapped[date | None] = mapped_column(Date)  # срок, записанный сейчас в Notes ВМ в vCenter
     ip_address: Mapped[str | None] = mapped_column(String(64))
     power_state: Mapped[str | None] = mapped_column(String(32))
-    ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # когда стала доступна заказчику
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # когда исполнитель подтвердил проверку
+    checked_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    recreate: Mapped[bool] = mapped_column(default=False, server_default=text("false"))  # после удаления создать заново
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # когда попросили удалить
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     released_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

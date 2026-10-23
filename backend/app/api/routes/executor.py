@@ -11,6 +11,7 @@ from app.schemas.booking import (
     ProblemTransitionIn,
     ProblemTransitionOut,
 )
+from app.schemas.vm import ExecutorVmOut, ExecutorVmReject
 from app.services import executor as service
 from app.services.bookings import get_booking, push_to_insight
 
@@ -58,6 +59,27 @@ async def problem_transitions(request_id: int, _: ExecutorUser, session: DB) -> 
 @router.post("/problems/{request_id}/transition", response_model=ExecutorProblemOut)
 async def move_problem(request_id: int, data: ProblemTransitionIn, _: ExecutorUser, session: DB) -> ExecutorProblemOut:
     return await service.move_problem(session, request_id, data.transition_id)
+
+
+@router.get("/vms", response_model=list[ExecutorVmOut])
+async def list_vm_checks(_: ExecutorUser, session: DB) -> list[ExecutorVmOut]:
+    """ВМ, созданные и ждущие проверки исполнителем."""
+    return await service.list_vm_checks(session)
+
+
+@router.post("/vms/{vm_id}/confirm", response_model=ExecutorVmOut)
+async def confirm_vm(vm_id: int, user: ExecutorUser, session: DB) -> ExecutorVmOut:
+    return (await service.vms_out(session, [await service.confirm_vm(session, user, vm_id)]))[0]
+
+
+@router.post("/vms/{vm_id}/recreate", response_model=ExecutorVmOut)
+async def recreate_vm(vm_id: int, _: ExecutorUser, session: DB) -> ExecutorVmOut:
+    return (await service.vms_out(session, [await service.recreate_vm(session, vm_id)]))[0]
+
+
+@router.post("/vms/{vm_id}/reject", response_model=ExecutorVmOut)
+async def reject_vm(vm_id: int, data: ExecutorVmReject, user: ExecutorUser, session: DB) -> ExecutorVmOut:
+    return (await service.vms_out(session, [await service.reject_vm(session, user, vm_id, data.reason, data.comment)]))[0]
 
 
 @router.get("/returns", response_model=list[ExecutorOrderOut])

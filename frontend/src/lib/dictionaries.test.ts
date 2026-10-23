@@ -4,13 +4,14 @@ import type { VmStatus } from './types'
 
 describe('VM_STATUS', () => {
   it('словарь подписей содержит все статусы ВМ', () => {
-    expect(Object.keys(VM_STATUS).sort()).toEqual(['creating', 'deleted', 'deleting', 'failed', 'queued', 'ready'])
+    expect(Object.keys(VM_STATUS).sort()).toEqual(['checking', 'creating', 'deleted', 'deleting', 'failed', 'queued', 'ready'])
   })
 })
 
 describe('canReleaseVm', () => {
   it.each([
     ['queued', true],
+    ['checking', true],
     ['ready', true],
     ['failed', true],
     ['creating', false],
