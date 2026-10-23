@@ -8,7 +8,7 @@ import pytest
 
 from app import worker
 from app.core.config import settings
-from app.services import overdue, runtime, service_requests, vm_jobs
+from app.services import jira_closure, norms, overdue, runtime, service_requests, vm_jobs
 
 
 @pytest.fixture
@@ -27,6 +27,8 @@ def calls(monkeypatch):
     monkeypatch.setattr(vm_jobs, "upkeep", fake("vm-upkeep"))
     monkeypatch.setattr(vm_jobs, "recover", fake("recover"))
     monkeypatch.setattr(service_requests, "refresh_open", fake("sd"))
+    monkeypatch.setattr(jira_closure, "apply_closures", fake("closures"))
+    monkeypatch.setattr(norms, "check", fake("norms"))
     monkeypatch.setattr(overdue, "daily_digest", fake("digest"))
     monkeypatch.setattr(overdue, "daily_reminders", fake("reminders"))
     return log
@@ -66,7 +68,7 @@ async def test_failed_step_does_not_stop_next_steps(calls, monkeypatch, caplog):
     monkeypatch.setattr(worker, "run_sync", boom)
     with caplog.at_level(logging.ERROR, logger="hmsrent.worker"):
         await worker._tick(0.0, clock=Clock())
-    assert calls == ["writeback", "sd", "digest", "reminders"]  # остальные шаги выполнены
+    assert calls == ["writeback", "sd", "closures", "norms", "digest", "reminders"]  # остальные шаги выполнены
     assert "Синхронизация упал" in caplog.text
 
 
@@ -99,7 +101,7 @@ async def test_slow_vm_step_does_not_block_insight_cycle(calls, monkeypatch):
     vm_task = asyncio.create_task(worker._step("Создание ВМ", vm_jobs.create_pending))
     await asyncio.sleep(0)  # ВМ-шаг начался и завис на ожидании
     await worker._tick(0.0, clock=Clock())
-    assert calls == ["sync", "writeback", "sd", "digest", "reminders"] and not vm_task.done()
+    assert calls == ["sync", "writeback", "sd", "closures", "norms", "digest", "reminders"] and not vm_task.done()
     release.set()
     await vm_task
 
@@ -144,7 +146,7 @@ async def test_repeat_survives_failing_step(slept, caplog):
 async def test_insight_loop_does_one_tick_then_pauses(calls, slept):
     with pytest.raises(StopLoop):
         await worker._insight_loop()
-    assert calls == ["sync", "writeback", "sd", "digest", "reminders"] and slept == [worker.TICK_SEC]
+    assert calls == ["sync", "writeback", "sd", "closures", "norms", "digest", "reminders"] and slept == [worker.TICK_SEC]
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -45,6 +45,10 @@ class ServiceRequest(Base, TimestampMixin):
     resolution: Mapped[str | None] = mapped_column(String(64))  # резолюция закрытой задачи: Done, Rejected…
     status_note: Mapped[str | None] = mapped_column(Text)  # для «Заморожено»: последний публичный комментарий исполнителя
     handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # реакция портала на закрытие задачи в Jira отработала
+    frozen_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # с какого момента задача «Заморожена»
+    frozen_work_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))  # рабочее время на паузе
+    take_alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # канал знает: не взята за час
+    norm_alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # канал знает: норматив нарушен
     error: Mapped[str | None] = mapped_column(Text)  # короткая причина для сотрудника, если Jira не приняла заявку (подробности — в логе)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
