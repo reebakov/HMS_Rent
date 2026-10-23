@@ -49,6 +49,7 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
 
   const today = todayLocal()
   const tomorrow = addDays(today, 1)
+  const wantedMin = options.data?.build_wanted_min ?? tomorrow // норматив сборки — 3 рабочих дня, считает сервер
   // нет типовых сборок в «Настройках» — остаётся только своя конфигурация
   const typical = variant === 'Типовая сборка' && !!options.data?.builds.length
   // ISO-даты сравниваются строками; прошлую дату можно впечатать вручную в обход min
@@ -58,7 +59,7 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
     !!departmentId &&
     !!nick.trim() &&
     until >= today &&
-    (!wantedBy || wantedBy >= tomorrow)
+    (!wantedBy || wantedBy >= wantedMin)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -146,8 +147,8 @@ export function BuildOrderDialog({ open, onClose }: { open: boolean; onClose: ()
               <Field label="Вернуть до" required hint={`Дольше чем до ${formatDate(termLimit(today))} — по согласованию администратора`}>
                 <Input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} />
               </Field>
-              <Field label="Нужен к" hint="Необязательно: не раньше завтрашнего дня">
-                <Input type="date" min={tomorrow} value={wantedBy} onChange={(e) => setWantedBy(e.target.value)} />
+              <Field label="Нужен к" hint={`Необязательно: не раньше ${formatDate(wantedMin)} (норматив сборки — 3 рабочих дня)`}>
+                <Input type="date" min={wantedMin} value={wantedBy} onChange={(e) => setWantedBy(e.target.value)} />
               </Field>
               <Field label="Для чего нужен" hint="Необязательно">
                 <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Новый проект, нагрузочные тесты…" />

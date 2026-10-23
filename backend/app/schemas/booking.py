@@ -81,6 +81,60 @@ class ExecutorProblemOut(ORMModel):
     booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя
 
 
+BUILD_REJECT_REASONS = ("Нет комплектующих", "Несовместимая конфигурация", "Заказчик не ответил", "Некорректный заказ")
+
+
+class ExecutorBuildOut(ORMModel):
+    """Заказ на сборку ПК у исполнителя: что собрать, для кого и задача в Jira."""
+
+    id: int  # заявка на сборку
+    order_number: int
+    configuration: str  # типовая сборка или своя конфигурация, как заказал заказчик
+    os_label: str | None
+    department: DepartmentShort
+    user: UserShort
+    requester_nick: str
+    purpose: str | None
+    expected_return_at: date | None
+    wanted_by: date | None  # «Нужен к»
+    created_at: datetime
+    request_key: str | None = None
+    request_url: str | None = None
+    request_status: str | None = None
+    request_error: str | None = None
+    request_done: bool = False
+
+
+class ExecutorBuildReject(InputModel):
+    reason: Literal[*BUILD_REJECT_REASONS]
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+class PoolShort(ORMModel):
+    id: int
+    name: str
+
+
+class ReplacementOut(ORMModel):
+    """Свободный ПК, на который можно заменить неисправный в заказе."""
+
+    id: int
+    name: str
+    tier: str
+    cpu: str | None
+    ram_gb: int | None
+    storage: str | None
+    gpu: str | None
+    pool_name: str | None
+
+
+class ExecutorReplace(InputModel):
+    """Замена сервера в заказе: новый ПК и что случилось со старым (уйдёт в диагностику)."""
+
+    computer_id: int
+    comment: str = Field(min_length=1, max_length=2000)
+
+
 class ExecutorDiagnosticOut(ORMModel):
     """ПК на диагностике: выведен из пула как неисправный; после ремонта исполнитель возвращает его в прежний пул."""
 
@@ -126,3 +180,10 @@ class ExecutorResult(InputModel):
     host: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$")  # A32.ff.local
     ip: IPv4Address
     method: Literal["RDP", "VNC"]
+
+
+class ExecutorBuildIssue(ExecutorResult):
+    """Выдача собранного ПК: имя ПК из портала (он уже заведён в Insight), пул и данные подключения."""
+
+    computer_name: str = Field(min_length=1, max_length=128)
+    pool_id: int

@@ -6,6 +6,8 @@
   исполнителя);
 * подготовка закрыта иначе, а данных подключения нет — заказ остаётся ждать данных, заказчику уходит уведомление;
 * возврат закрыт (не Rejected) — диск считается очищенным, ПК свободен;
+* «сборка по запросу» закрыта с резолюцией Rejected — заказ отклоняется, закрыта иначе, а ПК в портале не выдан — заказчику
+  уходит «Уточните дополнительно, если нужны данные подключения»;
 * «Диагностика комплекта» закрыта не с Rejected — ПК возвращается в прежний пул и становится свободным;
 * «подготовить ВМ» закрыта с резолюцией Rejected — ВМ на проверке отклоняется, закрыта иначе — проверка считается пройденной,
   ВМ выдана заказчику.
@@ -22,7 +24,7 @@ from app.core.config import settings
 from app.core.errors import DomainError
 from app.integrations import servicedesk as sd
 from app.models import Booking, BookingStatus, ServiceRequest, ServiceRequestKind, User, VirtualMachine, VmStatus
-from app.services import cleaning, executor, notifications
+from app.services import builds, cleaning, executor, notifications
 from app.services.service_requests import last_staff_comment
 
 log = logging.getLogger(__name__)
@@ -56,6 +58,17 @@ async def _apply_vm(session: AsyncSession, req: ServiceRequest, details: sd.SdDe
         await executor.confirm_vm(session, actor, vm.id)
 
 
+async def _apply_build(session: AsyncSession, req: ServiceRequest, details: sd.SdDetails) -> None:
+    """Заказ на сборку закрыт в Jira: Rejected — заказ отклоняется, иначе заказчик узнаёт, что работа завершена."""
+    if req.portal_done_at is not None:
+        return
+    comment = await last_staff_comment(req.issue_key)
+    if details.resolution == sd.RESOLUTION_REJECTED:
+        await builds.reject(session, await _closer(session, details.closed_by), req.id, JIRA_REASON, comment or NO_COMMENT)
+    else:
+        notifications.build_done_without_data(session, req, comment)
+
+
 async def _apply_diagnose(session: AsyncSession, req: ServiceRequest, details: sd.SdDetails) -> None:
     """«Диагностика комплекта» закрыта в Jira не с Rejected — ПК возвращается в прежний пул, если он ещё на диагностике."""
     if details.resolution != sd.RESOLUTION_REJECTED and req.portal_done_at is None:
@@ -66,6 +79,8 @@ async def _apply(session: AsyncSession, req: ServiceRequest) -> None:
     details = await sd.get_details(req.issue_key)
     if req.kind == ServiceRequestKind.diagnose.value:
         return await _apply_diagnose(session, req, details)
+    if req.kind == ServiceRequestKind.build.value:
+        return await _apply_build(session, req, details)
     if req.vm_id is not None:
         return await _apply_vm(session, req, details)
     booking = await session.get(Booking, req.booking_id, populate_existing=True)
@@ -91,9 +106,9 @@ async def apply_closures(session: AsyncSession) -> None:
         select(ServiceRequest).where(
             ServiceRequest.status_category == "done", ServiceRequest.handled_at.is_(None),
             ServiceRequest.kind.in_([ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value,
-                                    ServiceRequestKind.diagnose.value]),
+                                    ServiceRequestKind.diagnose.value, ServiceRequestKind.build.value]),
             or_(ServiceRequest.booking_id.is_not(None), ServiceRequest.vm_id.is_not(None),
-                ServiceRequest.computer_id.is_not(None)),
+                ServiceRequest.computer_id.is_not(None), ServiceRequest.payload.is_not(None)),
             ServiceRequest.issue_key.is_not(None),
         ).order_by(ServiceRequest.id).limit(BATCH)
     )).unique().all()

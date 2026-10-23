@@ -93,6 +93,26 @@ def work_done_without_data(session: AsyncSession, booking: Booking, comment: str
         "Уточните дополнительно, если нужны данные подключения." + (f"\n\nКомментарий исполнителя: {comment}" if comment else ""))
 
 
+def pc_replaced(session: AsyncSession, booking: Booking, old_name: str, new_name: str) -> None:
+    """Исполнитель заменил неисправный ПК в заказе: заказчик ждёт подготовки уже другого ПК."""
+    add(session, booking.user_id, NotificationKind.request_status, f"ПК по заказу №{booking.order_number} заменён: {new_name}",
+        f"Прежний ПК {old_name} оказался неисправен, подготовка идёт на {new_name}. Данные подключения придут отдельным уведомлением.")
+
+
+def build_rejected(session: AsyncSession, req: ServiceRequest, reason: str, comment: str) -> None:
+    """Исполнитель отклонил заказ на сборку ПК."""
+    number = (req.payload or {}).get("order_number")
+    add(session, req.user_id, NotificationKind.order_rejected, f"Сборка ПК (заказ №{number}) отклонена: {reason}",
+        f"{comment}\nОформите новый заказ или напишите администратору.")
+
+
+def build_done_without_data(session: AsyncSession, req: ServiceRequest, comment: str | None) -> None:
+    """Исполнитель закрыл задачу на сборку в Jira, но ПК в портале не выдан."""
+    number = (req.payload or {}).get("order_number")
+    add(session, req.user_id, NotificationKind.request_status, f"Исполнитель завершил работу по заказу №{number} на сборку ПК",
+        "Уточните дополнительно, если нужны данные подключения." + (f"\n\nКомментарий исполнителя: {comment}" if comment else ""))
+
+
 def vm_ready(session: AsyncSession, vm: VirtualMachine) -> None:
     add(session, vm.user_id, NotificationKind.vm_ready, f"ВМ {vm.name} готова",
         f"Заказ №{vm.order_number}, аренда до {_until(vm)}. Адрес и логин — в «Моей аренде», пароль сообщит исполнитель.")

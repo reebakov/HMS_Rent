@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
-from app.core import clock
+from app.core import clock, workdays
 from app.schemas.common import InputModel, ORMModel, ReturnDate
 
 
@@ -19,9 +19,16 @@ class RequestCreate(InputModel):
         return self
 
 
-def _after_today(value: date) -> date:
+def earliest_wanted_by() -> date:
+    """Раньше этого дня собрать ПК не успеют: норматив сборки — 3 рабочих дня (регламент, раздел 1)."""
+    return workdays.load().add_workdays(clock.today(), workdays.BUILD_NORM_DAYS)
+
+
+def _not_before_norm(value: date) -> date:
     if value <= clock.today():
         raise ValueError("Желаемый срок — не раньше завтрашнего дня")
+    if value < (earliest := earliest_wanted_by()):
+        raise ValueError(f"Желаемый срок — не раньше {earliest:%d.%m.%Y}: норматив сборки {workdays.BUILD_NORM_DAYS} рабочих дня")
     return value
 
 
@@ -35,7 +42,7 @@ class BuildCreate(InputModel):
     requester_nick: str = Field(min_length=1, max_length=128)
     purpose: str | None = Field(default=None, max_length=2000)
     expected_return_at: ReturnDate
-    wanted_by: Annotated[date, AfterValidator(_after_today)] | None = None  # к какому дню нужен ПК (необязательно)
+    wanted_by: Annotated[date, AfterValidator(_not_before_norm)] | None = None  # к какому дню нужен ПК (необязательно)
 
     @model_validator(mode="after")
     def one_variant(self):
@@ -51,6 +58,7 @@ class OrderOptions(BaseModel):
 
     os: list[str]
     builds: list[str]
+    build_wanted_min: date  # самый ранний желаемый срок сборки: норматив 3 рабочих дня
 
 
 class RequestOut(ORMModel):
@@ -65,6 +73,7 @@ class RequestOut(ORMModel):
     status_category: str | None
     customer_status: str | None  # статус для заказчика: «Принят», «В работе», «Заморожено», «Выполнен»…
     customer_note: str | None  # для «Заморожено» — комментарий исполнителя
+    can_cancel: bool  # заказ на сборку можно отменить (кнопка «Отменить»)
     error: str | None
     created_at: datetime
     url: str | None = None

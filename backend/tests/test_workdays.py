@@ -87,6 +87,16 @@ def test_empty_file_gives_weekends_only(monkeypatch, tmp_path):
     assert workdays.load() == WorkCalendar()
 
 
+@pytest.mark.parametrize("day, count, expected", [
+    (date(2026, 6, 10), 3, date(2026, 6, 16)),   # ср 10 → чт 11, пт 12 — праздник, пн 15, вт 16
+    (date(2026, 6, 19), 1, date(2026, 6, 20)),   # пт 19 → рабочая суббота 20-го
+    (date(2026, 6, 11), 0, date(2026, 6, 11)),   # ноль дней — тот же день
+    (date(2026, 6, 13), 1, date(2026, 6, 15)),   # выходные пропускаются
+])
+def test_add_workdays(day, count, expected):
+    assert CAL.add_workdays(day, count) == expected
+
+
 # ---------- рабочее время: 10:00–18:00 GMT+7 ----------
 
 def at(day: int, hour: int, minute: int = 0, month: int = 6) -> datetime:

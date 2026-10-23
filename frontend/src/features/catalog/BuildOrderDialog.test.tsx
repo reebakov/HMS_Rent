@@ -20,10 +20,11 @@ const departments = [{ id: 2, name: 'Аналитика', code: 'AN', head_name:
 const BUILD_A = 'A — Intel i5-12400F, 16 ГБ, RTX 3050'
 let options: OrderOptions
 const UNTIL = addDays(todayLocal(), 30)
+const WANTED_MIN = addDays(todayLocal(), 4) // сервер считает норматив сборки: 3 рабочих дня
 
 beforeEach(() => {
   session = makeSession({ department_id: 2 })
-  options = { os: ['Ubuntu 24.04', 'Windows 11 26H2'], builds: [BUILD_A, 'B — Ryzen 7'] }
+  options = { os: ['Ubuntu 24.04', 'Windows 11 26H2'], builds: [BUILD_A, 'B — Ryzen 7'], build_wanted_min: WANTED_MIN }
   for (const m of [api.get, api.post]) vi.mocked(m).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
@@ -109,23 +110,24 @@ describe('BuildOrderDialog', () => {
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ build: undefined, custom: 'i9, 64 ГБ' })
   })
 
-  it('желаемый срок: сегодня нельзя, завтра можно; уходит в заявку', async () => {
+  it('желаемый срок: раньше норматива нельзя, с самого раннего дня можно; уходит в заявку', async () => {
     const { user } = await setup()
     await user.selectOptions(screen.getByLabelText(/Типовая сборка/), BUILD_A)
     await fillCommon(user)
     const wanted = screen.getByLabelText(/Нужен к/)
-    expect(wanted).toHaveAttribute('min', addDays(todayLocal(), 1))
-    await user.type(wanted, todayLocal())
+    expect(wanted).toHaveAttribute('min', WANTED_MIN)
+    expect(screen.getByText(/норматив сборки — 3 рабочих дня/)).toBeInTheDocument()
+    await user.type(wanted, addDays(todayLocal(), 1))
     expect(submit()).toBeDisabled()
     await user.clear(wanted)
-    await user.type(wanted, addDays(todayLocal(), 1))
+    await user.type(wanted, WANTED_MIN)
     await user.click(submit())
     await waitFor(() => expect(api.post).toHaveBeenCalled())
-    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ wanted_by: addDays(todayLocal(), 1) })
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ wanted_by: WANTED_MIN })
   })
 
   it('без типовых сборок в настройках — сразу своя конфигурация, переключателя нет', async () => {
-    options = { os: ['Ubuntu 24.04'], builds: [] }
+    options = { os: ['Ubuntu 24.04'], builds: [], build_wanted_min: WANTED_MIN }
     renderWithProviders(<BuildOrderDialog open onClose={vi.fn()} />)
     expect(await screen.findByLabelText(/Конфигурация/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Типовая сборка' })).not.toBeInTheDocument()

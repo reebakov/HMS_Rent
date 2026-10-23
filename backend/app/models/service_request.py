@@ -1,9 +1,12 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.models.department import Department
 from app.models.user import User
 
 # Статусы задач DR (workflow проекта) так, как их видит заказчик; остальные статусы Jira показываются как есть
@@ -48,6 +51,7 @@ class ServiceRequest(Base, TimestampMixin):
     computer_id: Mapped[int | None] = mapped_column(ForeignKey("computers.id"), index=True)  # у «Диагностики комплекта» — ПК
     pool_id: Mapped[int | None] = mapped_column(ForeignKey("pools.id", ondelete="SET NULL"))  # пул, из которого вывели ПК
     portal_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # исполнитель довёл задачу в портале
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # у сборки: номер заказа, срок, ОС, ник, цель — для выдачи ПК
     frozen_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # с какого момента задача «Заморожена»
     frozen_work_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))  # рабочее время на паузе
     take_alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # канал знает: не взята за час
@@ -56,6 +60,7 @@ class ServiceRequest(Base, TimestampMixin):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(lazy="joined")
+    department: Mapped[Department | None] = relationship(lazy="joined")
 
     @property
     def workflow_status(self) -> str | None:
@@ -72,6 +77,11 @@ class ServiceRequest(Base, TimestampMixin):
         if self.workflow_status in ("Backlog", "To Do") and self.was_taken:
             return TAKEN_BACK
         return CUSTOMER_STATUS.get(self.workflow_status, self.status)
+
+    @property
+    def can_cancel(self) -> bool:
+        """Заказ на сборку, который заказчик ещё может отменить (портал не выдал и не отклонил его, задача не закрыта)."""
+        return self.kind == "build" and self.payload is not None and self.portal_done_at is None and self.status_category != "done"
 
     @property
     def customer_note(self) -> str | None:

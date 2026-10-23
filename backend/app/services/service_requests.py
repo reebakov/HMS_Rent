@@ -188,6 +188,24 @@ async def create_prepare(session: AsyncSession, booking_id: int, actor: User) ->
     ), actor)
 
 
+async def rename_prepare(session: AsyncSession, booking_id: int) -> None:
+    """Тема задачи «подготовить ПК» с именем ПК, который сейчас в заказе (после замены сервера)."""
+    req = await session.scalar(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.booking_id == booking_id).order_by(ServiceRequest.id.desc()).limit(1)
+    )
+    b = await session.get(Booking, booking_id)
+    if req is None or b is None:
+        return
+    req.summary = f"HMS Rent: подготовить ПК {b.computer.name} (заказ №{b.order_number})"
+    await session.commit()
+    if req.issue_key and settings.service_desk_configured:
+        try:
+            await sd.update_issue(req.issue_key, {"summary": _jira_summary(req.summary)[:255]})
+        except sd.ServiceDeskError as exc:
+            log.warning("Тема задачи %s не обновлена после замены ПК: %s", req.issue_key, exc)
+
+
 async def create_prepare_vm(session: AsyncSession, vm_id: int, note: str | None = None) -> None:
     """Задача «подготовить ВМ» исполнителю: проверить созданную ВМ и подтвердить её в портале (DR-15072).
 
@@ -210,7 +228,7 @@ async def create_prepare_vm(session: AsyncSession, vm_id: int, note: str | None 
 
 
 async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> ServiceRequest:
-    """Сборка по запросу: заявка исполнителям с номером заказа; собранный ПК выдаётся вне портала (до DR-15075)."""
+    """Сборка по запросу: заявка исполнителям с номером заказа; собранный ПК исполнитель выдаёт в портале (`services/builds.py`)."""
     if not settings.service_desk_configured:
         raise DomainError("Заявки в Service Desk пока не подключены — напишите в HMS")
     cfg = await runtime.load(session)
@@ -237,8 +255,13 @@ async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> 
     req = ServiceRequest(
         kind=ServiceRequestKind.build.value, user_id=user.id, department_id=dept.id,
         summary=f"HMS Rent: сборка ПК — {variant} (заказ №{order_number})",
-        description="Проверить комплектующие, собрать и настроить ПК, завести его в Insight и выдать заказчику.\n\n"
-        + "\n".join(lines),
+        description="Проверить комплектующие, собрать и настроить ПК, завести его в Insight и выдать заказчику "
+        f"на странице «Заказы на подготовку» портала ({settings.public_url.rstrip('/')}/executor).\n\n" + "\n".join(lines),
+        payload={  # из него исполнитель выдаёт собранный ПК: бронь с тем же номером, сроком, ОС и ником
+            "order_number": order_number, "expected_return_at": data.expected_return_at.isoformat(),
+            "requester_nick": data.requester_nick, "os_label": data.os_label, "purpose": data.purpose or None,
+            "wanted_by": data.wanted_by.isoformat() if data.wanted_by else None,
+        },
     )
     try:
         await _send(req, user.username)
@@ -314,6 +337,10 @@ async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
 
     Делает это worker, а не обработчики запросов: при недоступной Jira закрытие просто повторится в следующий круг.
     """
+    if req.kind == ServiceRequestKind.build.value:  # сборка: Done после выдачи ПК в портале, Rejected после отклонения или отмены
+        if req.portal_done_at is not None and req.status_category != "done":
+            await _close(req, sd.RESOLUTION_REJECTED if req.resolution == sd.RESOLUTION_REJECTED else sd.RESOLUTION_DONE)
+        return
     if req.kind not in (ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value, ServiceRequestKind.diagnose.value) \
             or (req.booking_id is None and req.vm_id is None and req.computer_id is None) or req.status_category == "done":
         return
@@ -360,7 +387,8 @@ async def last_staff_comment(issue_key: str) -> str | None:
     return comments[-1].body if comments else None
 
 
-async def is_untouched(session: AsyncSession, *, booking_id: int | None = None, vm_id: int | None = None) -> bool:
+async def is_untouched(session: AsyncSession, *, booking_id: int | None = None, vm_id: int | None = None,
+                       request: ServiceRequest | None = None) -> bool:
     """Задача «подготовить ПК» (или «подготовить ВМ») по заказу ещё в Backlog, значит, заказ можно отменить (DR-15072).
 
     False — задачи нет (Service Desk выключен, заявка не создалась) или она закрыта: возврат обычный. Исполнитель уже
@@ -369,13 +397,13 @@ async def is_untouched(session: AsyncSession, *, booking_id: int | None = None, 
     """
     if not settings.service_desk_configured:
         return False
-    req = await session.scalar(
+    req = request or await session.scalar(
         select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
                                      ServiceRequest.booking_id == booking_id if vm_id is None else ServiceRequest.vm_id == vm_id,
                                      ServiceRequest.issue_key.is_not(None))
         .order_by(ServiceRequest.id.desc()).limit(1)
     )
-    if req is None:
+    if req is None or req.issue_key is None:
         return False
     try:
         await sync_status(req)
@@ -388,7 +416,8 @@ async def is_untouched(session: AsyncSession, *, booking_id: int | None = None, 
         return False
     if req.workflow_status != "Backlog":
         raise Conflict("Исполнитель уже взял заказ в работу, отменить его нельзя. "
-                       + ("Дождитесь проверки ВМ и удалите её" if vm_id else "Дождитесь подготовки ПК и верните его"))
+                       + ("Дождитесь проверки ВМ и удалите её" if vm_id else
+                          "Дождитесь выдачи собранного ПК" if request else "Дождитесь подготовки ПК и верните его"))
     return True
 
 

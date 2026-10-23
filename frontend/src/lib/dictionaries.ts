@@ -68,6 +68,7 @@ export const REJECT_REASONS = ['Сервер неисправен', 'Заказ�
 export const FAULTY_REASON = REJECT_REASONS[0]
 
 /** Основания отклонения ВМ исполнителем при проверке (регламент) */
+export const BUILD_REJECT_REASONS = ['Нет комплектующих', 'Несовместимая конфигурация', 'Заказчик не ответил', 'Некорректный заказ'] as const
 export const VM_REJECT_REASONS = ['Не удалось подготовить ВМ', 'Недостаточно мощностей кластера', 'Заказчик не ответил', 'Некорректный заказ'] as const
 
 export const EVENT_LABELS: Record<string, string> = {
@@ -78,6 +79,7 @@ export const EVENT_LABELS: Record<string, string> = {
   rejected: 'Отклонение заказа',
   cleaned: 'Очистка диска',
   repaired: 'Возврат в пул после диагностики',
+  replaced: 'Замена ПК в заказе',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',

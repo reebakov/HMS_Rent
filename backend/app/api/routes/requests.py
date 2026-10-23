@@ -3,6 +3,7 @@ from fastapi import APIRouter, status
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.schemas.service_request import BuildCreate, CommentIn, CommentOut, RequestCreate, RequestDetail, RequestOut
+from app.services import builds
 from app.services import service_requests as service
 
 router = APIRouter(prefix="/requests", tags=["service-desk"])
@@ -28,6 +29,12 @@ async def create_request(data: RequestCreate, user: CurrentUser, session: DB) ->
 @router.post("/build", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 async def create_build(data: BuildCreate, user: CurrentUser, session: DB) -> RequestOut:
     return service.request_out(await service.create_build(session, user, data))
+
+
+@router.post("/{request_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_build(request_id: int, user: CurrentUser, session: DB) -> None:
+    """Отменить заказ на сборку ПК, пока исполнитель не взял задачу."""
+    await builds.cancel(session, user, request_id)
 
 
 @router.get("/{request_id}", response_model=RequestDetail)

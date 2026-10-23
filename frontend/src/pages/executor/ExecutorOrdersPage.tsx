@@ -7,6 +7,7 @@ import { DataTable, Th } from '@/components/ui/table'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
 import { PreparationBadge } from '@/features/executor/PreparationBadge'
 import { DiagnosticsCard } from '@/features/executor/DiagnosticsCard'
+import { BuildsCard } from '@/features/executor/BuildsCard'
 import { VmChecksCard } from '@/features/executor/VmChecksCard'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -62,6 +63,7 @@ export function ExecutorOrdersPage() {
           )}
         </div>
       )}
+      <BuildsCard />
       <VmChecksCard />
       <ReturnsCard />
       <DiagnosticsCard />
