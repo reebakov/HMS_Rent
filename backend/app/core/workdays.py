@@ -4,11 +4,17 @@
 Файл читается при каждом вызове load(): он лежит на диске сервера и правится без перезапуска.
 """
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 import yaml
 
 from app.core.config import settings
+
+# Рабочее время исполнителей по регламенту: 10:00–18:00 GMT+7 в рабочие дни (по нему считаются нормативы)
+WORK_TZ = timezone(timedelta(hours=7))
+WORK_START, WORK_END = time(10), time(18)
+WORK_HOUR = 3600
+WORK_DAY = 8 * WORK_HOUR
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,21 @@ class WorkCalendar:
         while not self.is_workday(day):
             day += timedelta(days=1)
         return day
+
+    def working_seconds(self, start: datetime, end: datetime) -> int:
+        """Рабочее время между двумя моментами в секундах: только 10:00–18:00 GMT+7 рабочих дней, остальное не считается."""
+        if end <= start:
+            return 0
+        first, last = start.astimezone(WORK_TZ), end.astimezone(WORK_TZ)
+        total, day = 0, first.date()
+        while day <= last.date():
+            if self.is_workday(day):
+                lo = max(first, datetime.combine(day, WORK_START, WORK_TZ))
+                hi = min(last, datetime.combine(day, WORK_END, WORK_TZ))
+                if hi > lo:
+                    total += int((hi - lo).total_seconds())
+            day += timedelta(days=1)
+        return total
 
     def workdays_before(self, day: date, count: int) -> date:
         """Рабочий день, с которого до `day` остаётся `count` рабочих дней (сам `day` не считается)."""

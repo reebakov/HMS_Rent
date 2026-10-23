@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import workdays
 from app.core.config import settings
 from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.integrations import servicedesk as sd
@@ -263,6 +264,16 @@ async def _get_accessible(session: AsyncSession, user: User, request_id: int) ->
     return req
 
 
+def track_freeze(req: ServiceRequest, now: datetime) -> None:
+    """Норматив стоит на паузе, пока задача «Заморожена»: копится рабочее время заморозки (точность — период опроса Jira)."""
+    frozen = req.workflow_status == "Frozen"
+    if frozen and req.frozen_since is None:
+        req.frozen_since = now
+    elif not frozen and req.frozen_since is not None:
+        req.frozen_work_seconds = (req.frozen_work_seconds or 0) + workdays.load().working_seconds(req.frozen_since, now)
+        req.frozen_since = None
+
+
 async def sync_status(req: ServiceRequest) -> None:
     """Статус заявки из Jira и то, что нужно для статуса заказчику; ошибка самого статуса — наружу.
 
@@ -272,6 +283,7 @@ async def sync_status(req: ServiceRequest) -> None:
     status = await sd.get_status(req.issue_key)
     req.status, req.status_category = status.status, status.category
     req.last_checked_at = datetime.now(timezone.utc)
+    track_freeze(req, req.last_checked_at)
     try:
         if req.workflow_status in ("Backlog", "To Do") and not req.was_taken or req.status_category == "done" and req.resolution is None:
             details = await sd.get_details(req.issue_key)

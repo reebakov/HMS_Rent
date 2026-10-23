@@ -1,5 +1,5 @@
 """Производственный календарь (core/workdays.py): рабочие дни, отсчёт назад и чтение файла."""
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -85,3 +85,32 @@ def test_empty_file_gives_weekends_only(monkeypatch, tmp_path):
     path.write_text("", encoding="utf-8")
     monkeypatch.setattr(settings, "work_calendar_file", str(path))
     assert workdays.load() == WorkCalendar()
+
+
+# ---------- рабочее время: 10:00–18:00 GMT+7 ----------
+
+def at(day: int, hour: int, minute: int = 0, month: int = 6) -> datetime:
+    return datetime(2026, month, day, hour, minute, tzinfo=timezone(timedelta(hours=7)))
+
+
+@pytest.mark.parametrize("start, end, hours", [
+    (at(11, 11), at(11, 14, 30), 3.5),                # внутри рабочего дня
+    (at(11, 6), at(11, 22), 8),                       # вне 10–18 не считается
+    (at(11, 17), at(15, 11), 2),                      # чт 17–18, пт (праздник) и выходные пропущены, пн 10–11
+    (at(11, 18), at(12, 10), 0),                      # только нерабочее время
+    (at(19, 17), at(22, 11), 10),                     # пт 17–18, рабочая сб 20-го 10–18, вс выходной, пн 10–11
+])
+def test_working_seconds(start, end, hours):
+    assert CAL.working_seconds(start, end) == hours * 3600
+
+
+def test_working_seconds_is_zero_for_empty_or_reversed_interval():
+    assert CAL.working_seconds(at(11, 12), at(11, 12)) == 0
+    assert CAL.working_seconds(at(11, 15), at(11, 12)) == 0
+
+
+def test_working_seconds_converts_other_timezones():
+    utc = timezone.utc
+    # 03:00–11:00 UTC — это 10:00–18:00 GMT+7
+    assert CAL.working_seconds(datetime(2026, 6, 11, 3, tzinfo=utc), datetime(2026, 6, 11, 11, tzinfo=utc)) == 8 * 3600
+    assert CAL.working_seconds(datetime(2026, 6, 11, 11, tzinfo=utc), datetime(2026, 6, 12, 3, tzinfo=utc)) == 0
