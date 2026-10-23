@@ -6,6 +6,7 @@
   исполнителя);
 * подготовка закрыта иначе, а данных подключения нет — заказ остаётся ждать данных, заказчику уходит уведомление;
 * возврат закрыт (не Rejected) — диск считается очищенным, ПК свободен;
+* «Диагностика комплекта» закрыта не с Rejected — ПК возвращается в прежний пул и становится свободным;
 * «подготовить ВМ» закрыта с резолюцией Rejected — ВМ на проверке отклоняется, закрыта иначе — проверка считается пройденной,
   ВМ выдана заказчику.
 Действие выполняется от закрывшего задачу, если он есть в портале, иначе без автора. Повторное открытие задачи в Jira
@@ -55,8 +56,16 @@ async def _apply_vm(session: AsyncSession, req: ServiceRequest, details: sd.SdDe
         await executor.confirm_vm(session, actor, vm.id)
 
 
+async def _apply_diagnose(session: AsyncSession, req: ServiceRequest, details: sd.SdDetails) -> None:
+    """«Диагностика комплекта» закрыта в Jira не с Rejected — ПК возвращается в прежний пул, если он ещё на диагностике."""
+    if details.resolution != sd.RESOLUTION_REJECTED and req.portal_done_at is None:
+        await executor.repair_computer(session, await _closer(session, details.closed_by), req.id)
+
+
 async def _apply(session: AsyncSession, req: ServiceRequest) -> None:
     details = await sd.get_details(req.issue_key)
+    if req.kind == ServiceRequestKind.diagnose.value:
+        return await _apply_diagnose(session, req, details)
     if req.vm_id is not None:
         return await _apply_vm(session, req, details)
     booking = await session.get(Booking, req.booking_id, populate_existing=True)
@@ -81,8 +90,10 @@ async def apply_closures(session: AsyncSession) -> None:
     rows = (await session.scalars(
         select(ServiceRequest).where(
             ServiceRequest.status_category == "done", ServiceRequest.handled_at.is_(None),
-            ServiceRequest.kind.in_([ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value]),
-            or_(ServiceRequest.booking_id.is_not(None), ServiceRequest.vm_id.is_not(None)),
+            ServiceRequest.kind.in_([ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value,
+                                    ServiceRequestKind.diagnose.value]),
+            or_(ServiceRequest.booking_id.is_not(None), ServiceRequest.vm_id.is_not(None),
+                ServiceRequest.computer_id.is_not(None)),
             ServiceRequest.issue_key.is_not(None),
         ).order_by(ServiceRequest.id).limit(BATCH)
     )).unique().all()

@@ -139,24 +139,37 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
     ), actor)
 
 
-async def create_diagnose(session: AsyncSession, booking_id: int, actor: User, comment: str) -> None:
-    """Заявка «Диагностика комплекта» после того, как исполнитель отметил ПК неисправным.
+def new_diagnose(b: Booking, pool, actor: User, comment: str) -> ServiceRequest:
+    """Заявка «Диагностика комплекта» после того, как исполнитель отметил ПК неисправным (ещё не отправлена в Jira).
 
-    К заказу не привязана: заказ отклонён, а заявка нужна исполнителям, не заказчику и его команде.
+    К заказу не привязана: заказ отклонён, а заявка нужна исполнителям, не заказчику и его команде. Помнит ПК и прежний
+    пул, чтобы после ремонта вернуть ПК в него (кнопкой в портале или закрытием задачи в Jira).
     """
+    return ServiceRequest(
+        kind=ServiceRequestKind.diagnose.value, user_id=actor.id if actor else b.user_id, computer_id=b.computer_id,
+        pool_id=pool.id if pool else None, summary=f"HMS Rent: диагностика комплекта {b.computer.name}",
+        description=f"ПК выведен из пула как неисправный (заказ №{b.order_number}, отклонён).\n"
+                    f"Комментарий исполнителя: {comment}\n"
+                    + (f"Отметил: {actor.display_name} ({actor.email or actor.username})\n" if actor else "")
+                    + (f"Прежний пул: {pool.name}\n" if pool else "")
+                    + "\nПроведите диагностику. После ремонта нажмите «Вернуть в пул» в «Заказах на подготовку» портала или "
+                    "закройте эту задачу в Jira: ПК вернётся в прежний пул и станет свободным. Если запись в Insight в портале "
+                    "выключена, статус ПК в Insight меняйте вручную («ТО» на время диагностики, «Ожидает» после).\n\n"
+                    + _booking_text(b),
+    )
+
+
+async def send_diagnose(session: AsyncSession, computer_id: int, actor: User) -> None:
+    """Отправляет в Jira ещё не отправленную заявку «Диагностика комплекта» по ПК; ошибка Jira сохраняется в заявке."""
     if not settings.service_desk_configured:
         return
-    b = await session.get(Booking, booking_id)
-    if b is None:
-        return
-    await _save_in_background(session, ServiceRequest(
-        kind=ServiceRequestKind.diagnose.value, user_id=actor.id,
-        summary=f"HMS Rent: диагностика комплекта {b.computer.name}",
-        description=f"ПК выведен из пула как неисправный (заказ №{b.order_number}, отклонён).\n"
-                    f"Комментарий исполнителя: {comment}\nОтметил: {actor.display_name} ({actor.email or actor.username})\n\n"
-                    "Переведите ПК в Insight в «ТО», если запись в Insight в портале выключена, проведите диагностику и "
-                    "после ремонта верните ПК в пул.\n\n" + _booking_text(b),
-    ), actor)
+    req = await session.scalar(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.diagnose.value,
+                                     ServiceRequest.computer_id == computer_id, ServiceRequest.issue_key.is_(None),
+                                     ServiceRequest.error.is_(None)).order_by(ServiceRequest.id.desc()).limit(1)
+    )
+    if req is not None:
+        await _save_in_background(session, req, actor)
 
 
 async def create_prepare(session: AsyncSession, booking_id: int, actor: User) -> None:
@@ -301,8 +314,12 @@ async def _close_if_settled(session: AsyncSession, req: ServiceRequest) -> None:
 
     Делает это worker, а не обработчики запросов: при недоступной Jira закрытие просто повторится в следующий круг.
     """
-    if req.kind not in (ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value) \
-            or (req.booking_id is None and req.vm_id is None) or req.status_category == "done":
+    if req.kind not in (ServiceRequestKind.prepare.value, ServiceRequestKind.return_.value, ServiceRequestKind.diagnose.value) \
+            or (req.booking_id is None and req.vm_id is None and req.computer_id is None) or req.status_category == "done":
+        return
+    if req.kind == ServiceRequestKind.diagnose.value:  # Done, когда исполнитель вернул ПК в пул в портале
+        if req.portal_done_at is not None:
+            await _close(req, sd.RESOLUTION_DONE)
         return
     if req.vm_id is not None:  # «подготовить ВМ»: Done после подтверждения проверки, Rejected, если ВМ отклонена или не создана
         vm = await session.get(VirtualMachine, req.vm_id)

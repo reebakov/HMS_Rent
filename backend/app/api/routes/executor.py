@@ -4,6 +4,7 @@ from app.api.deps import DB, ExecutorUser
 from app.models import ServiceRequestKind
 from app.schemas.booking import (
     FAULTY_REASON,
+    ExecutorDiagnosticOut,
     ExecutorOrderOut,
     ExecutorProblemOut,
     ExecutorReject,
@@ -40,7 +41,7 @@ async def reject_order(
     booking = await service.reject_order(session, user, booking_id, data)
     tasks.add_task(push_to_insight)
     if data.reason == FAULTY_REASON:
-        tasks.add_task(service.create_diagnose_request, booking.id, user.id, data.comment)
+        tasks.add_task(service.send_diagnose_request, booking.computer_id, user.id)
     return await service.order_out(session, booking)
 
 
@@ -80,6 +81,20 @@ async def recreate_vm(vm_id: int, _: ExecutorUser, session: DB) -> ExecutorVmOut
 @router.post("/vms/{vm_id}/reject", response_model=ExecutorVmOut)
 async def reject_vm(vm_id: int, data: ExecutorVmReject, user: ExecutorUser, session: DB) -> ExecutorVmOut:
     return (await service.vms_out(session, [await service.reject_vm(session, user, vm_id, data.reason, data.comment)]))[0]
+
+
+@router.get("/diagnostics", response_model=list[ExecutorDiagnosticOut])
+async def list_diagnostics(_: ExecutorUser, session: DB) -> list[ExecutorDiagnosticOut]:
+    """ПК на диагностике (выведены из пула как неисправные)."""
+    return await service.list_diagnostics(session)
+
+
+@router.post("/diagnostics/{request_id}/repaired", response_model=ExecutorDiagnosticOut)
+async def repair_computer(request_id: int, user: ExecutorUser, session: DB, tasks: BackgroundTasks) -> ExecutorDiagnosticOut:
+    """Диагностика закончена: ПК возвращается в прежний пул и становится свободным."""
+    out = await service.repair_computer(session, user, request_id)
+    tasks.add_task(push_to_insight)
+    return out
 
 
 @router.get("/returns", response_model=list[ExecutorOrderOut])

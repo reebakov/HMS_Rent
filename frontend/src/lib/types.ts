@@ -154,6 +154,20 @@ export interface ExecutorProblem {
   booking_id: number | null // у ПК — заказ со страницей исполнителя
 }
 
+/** ПК на диагностике: выведен из пула как неисправный; после ремонта исполнитель возвращает его в прежний пул */
+export interface ExecutorDiagnostic {
+  id: number
+  computer: Pick<Computer, 'id' | 'name' | 'tier' | 'is_virtual' | 'cpu' | 'ram_gb' | 'storage' | 'gpu'>
+  pool_name: string | null
+  comment: string
+  created_at: string
+  issue_key: string | null
+  issue_url: string | null
+  status: string | null
+  error: string | null
+  request_done: boolean
+}
+
 /** ВМ на проверке у исполнителя: что проверять и задача в Jira (поля request_* те же, что у заказа ПК) */
 export interface ExecutorVm {
   id: number

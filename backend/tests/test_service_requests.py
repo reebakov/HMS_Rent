@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.errors import DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations import servicedesk as real_sd
-from app.models import Notification, NotificationKind, ServiceRequest, UserRole, VirtualMachine
+from app.models import Booking, Notification, NotificationKind, ServiceRequest, UserRole, VirtualMachine
 from app.schemas.service_request import BuildCreate
 from app.schemas.settings import default_pc_builds
 from app.services import service_requests as svc
@@ -180,7 +180,9 @@ async def _all_kinds(session, env, sd):
     await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="Не включается")
     await svc.create_return(session, env.booking.id, env.owner)
     await svc.create_prepare(session, env.booking.id, env.owner)
-    await svc.create_diagnose(session, env.booking.id, env.owner, "Не включается")
+    session.add(svc.new_diagnose(await session.get(Booking, env.booking.id), None, env.owner, "Не включается"))
+    await session.commit()
+    await svc.send_diagnose(session, env.booking.computer_id, env.owner)
     await svc.create_build(session, env.owner, BuildCreate(build=default_pc_builds()[0], os_label="Windows 11 26H2",
                                                            requester_nick="ivan",
                                                            expected_return_at=clock.today() + timedelta(days=30)))

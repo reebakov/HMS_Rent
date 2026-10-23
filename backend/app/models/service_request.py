@@ -45,6 +45,9 @@ class ServiceRequest(Base, TimestampMixin):
     resolution: Mapped[str | None] = mapped_column(String(64))  # резолюция закрытой задачи: Done, Rejected…
     status_note: Mapped[str | None] = mapped_column(Text)  # для «Заморожено»: последний публичный комментарий исполнителя
     handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # реакция портала на закрытие задачи в Jira отработала
+    computer_id: Mapped[int | None] = mapped_column(ForeignKey("computers.id"), index=True)  # у «Диагностики комплекта» — ПК
+    pool_id: Mapped[int | None] = mapped_column(ForeignKey("pools.id", ondelete="SET NULL"))  # пул, из которого вывели ПК
+    portal_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # исполнитель довёл задачу в портале
     frozen_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # с какого момента задача «Заморожена»
     frozen_work_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))  # рабочее время на паузе
     take_alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # канал знает: не взята за час
