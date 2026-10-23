@@ -160,7 +160,7 @@ async def _is_cancellation(session: AsyncSession, user: User, booking_id: int) -
         return False  # решит _lock_active или обычный возврат
     ensure_access(user, booking.user_id, booking.department_id, _denied(RETURN_ACTION))
     try:
-        return await service_requests.is_untouched(session, booking_id)
+        return await service_requests.is_untouched(session, booking_id=booking_id)
     except Conflict:
         if user.is_admin:
             return False  # администратор вернёт ПК и при застрявшей задаче, но с очисткой диска: ПК уже трогали

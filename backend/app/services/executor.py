@@ -23,6 +23,7 @@ from app.models import (
     ServiceRequestKind,
     User,
     VirtualMachine,
+    VmStatus,
 )
 from app.schemas.booking import (
     FAULTY_REASON,
@@ -32,6 +33,7 @@ from app.schemas.booking import (
     ExecutorResult,
     ProblemTransitionOut,
 )
+from app.schemas.vm import ExecutorVmOut
 from app.services import cleaning, notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
 from app.services.events import add_event
@@ -229,6 +231,85 @@ async def create_diagnose_request(booking_id: int, user_id: int, comment: str) -
         actor = await session.get(User, user_id)
         if actor is not None:
             await service_requests.create_diagnose(session, booking_id, actor, comment)
+
+
+async def _vm_requests(session: AsyncSession, vms: list[VirtualMachine]) -> dict[int, ServiceRequest]:
+    requests = await session.scalars(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.vm_id.in_([v.id for v in vms])).order_by(ServiceRequest.id)
+    )
+    return {r.vm_id: r for r in requests.unique()}  # при нескольких заявках — последняя
+
+
+async def vms_out(session: AsyncSession, vms: list[VirtualMachine]) -> list[ExecutorVmOut]:
+    by_vm = await _vm_requests(session, vms)
+    rows = []
+    for vm in vms:
+        row = ExecutorVmOut.model_validate(vm)
+        if req := by_vm.get(vm.id):
+            row.request_key, row.request_status, row.request_error = req.issue_key, req.status, req.error
+            row.request_url = agent_url(req.issue_key) if req.issue_key else None
+            row.request_done = req.status_category == "done"
+        rows.append(row)
+    return rows
+
+
+async def list_vm_checks(session: AsyncSession) -> list[ExecutorVmOut]:
+    """ВМ, созданные в vSphere и ждущие проверки исполнителем: давние выше."""
+    rows = await session.scalars(
+        select(VirtualMachine).where(VirtualMachine.status == VmStatus.checking)
+        .order_by(VirtualMachine.created_at, VirtualMachine.id).limit(LIST_LIMIT)
+    )
+    return await vms_out(session, list(rows.unique().all()))
+
+
+async def _lock_checking(session: AsyncSession, vm_id: int) -> VirtualMachine:
+    """ВМ на проверке под блокировкой: подтверждение, пересоздание и отклонение не должны гоняться друг с другом."""
+    vm = await session.scalar(
+        select(VirtualMachine).where(VirtualMachine.id == vm_id).with_for_update(of=VirtualMachine)
+        .execution_options(populate_existing=True)
+    )
+    if vm is None:
+        raise NotFound("Виртуалка не найдена")
+    if vm.status != VmStatus.checking:
+        raise Conflict("ВМ уже не на проверке: её подтвердили, отклонили или удалили")
+    return vm
+
+
+async def confirm_vm(session: AsyncSession, user: User | None, vm_id: int) -> VirtualMachine:
+    """Проверка прошла: ВМ становится готовой, заказчик получает уведомление и данные для подключения.
+
+    `user` пуст, если задачу закрыл в Jira тот, кого нет в портале.
+    """
+    vm = await _lock_checking(session, vm_id)
+    now = datetime.now(timezone.utc)
+    vm.status, vm.ready_at, vm.checked_at = VmStatus.ready.value, now, now
+    vm.checked_by_id = user.id if user else None
+    vm.insight_pending = True
+    notifications.vm_ready(session, vm)
+    await session.commit()
+    await notify(f"✅ ВМ **{vm.name}** проверена исполнителем и выдана ({vm.requester_name}, {vm.department.name})")
+    return vm
+
+
+async def recreate_vm(session: AsyncSession, vm_id: int) -> VirtualMachine:
+    """Проверка не прошла и ремонт не помог: worker удалит ВМ и создаст её заново под тем же номером и именем."""
+    vm = await _lock_checking(session, vm_id)
+    vm.status, vm.recreate = VmStatus.deleting.value, True
+    await session.commit()
+    await notify(f"🔁 ВМ **{vm.name}** пересоздаётся по решению исполнителя ({vm.requester_name}, {vm.department.name})")
+    return vm
+
+
+async def reject_vm(session: AsyncSession, user: User | None, vm_id: int, reason: str, comment: str) -> VirtualMachine:
+    """ВМ отклонена при проверке: worker её удалит, номер вернётся в Insight, заказчик увидит причину в уведомлении."""
+    vm = await _lock_checking(session, vm_id)
+    vm.status, vm.released_at = VmStatus.deleting.value, datetime.now(timezone.utc)  # released_by пуст: имя исполнителя скрыто
+    vm.checked_by_id = user.id if user else None
+    notifications.vm_rejected(session, vm, reason, comment)
+    await session.commit()
+    await notify(f"🚫 ВМ **{vm.name}** (заказ №{vm.order_number}) отклонена исполнителем: {reason}")
+    return vm
 
 
 async def list_returns(session: AsyncSession) -> list[Booking]:

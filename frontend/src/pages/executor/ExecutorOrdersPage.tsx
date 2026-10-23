@@ -6,6 +6,7 @@ import { DataState, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
 import { PreparationBadge } from '@/features/executor/PreparationBadge'
+import { VmChecksCard } from '@/features/executor/VmChecksCard'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useConfirmCleaned, useExecutorOrders, useExecutorReturns } from '@/lib/queries'
@@ -60,6 +61,7 @@ export function ExecutorOrdersPage() {
           )}
         </div>
       )}
+      <VmChecksCard />
       <ReturnsCard />
     </>
   )

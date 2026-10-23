@@ -116,6 +116,7 @@ describe('MyVms', () => {
     it.each([
       ['queued', 'В очереди'],
       ['creating', 'Создаётся'],
+      ['checking', 'Проверяется'],
       ['ready', 'Готова'],
       ['failed', 'Ошибка'],
       ['deleting', 'Удаляется'],
@@ -140,6 +141,13 @@ describe('MyVms', () => {
       expect(screen.getByText('Windows загружается…')).toBeInTheDocument()
     })
 
+    it('на проверке исполнителем IP и логин заказчику не показываются, есть пояснение', async () => {
+      await renderVms([makeVm({ status: 'checking', ip_address: '10.0.0.5' })])
+      expect(screen.getByText('Исполнитель проверяет ВМ — данные для подключения появятся после проверки')).toBeInTheDocument()
+      expect(screen.queryByText('10.0.0.5')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Логин/)).not.toBeInTheDocument()
+    })
+
     it('creating без IP — ни IP, ни «загружается»', async () => {
       await renderVms([makeVm({ status: 'creating', ip_address: null })])
       expect(screen.queryByText('Windows загружается…')).not.toBeInTheDocument()
@@ -152,6 +160,7 @@ describe('MyVms', () => {
       ['ready', 'Отказаться'],
       ['failed', 'Отказаться'],
       ['queued', 'Отменить'],
+      ['checking', 'Отказаться'],
     ] as const)('для %s — «%s»', async (status, label) => {
       await renderVms([makeVm({ status })])
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()

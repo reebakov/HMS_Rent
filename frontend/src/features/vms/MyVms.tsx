@@ -71,7 +71,9 @@ export function MyVms({
                   <PendingTermNote order={vm} />
                 </div>
                 <div className="text-[13px]">
-                  {vm.ip_address ? (
+                  {vm.status === 'checking' ? (
+                    <span className="text-muted-foreground">Исполнитель проверяет ВМ — данные для подключения появятся после проверки</span>
+                  ) : vm.ip_address ? (
                     <button
                       className="flex items-center gap-1.5 font-mono font-medium hover:text-primary"
                       title="Скопировать"

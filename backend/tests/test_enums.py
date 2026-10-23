@@ -8,7 +8,7 @@ from app.models.vm import VirtualMachine
 
 
 @pytest.mark.parametrize("enum, values", [
-    (VmStatus, ["queued", "creating", "ready", "deleting", "deleted", "failed"]),
+    (VmStatus, ["queued", "creating", "checking", "ready", "deleting", "deleted", "failed"]),
     (SyncRunStatus, ["running", "success", "failed"]),
     (ServiceRequestKind, ["problem", "return", "prepare", "build", "diagnose"]),
 ])

@@ -154,6 +154,39 @@ export interface ExecutorProblem {
   booking_id: number | null // у ПК — заказ со страницей исполнителя
 }
 
+/** ВМ на проверке у исполнителя: что проверять и задача в Jira (поля request_* те же, что у заказа ПК) */
+export interface ExecutorVm {
+  id: number
+  order_number: number
+  name: string
+  cpu: number
+  ram_gb: number
+  disk_gb: number
+  os_label: string | null
+  status: VmStatus
+  ip_address: string | null
+  connection_login: string
+  connection_method: string | null
+  power_state: string | null
+  department: { id: number; name: string }
+  user: UserShort
+  requester_name: string
+  requester_nick: string
+  purpose: string | null
+  expected_return_at: string | null
+  created_at: string
+  request_key: string | null
+  request_url: string | null
+  request_status: string | null
+  request_error: string | null
+  request_done: boolean
+}
+
+export interface ExecutorVmReject {
+  reason: string
+  comment: string
+}
+
 /** Переход задачи Jira из её текущего статуса (кнопка «Сменить статус» в «Проблемах по заказам») */
 export interface ProblemTransition {
   id: string
@@ -360,7 +393,7 @@ export interface PoolAssignResult {
 
 // ---------- Виртуалки ----------
 
-export type VmStatus = 'queued' | 'creating' | 'ready' | 'failed' | 'deleting' | 'deleted'
+export type VmStatus = 'queued' | 'creating' | 'checking' | 'ready' | 'failed' | 'deleting' | 'deleted'
 
 export interface Vm {
   id: number

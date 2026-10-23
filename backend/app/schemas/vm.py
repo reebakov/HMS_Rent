@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -72,3 +73,42 @@ class VmOptions(BaseModel):
     used_by_me: int
     templates: list[VmTemplateOption] = []
     sizes: list[VmSize] = []  # готовые размеры, которые укладываются в лимиты
+
+
+VM_REJECT_REASONS = ("Не удалось подготовить ВМ", "Недостаточно мощностей кластера", "Заказчик не ответил", "Некорректный заказ")
+
+
+class ExecutorVmOut(ORMModel):
+    """ВМ на проверке у исполнителя: что проверять и задача в Jira, по которой идёт работа."""
+
+    id: int
+    order_number: int
+    name: str
+    cpu: int
+    ram_gb: int
+    disk_gb: int
+    os_label: str | None
+    status: str
+    ip_address: str | None
+    connection_login: str
+    connection_method: str | None
+    power_state: str | None
+    department: DepartmentShort
+    user: UserShort
+    requester_name: str
+    requester_nick: str
+    purpose: str | None
+    expected_return_at: date | None
+    created_at: datetime
+    request_key: str | None = None
+    request_url: str | None = None
+    request_status: str | None = None
+    request_error: str | None = None
+    request_done: bool = False
+
+
+class ExecutorVmReject(InputModel):
+    """Отклонение ВМ при проверке: основание из списка регламента и обязательный комментарий."""
+
+    reason: Literal[*VM_REJECT_REASONS]
+    comment: str = Field(min_length=1, max_length=2000)

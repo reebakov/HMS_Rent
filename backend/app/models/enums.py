@@ -27,10 +27,14 @@ class BookingStatus(StrEnum):
 
 
 class VmStatus(StrEnum):
-    """Жизненный цикл ВМ: queued → creating → ready → deleting → deleted; при ошибке — failed."""
+    """Жизненный цикл ВМ: queued → creating → checking → ready → deleting → deleted; при ошибке — failed.
+
+    checking — ВМ создана в vSphere, исполнитель проверяет её (DR-15072); без проверки (VM_EXECUTOR_CHECK=false) — сразу ready.
+    """
 
     queued = "queued"
     creating = "creating"
+    checking = "checking"
     ready = "ready"
     deleting = "deleting"
     deleted = "deleted"
