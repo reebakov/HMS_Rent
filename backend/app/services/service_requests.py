@@ -188,6 +188,24 @@ async def create_prepare(session: AsyncSession, booking_id: int, actor: User) ->
     ), actor)
 
 
+async def rename_prepare(session: AsyncSession, booking_id: int) -> None:
+    """Тема задачи «подготовить ПК» с именем ПК, который сейчас в заказе (после замены сервера)."""
+    req = await session.scalar(
+        select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.prepare.value,
+                                     ServiceRequest.booking_id == booking_id).order_by(ServiceRequest.id.desc()).limit(1)
+    )
+    b = await session.get(Booking, booking_id)
+    if req is None or b is None:
+        return
+    req.summary = f"HMS Rent: подготовить ПК {b.computer.name} (заказ №{b.order_number})"
+    await session.commit()
+    if req.issue_key and settings.service_desk_configured:
+        try:
+            await sd.update_issue(req.issue_key, {"summary": _jira_summary(req.summary)[:255]})
+        except sd.ServiceDeskError as exc:
+            log.warning("Тема задачи %s не обновлена после замены ПК: %s", req.issue_key, exc)
+
+
 async def create_prepare_vm(session: AsyncSession, vm_id: int, note: str | None = None) -> None:
     """Задача «подготовить ВМ» исполнителю: проверить созданную ВМ и подтвердить её в портале (DR-15072).
 

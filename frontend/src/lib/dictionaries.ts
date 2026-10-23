@@ -78,6 +78,7 @@ export const EVENT_LABELS: Record<string, string> = {
   rejected: 'Отклонение заказа',
   cleaned: 'Очистка диска',
   repaired: 'Возврат в пул после диагностики',
+  replaced: 'Замена ПК в заказе',
   insight_created: 'Появился в Insight',
   insight_status_changed: 'Статус в Insight',
   insight_removed: 'Удалён из Insight',

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ExecutorOrderPage } from './ExecutorOrderPage'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeExecutorOrder, renderWithProviders } from '@/test/helpers'
-import type { ExecutorOrder } from '@/lib/types'
+import type { ExecutorOrder, Replacement } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -15,6 +15,7 @@ vi.mock('@/lib/api', async (orig) => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 let order: ExecutorOrder
+let replacements: Replacement[]
 
 const mount = () =>
   renderWithProviders(
@@ -27,10 +28,15 @@ const mount = () =>
 
 beforeEach(() => {
   order = makeExecutorOrder({ purpose: 'Сборка билдов' })
+  replacements = [
+    { id: 21, name: 'A040', tier: 'medium', cpu: 'Intel Core i5', ram_gb: 16, storage: null, gpu: null, pool_name: 'Main' },
+    { id: 22, name: 'A041', tier: 'medium', cpu: 'Ryzen 5', ram_gb: 32, storage: null, gpu: null, pool_name: null },
+  ]
   for (const m of [api.get, api.post]) vi.mocked(m).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/executor/orders/7') return order
+    if (path === '/executor/orders/7/replacements') return replacements
     throw new Error(`неожиданный GET ${path}`)
   })
 })
@@ -235,5 +241,86 @@ describe('ExecutorOrderPage: отклонение', () => {
     mount()
     await screen.findByText(/Заказ закрыт/)
     expect(screen.queryByRole('button', { name: 'Отклонить заказ…' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ExecutorOrderPage: замена сервера', () => {
+  const open = async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(await screen.findByRole('button', { name: 'Заменить сервер…' }))
+    return { user, dialog: screen.getByRole('dialog', { name: 'Заменить A032?' }) }
+  }
+
+  it('кандидаты грузятся только при открытии окна и показаны с характеристиками и пулом', async () => {
+    mount()
+    await screen.findByRole('heading', { name: /заказ №1042/ })
+    expect(api.get).not.toHaveBeenCalledWith('/executor/orders/7/replacements')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Заменить сервер…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Заменить A032?' })
+    expect(await within(dialog).findByRole('option', { name: /A040 · Intel Core i5 · 16 ГБ · Main/ })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: /A041/ })).toBeInTheDocument()
+  })
+
+  it('кнопка недоступна, пока нет сервера и описания; отправка: POST, тост, окно закрыто', async () => {
+    vi.mocked(api.post).mockResolvedValue(makeExecutorOrder({ computer: { ...order.computer, name: 'A040' } }))
+    const { user, dialog } = await open()
+    const submit = within(dialog).getByRole('button', { name: 'Заменить' })
+    expect(submit).toBeDisabled()
+    await user.selectOptions(await within(dialog).findByLabelText(/Новый сервер/), '21')
+    expect(submit).toBeDisabled()
+    await user.type(within(dialog).getByLabelText(/Что с неисправным сервером/), '  Не включается  ')
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    expect(api.post).toHaveBeenCalledWith('/executor/orders/7/replace', { computer_id: 21, comment: 'Не включается' })
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Заказ перенесён на A040, заказчик получил уведомление'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('ошибка сервера показана в окне, оно остаётся открытым', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'A040 сейчас недоступен: выберите другой ПК'))
+    const { user, dialog } = await open()
+    await user.selectOptions(await within(dialog).findByLabelText(/Новый сервер/), '21')
+    await user.type(within(dialog).getByLabelText(/Что с неисправным сервером/), 'Греется')
+    await user.click(within(dialog).getByRole('button', { name: 'Заменить' }))
+    expect(await within(dialog).findByText('A040 сейчас недоступен: выберите другой ПК')).toBeInTheDocument()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('свободных серверов нет — об этом сказано, выбрать нечего', async () => {
+    replacements = []
+    const { dialog } = await open()
+    expect(await within(dialog).findByText('Свободных серверов той же категории в пулах команды нет')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Заменить' })).toBeDisabled()
+  })
+
+  it('список не загрузился — ошибка и «Повторить»', async () => {
+    failGetOnce(vi.mocked(api.get), '/executor/orders/7/replacements', 'Сервер недоступен')
+    const { user, dialog } = await open()
+    expect(await within(dialog).findByText('Сервер недоступен')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }))
+    expect(await within(dialog).findByRole('option', { name: /A040/ })).toBeInTheDocument()
+  })
+
+  it('«Отмена» закрывает окно и очищает поля', async () => {
+    const { user, dialog } = await open()
+    await user.type(within(dialog).getByLabelText(/Что с неисправным сервером/), 'Черновик')
+    await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Заменить сервер…' }))
+    expect(screen.getByLabelText(/Что с неисправным сервером/)).toHaveValue('')
+  })
+
+  it('у подготовленного и закрытого заказа замены нет', async () => {
+    order = makeExecutorOrder({ prepared_at: '2026-10-21T10:00:00Z' })
+    const { unmount } = mount()
+    await screen.findByRole('button', { name: 'Отклонить заказ…' })
+    expect(screen.queryByRole('button', { name: 'Заменить сервер…' })).not.toBeInTheDocument()
+    unmount()
+    order = makeExecutorOrder({ status: 'returned', returned_at: '2026-10-21T12:00:00Z' })
+    mount()
+    await screen.findByText(/Заказ закрыт/)
+    expect(screen.queryByRole('button', { name: 'Заменить сервер…' })).not.toBeInTheDocument()
   })
 })

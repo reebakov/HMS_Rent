@@ -9,6 +9,7 @@ import { Button, buttonClass } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { JiraRequestLink } from '@/features/executor/JiraRequestLink'
 import { PreparationBadge } from '@/features/executor/PreparationBadge'
+import { ReplaceComputerCard } from '@/features/executor/ReplaceComputerCard'
 import { FAULTY_REASON, REJECT_REASONS } from '@/lib/dictionaries'
 import { useExecutorOrder, useRejectExecutorOrder, useSaveExecutorResult } from '@/lib/queries'
 import type { ConnectionMethod, ExecutorOrder } from '@/lib/types'
@@ -39,6 +40,7 @@ export function ExecutorOrderPage() {
               {o.status === 'active' ? (
                 <div className="space-y-4">
                   <ResultForm key={`${o.id}-${o.prepared_at}`} order={o} />
+                  {!o.prepared_at && <ReplaceComputerCard order={o} />}
                   <RejectForm order={o} />
                 </div>
               ) : (

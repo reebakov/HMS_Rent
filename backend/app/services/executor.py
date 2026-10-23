@@ -32,13 +32,17 @@ from app.schemas.booking import (
     ExecutorOrderOut,
     ExecutorProblemOut,
     ExecutorReject,
+    ExecutorReplace,
     ExecutorResult,
     ProblemTransitionOut,
+    ReplacementOut,
 )
 from app.schemas.vm import ExecutorVmOut
 from app.services import cleaning, notifications, runtime, service_requests
 from app.services.bookings import get_booking, status_after_return
+from app.services.catalog import natural_key
 from app.services.events import add_event
+from app.services.pools import pool_visible, visible_pool_ids
 
 LIST_LIMIT = 200
 
@@ -226,6 +230,79 @@ async def reject(session: AsyncSession, user: User | None, booking_id: int, reas
 
     await notify(f"🚫 Заказ №{booking.order_number} на **{comp.name}** отклонён исполнителем: {reason}")
     return await get_booking(session, booking.id)
+
+
+async def list_replacements(session: AsyncSession, booking_id: int) -> list[ReplacementOut]:
+    """Свободные ПК той же категории из пулов, видимых команде заказа: на них можно заменить неисправный."""
+    booking = await get_booking(session, booking_id)
+    old = await session.get(Computer, booking.computer_id)
+    rows = (await session.scalars(
+        select(Computer).where(
+            Computer.status == ComputerStatus.available, Computer.is_archived.is_(False), Computer.tier == old.tier,
+            Computer.id != old.id, Computer.pool_id.in_(visible_pool_ids(booking.user)),
+        )
+    )).unique().all()
+    return [ReplacementOut(id=c.id, name=c.name, tier=c.tier, cpu=c.cpu, ram_gb=c.ram_gb, storage=c.storage, gpu=c.gpu,
+                           pool_name=c.pool.name if c.pool else None)
+            for c in sorted(rows, key=lambda c: natural_key(c.name))]
+
+
+async def replace_computer(session: AsyncSession, user: User, booking_id: int, data: ExecutorReplace) -> Booking:
+    """Неисправный ПК в ещё не подготовленном заказе заменяется другим свободным ПК той же категории.
+
+    Заказ остаётся тем же (номер, срок, ОС, отдел): новый ПК получает бронь, неисправный уходит в диагностику как при
+    «Сервер неисправен» (из пула выводится, создаётся заявка). Заказчик получает уведомление о замене.
+    """
+    booking = await session.scalar(
+        select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
+        .execution_options(populate_existing=True)
+    )
+    if booking is None:
+        raise NotFound("Заказ не найден")
+    if booking.status != BookingStatus.active:
+        raise Conflict("Заказ уже закрыт")
+    if booking.prepared_at is not None:
+        raise Conflict("ПК уже подготовлен и выдан заказчику: замена недоступна, отклоните заказ или ведите работу в заявке")
+    if data.computer_id == booking.computer_id:
+        raise Conflict("Это тот же ПК")
+    first, second = sorted((booking.computer_id, data.computer_id))
+    locked = {c.id: c for c in (await session.scalars(
+        select(Computer).where(Computer.id.in_((first, second))).order_by(Computer.id).with_for_update(of=Computer)
+        .execution_options(populate_existing=True)
+    )).unique()}
+    old, new = locked[booking.computer_id], locked.get(data.computer_id)
+    if new is None:
+        raise NotFound("ПК для замены не найден")
+    if new.status != ComputerStatus.available or new.is_archived:
+        raise Conflict(f"{new.name} сейчас недоступен: выберите другой ПК")
+    if new.tier != old.tier or not pool_visible(new.pool, booking.user):
+        raise Conflict(f"{new.name} не подходит: нужен свободный ПК той же категории из пула команды заказа")
+
+    writeback = runtime.current().insight_writeback
+    session.add(service_requests.new_diagnose(booking, old.pool, user, f"{data.comment} (заменён на {new.name})"))
+    add_event(session, computer_id=old.id, booking_id=booking.id, actor_id=user.id, event_type=EventType.replaced,
+              from_status=old.status, to_status=ComputerStatus.maintenance.value,
+              message=f"Заказ №{booking.order_number} переведён на {new.name}: {data.comment}. ПК выведен из пула.")
+    add_event(session, computer_id=new.id, booking_id=booking.id, actor_id=user.id, event_type=EventType.replaced,
+              from_status=new.status, to_status=ComputerStatus.booked.value,
+              message=f"Заказ №{booking.order_number}: ПК заменил {old.name}")
+    old.status, old.pool_id, old.department_id, old.usage_until, old.order_number = (
+        ComputerStatus.maintenance.value, None, None, None, None)
+    new.status, new.department_id = ComputerStatus.booked.value, booking.department_id
+    new.usage_until, new.order_number = booking.expected_return_at, booking.order_number
+    old.writeback_pending = new.writeback_pending = writeback
+    booking.computer_id = new.id
+    notifications.pc_replaced(session, booking, old.name, new.name)
+    await session.commit()
+
+    await notify(f"🔁 В заказе №{booking.order_number} **{old.name}** заменён на **{new.name}**: {data.comment}")
+    return await get_booking(session, booking.id)
+
+
+async def rename_prepare_task(booking_id: int) -> None:
+    """После замены ПК тема задачи «подготовить ПК» в Jira получает имя нового ПК (в фоне; сбой Jira — только в лог)."""
+    async with SessionLocal() as session:
+        await service_requests.rename_prepare(session, booking_id)
 
 
 async def send_diagnose_request(computer_id: int, user_id: int) -> None:

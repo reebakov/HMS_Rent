@@ -69,6 +69,7 @@ class EventType(StrEnum):
     rejected = "rejected"  # исполнитель отклонил заказ ПК (в том числе «Сервер неисправен»)
     cleaned = "cleaned"    # исполнитель очистил диск вернувшегося ПК, ПК свободен
     repaired = "repaired"  # после диагностики ПК вернули в прежний пул
+    replaced = "replaced"  # исполнитель заменил неисправный ПК в заказе на другой (у обоих ПК)
     insight_created = "insight_created"
     insight_status_changed = "insight_status_changed"
     insight_removed = "insight_removed"

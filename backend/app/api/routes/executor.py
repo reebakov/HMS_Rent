@@ -8,9 +8,11 @@ from app.schemas.booking import (
     ExecutorOrderOut,
     ExecutorProblemOut,
     ExecutorReject,
+    ExecutorReplace,
     ExecutorResult,
     ProblemTransitionIn,
     ProblemTransitionOut,
+    ReplacementOut,
 )
 from app.schemas.vm import ExecutorVmOut, ExecutorVmReject
 from app.services import executor as service
@@ -60,6 +62,25 @@ async def problem_transitions(request_id: int, _: ExecutorUser, session: DB) -> 
 @router.post("/problems/{request_id}/transition", response_model=ExecutorProblemOut)
 async def move_problem(request_id: int, data: ProblemTransitionIn, _: ExecutorUser, session: DB) -> ExecutorProblemOut:
     return await service.move_problem(session, request_id, data.transition_id)
+
+
+@router.get("/orders/{booking_id}/replacements", response_model=list[ReplacementOut])
+async def list_replacements(booking_id: int, _: ExecutorUser, session: DB) -> list[ReplacementOut]:
+    """Свободные ПК той же категории, на которые можно заменить неисправный в заказе."""
+    return await service.list_replacements(session, booking_id)
+
+
+@router.post("/orders/{booking_id}/replace", response_model=ExecutorOrderOut)
+async def replace_computer(
+    booking_id: int, data: ExecutorReplace, user: ExecutorUser, session: DB, tasks: BackgroundTasks
+) -> ExecutorOrderOut:
+    """Заменить неисправный ПК в заказе другим: заказ тот же, неисправный уходит на диагностику."""
+    old_computer_id = (await get_booking(session, booking_id)).computer_id
+    booking = await service.replace_computer(session, user, booking_id, data)
+    tasks.add_task(push_to_insight)
+    tasks.add_task(service.send_diagnose_request, old_computer_id, user.id)
+    tasks.add_task(service.rename_prepare_task, booking.id)
+    return await service.order_out(session, booking)
 
 
 @router.get("/vms", response_model=list[ExecutorVmOut])

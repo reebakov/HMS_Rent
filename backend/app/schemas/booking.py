@@ -81,6 +81,26 @@ class ExecutorProblemOut(ORMModel):
     booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя
 
 
+class ReplacementOut(ORMModel):
+    """Свободный ПК, на который можно заменить неисправный в заказе."""
+
+    id: int
+    name: str
+    tier: str
+    cpu: str | None
+    ram_gb: int | None
+    storage: str | None
+    gpu: str | None
+    pool_name: str | None
+
+
+class ExecutorReplace(InputModel):
+    """Замена сервера в заказе: новый ПК и что случилось со старым (уйдёт в диагностику)."""
+
+    computer_id: int
+    comment: str = Field(min_length=1, max_length=2000)
+
+
 class ExecutorDiagnosticOut(ORMModel):
     """ПК на диагностике: выведен из пула как неисправный; после ремонта исполнитель возвращает его в прежний пул."""
 

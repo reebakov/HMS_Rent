@@ -79,8 +79,8 @@ class FakeSd:
         if self.update_error:
             raise self.update_error
         self.updated.append((key, fields))
-        if "summary" in fields:  # Jira хранит тему: подставляем её в запись о созданной заявке
-            i = int(key.split("-")[1]) - 1
+        i = int(key.split("-")[1]) - 1
+        if "summary" in fields and key.startswith("HMS-") and i < len(self.created):  # Jira хранит тему: подставляем её в заявку
             type_id, _, description, behalf = self.created[i]
             self.created[i] = (type_id, fields["summary"], description, behalf)
 

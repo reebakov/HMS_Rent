@@ -154,6 +154,18 @@ export interface ExecutorProblem {
   booking_id: number | null // у ПК — заказ со страницей исполнителя
 }
 
+/** Свободный ПК, на который можно заменить неисправный в заказе */
+export interface Replacement {
+  id: number
+  name: string
+  tier: Tier
+  cpu: string | null
+  ram_gb: number | null
+  storage: string | null
+  gpu: string | null
+  pool_name: string | null
+}
+
 /** ПК на диагностике: выведен из пула как неисправный; после ремонта исполнитель возвращает его в прежний пул */
 export interface ExecutorDiagnostic {
   id: number

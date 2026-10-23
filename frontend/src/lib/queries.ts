@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
 } from './types'
 
 export interface ComputerFilters {
@@ -434,6 +434,24 @@ export const useExecutorProblems = (enabled = true) =>
     enabled,
     refetchInterval: 60_000,
   })
+
+/** Свободные ПК той же категории для замены неисправного в заказе; грузятся, когда исполнитель открыл окно замены */
+export const useReplacements = (orderId: number, enabled: boolean) =>
+  useQuery({
+    queryKey: ['executor', 'replacements', orderId],
+    queryFn: () => api.get<Replacement[]>(`/executor/orders/${orderId}/replacements`),
+    enabled,
+    gcTime: 0,
+  })
+
+export function useReplaceComputer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number; computer_id: number; comment: string }) =>
+      api.post<ExecutorOrder>(`/executor/orders/${id}/replace`, data),
+    onSettled: () => Promise.all(['executor', 'my-bookings', 'computers', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
 
 /** ПК на диагностике: выведены из пула как неисправные */
 export const useExecutorDiagnostics = (enabled = true) =>

@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.integrations import servicedesk as real_sd
 from app.models import (
     AssetEvent,
+    Booking,
     BookingStatus,
     Computer,
     ComputerStatus,
@@ -25,6 +26,7 @@ from app.models import (
     UserRole,
     VirtualMachine,
 )
+from app.schemas.booking import ExecutorReplace
 from app.services import cleaning, executor, runtime
 
 from .sync_fakes import add_booking
@@ -395,6 +397,117 @@ async def test_reject_closed_missing_and_repeated(client, api, env):
 async def test_customer_cannot_reject(client, api, env, login):
     login(env.owner)
     assert (await client.post(api(f"/executor/orders/{env.early.id}/reject"), json=REJECT)).status_code == 403
+
+
+# ---------- замена сервера в заказе ----------
+
+async def _spare(session, make_computer, env, name="A010", **kw) -> Computer:
+    """Свободный ПК в том же пуле, что и ПК заказов: кандидат на замену (ПК активных заказов помечаются занятыми)."""
+    for booking in (env.early, env.late):
+        (await session.get(Computer, booking.computer_id)).status = ComputerStatus.booked.value
+    pool_id = (await session.get(Computer, env.early.computer_id)).pool_id
+    comp = await make_computer(name, None, insight_status="Свободен", **kw)
+    comp.pool_id = pool_id
+    await session.commit()
+    return comp
+
+
+def _replace(client, api, booking, comp, comment="Не включается"):
+    return client.post(api(f"/executor/orders/{booking.id}/replace"), json={"computer_id": comp.id, "comment": comment})
+
+
+async def test_replacements_are_free_pcs_of_same_tier_from_visible_pools(client, api, env, session, make_computer, make_pool, make_department):
+    spare = await _spare(session, make_computer, env, "A010", cpu="Ryzen", ram_gb=32)
+    await _spare(session, make_computer, env, "A011", tier="powerful")  # другая категория
+    taken = await _spare(session, make_computer, env, "A012")
+    taken.status = ComputerStatus.booked.value  # занят
+    archived = await _spare(session, make_computer, env, "A013")
+    archived.is_archived = True
+    draft = await make_computer("A014", await make_pool("Draft", is_published=False), insight_status="Свободен")
+    other_dept = await make_department("Other")
+    closed_pool = await make_computer("A015", await make_pool("Closed", departments=[other_dept]), insight_status="Свободен")
+    await session.commit()
+    assert draft.id and closed_pool.id
+    rows = (await client.get(api(f"/executor/orders/{env.early.id}/replacements"))).json()
+    # A003 свободен (его бронь закрыта), A002 занят заказом, A001 — сам заменяемый
+    assert [r["name"] for r in rows] == ["A003", "A010"]
+    assert (rows[1]["cpu"], rows[1]["ram_gb"], rows[1]["pool_name"], rows[1]["tier"]) == ("Ryzen", 32, "Main", spare.tier)
+
+
+async def test_replace_moves_the_order_to_the_new_pc_and_sends_the_old_to_diagnostics(
+        client, api, env, session, make_computer, sd, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(settings, "sd_jira_url", "https://jira.test")
+    await runtime.update(session, {"insight_writeback": True})
+    old_pool = (await _pc(session, "A001")).pool_id
+    spare = await _spare(session, make_computer, env)
+    before = (env.early.order_number, env.early.expected_return_at, env.early.os_label, env.early.department_id)
+    session.add(ServiceRequest(kind="prepare", user_id=env.owner.id, booking_id=env.early.id, summary="HMS Rent: подготовить ПК A001",
+                               description="d", issue_key="DR-5", status="Backlog", status_category="new"))
+    await session.commit()
+
+    r = await _replace(client, api, env.early, spare)
+    assert r.status_code == 200, r.text
+    assert (r.json()["computer"]["name"], r.json()["order_number"]) == ("A010", before[0])
+    booking = (await session.scalars(select(Booking).where(Booking.id == env.early.id).execution_options(populate_existing=True))).one()
+    assert (booking.computer_id, booking.order_number, booking.expected_return_at, booking.os_label, booking.department_id) \
+        == (spare.id, *before)
+    old, new = await _pc(session, "A001"), await _pc(session, "A010")
+    assert (old.status, old.pool_id, old.department_id, old.order_number) == (ComputerStatus.maintenance, None, None, None)
+    assert (new.status, new.department_id, new.order_number, new.usage_until) == (
+        ComputerStatus.booked, booking.department_id, booking.order_number, booking.expected_return_at)
+    events = [e for e in (await session.scalars(select(AssetEvent))).all() if e.event_type == EventType.replaced]
+    assert {(e.computer_id, e.actor_id) for e in events} == {(old.id, env.worker.id), (new.id, env.worker.id)}
+    assert any("A010" in e.message and "Не включается" in e.message for e in events)
+    # заявка «Диагностика комплекта» помнит старый ПК и его пул, тема задачи подготовки получила новое имя
+    (diag,) = await session.scalars(select(ServiceRequest).where(ServiceRequest.kind == "diagnose"))
+    assert (diag.computer_id, diag.pool_id) == (old.id, old_pool) and "заменён на A010" in diag.description
+    assert ("DR-5", {"summary": "HMS Rent: подготовить ПК A010 (заказ №" + str(before[0]) + ")"}) in [
+        (k, {"summary": f["summary"]}) for k, f in sd.updated]
+    (note,) = [n for n in (await session.scalars(select(Notification))).all() if "заменён" in n.title]
+    assert (note.user_id, note.kind) == (env.owner.id, NotificationKind.request_status) and "A001" in note.body and "A010" in note.title
+
+
+async def test_replace_queues_insight_write_for_both_pcs_when_enabled(session, env, make_computer, monkeypatch):
+    monkeypatch.setattr(executor, "notify", AsyncMock())
+    spare = await _spare(session, make_computer, env)
+    await runtime.update(session, {"insight_writeback": True})
+    await executor.replace_computer(session, env.worker, env.early.id, ExecutorReplace(computer_id=spare.id, comment="Греется"))
+    assert [(await _pc(session, n)).writeback_pending for n in ("A001", "A010")] == [True, True]  # статусы и пулы уйдут в Insight
+
+
+@pytest.mark.parametrize("case", ["prepared", "closed", "same", "booked", "tier", "pool", "archived"])
+async def test_replace_conflicts(client, api, env, session, make_computer, make_pool, make_department, case, sd):  # noqa: F811
+    spare = await _spare(session, make_computer, env)
+    booking, target = env.early, spare
+    if case == "prepared":
+        booking.prepared_at = datetime.now(timezone.utc)
+    elif case == "closed":
+        booking, target = env.closed, spare
+    elif case == "same":
+        target = await _pc(session, "A001")
+    elif case == "booked":
+        spare.status = ComputerStatus.booked.value
+    elif case == "tier":
+        spare.tier = "powerful"
+    elif case == "pool":
+        spare.pool_id = (await make_pool("Closed", departments=[await make_department("Other")])).id
+    elif case == "archived":
+        spare.is_archived = True
+    await session.commit()
+    assert (await _replace(client, api, booking, target)).status_code == 409
+    if booking is env.early:
+        assert (await _pc(session, "A001")).status == ComputerStatus.booked  # ничего не изменилось
+
+
+async def test_replace_not_found_validation_and_access(client, api, env, session, make_computer, login, sd):  # noqa: F811
+    spare = await _spare(session, make_computer, env)
+    assert (await client.post(api("/executor/orders/999999/replace"), json={"computer_id": spare.id, "comment": "x"})).status_code == 404
+    assert (await client.post(api(f"/executor/orders/{env.early.id}/replace"), json={"computer_id": 999999, "comment": "x"})).status_code == 404
+    for body in ({"computer_id": spare.id}, {"computer_id": spare.id, "comment": ""}, {"computer_id": spare.id, "comment": "x" * 2001}):
+        assert (await client.post(api(f"/executor/orders/{env.early.id}/replace"), json=body)).status_code == 422
+    login(env.owner)
+    assert (await _replace(client, api, env.early, spare)).status_code == 403
+    assert (await client.get(api(f"/executor/orders/{env.early.id}/replacements"))).status_code == 403
 
 
 # ---------- диагностика: вернуть ПК в пул ----------
