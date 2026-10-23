@@ -9,6 +9,7 @@ from app.core import clock
 from app.core.config import settings
 from app.integrations import servicedesk as real_sd
 from app.models import UserRole, VirtualMachine
+from app.schemas.service_request import earliest_wanted_by
 from app.schemas.settings import default_pc_builds, default_pc_os
 from app.services import runtime
 
@@ -311,13 +312,15 @@ async def test_failed_return_creates_no_request(client, login, api, env, sd):
 async def test_order_options_give_os_and_builds(client, login, api, env):
     login(env.owner)
     body = (await client.get(api("/catalog/order-options"))).json()
-    assert body == {"os": default_pc_os(), "builds": default_pc_builds()}
+    assert body == {"os": default_pc_os(), "builds": default_pc_builds(),
+                    "build_wanted_min": earliest_wanted_by().isoformat()}  # норматив сборки — 3 рабочих дня
 
 
 async def test_order_options_follow_settings(client, login, api, env, session):
     await runtime.update(session, {"pc_os_list": ["  Astra Linux  "], "pc_builds": []})
     login(env.owner)
-    assert (await client.get(api("/catalog/order-options"))).json() == {"os": ["Astra Linux"], "builds": []}
+    assert (await client.get(api("/catalog/order-options"))).json() == {
+        "os": ["Astra Linux"], "builds": [], "build_wanted_min": earliest_wanted_by().isoformat()}
 
 
 def _build_body(env, **kw) -> dict:

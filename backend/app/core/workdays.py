@@ -15,6 +15,7 @@ WORK_TZ = timezone(timedelta(hours=7))
 WORK_START, WORK_END = time(10), time(18)
 WORK_HOUR = 3600
 WORK_DAY = 8 * WORK_HOUR
+BUILD_NORM_DAYS = 3  # норматив сборки по запросу, рабочих дней
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,13 @@ class WorkCalendar:
         """Последний рабочий день не позже `day` (сам `day`, если он рабочий)."""
         while not self.is_workday(day):
             day -= timedelta(days=1)
+        return day
+
+    def add_workdays(self, day: date, count: int) -> date:
+        """Рабочий день, до которого от `day` проходит `count` рабочих дней (сам `day` не считается)."""
+        while count:
+            day = self.first_workday_after(day)
+            count -= 1
         return day
 
     def first_workday_after(self, day: date) -> date:

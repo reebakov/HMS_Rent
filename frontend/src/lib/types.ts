@@ -233,6 +233,7 @@ export interface BookingCreate {
 export interface OrderOptions {
   os: string[]
   builds: string[]
+  build_wanted_min: string // самый ранний желаемый срок сборки: норматив 3 рабочих дня
 }
 
 /** Сборка по запросу: типовая сборка или своя конфигурация — одно из двух */

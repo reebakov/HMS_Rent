@@ -16,7 +16,7 @@ from app.core.errors import DomainError, Forbidden, NotFound
 from app.db.session import SessionLocal
 from app.integrations import servicedesk as real_sd
 from app.models import Booking, Notification, NotificationKind, ServiceRequest, UserRole, VirtualMachine
-from app.schemas.service_request import BuildCreate
+from app.schemas.service_request import BuildCreate, earliest_wanted_by
 from app.schemas.settings import default_pc_builds
 from app.services import service_requests as svc
 
@@ -825,7 +825,7 @@ def build_data(env, **kw) -> BuildCreate:
 
 async def test_create_build_typical(session, env, sd, monkeypatch):
     monkeypatch.setattr(settings, "sd_request_type", 4321)
-    wanted = clock.today() + timedelta(days=5)
+    wanted = earliest_wanted_by()  # самый ранний допустимый срок: норматив сборки
     req = await svc.create_build(session, env.owner, build_data(env, purpose="Нагрузочные тесты", wanted_by=wanted))
     type_id, summary, description, behalf = sd.created[0]
     assert (type_id, behalf) == (4321, "owner")
@@ -881,11 +881,20 @@ async def test_create_build_jira_error_not_saved(session, env, sd):
 
 @pytest.mark.parametrize("kw", [
     {"build": None, "custom": None}, {"custom": "Ryzen 9, 64 ГБ"}, {"build": None, "custom": "abc"},
-    {"wanted_by": clock.today()}, {"expected_return_at": clock.today() - timedelta(days=1)}, {"os_label": " "},
-], ids=["none", "both", "short-custom", "wanted-today", "past", "blank-os"])
+    {"wanted_by": clock.today()}, {"wanted_by": earliest_wanted_by() - timedelta(days=1)}, {"expected_return_at": clock.today() - timedelta(days=1)}, {"os_label": " "},
+], ids=["none", "both", "short-custom", "wanted-today", "wanted-before-norm", "past", "blank-os"])
 def test_build_create_validation(env, kw):
     with pytest.raises(ValidationError):
         build_data(env, **kw)
+
+
+def test_wanted_by_error_names_the_earliest_date_and_the_norm():
+    earliest = earliest_wanted_by()
+    with pytest.raises(ValidationError, match=f"не раньше {earliest:%d.%m.%Y}: норматив сборки 3 рабочих дня"):
+        BuildCreate(build=default_pc_builds()[0], os_label="Debian 12", requester_nick="i",
+                    expected_return_at=clock.today() + timedelta(days=30), wanted_by=earliest - timedelta(days=1))
+    assert BuildCreate(build=default_pc_builds()[0], os_label="Debian 12", requester_nick="i",
+                       expected_return_at=clock.today() + timedelta(days=30), wanted_by=earliest).wanted_by == earliest
 
 
 async def test_build_visible_to_team_not_to_strangers(session, env, sd):
