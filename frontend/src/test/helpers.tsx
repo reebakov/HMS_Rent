@@ -137,6 +137,7 @@ export const makeServiceRequest = (over: Partial<ServiceRequest> = {}): ServiceR
   status_category: 'indeterminate',
   customer_status: over.status === undefined ? 'В работе' : over.status,
   customer_note: null,
+  can_cancel: false,
   error: null,
   created_at: '2024-01-10T09:00:00Z',
   url: null,

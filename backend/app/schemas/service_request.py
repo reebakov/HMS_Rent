@@ -73,6 +73,7 @@ class RequestOut(ORMModel):
     status_category: str | None
     customer_status: str | None  # статус для заказчика: «Принят», «В работе», «Заморожено», «Выполнен»…
     customer_note: str | None  # для «Заморожено» — комментарий исполнителя
+    can_cancel: bool  # заказ на сборку можно отменить (кнопка «Отменить»)
     error: str | None
     created_at: datetime
     url: str | None = None

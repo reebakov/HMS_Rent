@@ -232,6 +232,32 @@ export interface ExecutorResult {
   method: ConnectionMethod
 }
 
+/** Заказ на сборку ПК у исполнителя: что собрать, для кого и задача в Jira (поля request_* те же, что у заказа ПК) */
+export interface ExecutorBuild {
+  id: number
+  order_number: number
+  configuration: string
+  os_label: string | null
+  department: { id: number; name: string }
+  user: UserShort
+  requester_nick: string
+  purpose: string | null
+  expected_return_at: string | null
+  wanted_by: string | null
+  created_at: string
+  request_key: string | null
+  request_url: string | null
+  request_status: string | null
+  request_error: string | null
+  request_done: boolean
+}
+
+/** Выдача собранного ПК: имя из портала, пул и данные подключения */
+export interface ExecutorBuildIssue extends ExecutorResult {
+  computer_name: string
+  pool_id: number
+}
+
 export interface BookingCreate {
   computer_id: number
   department_id: number
@@ -551,6 +577,7 @@ export interface ServiceRequest {
   status_category: string | null // new / indeterminate / done
   customer_status: string | null // «Принят», «В работе», «Заморожено», «Снято с исполнителя», «Выполнен», «Отклонён»
   customer_note: string | null // для «Заморожено» — комментарий исполнителя
+  can_cancel: boolean // сборку по запросу заказчик может отменить, пока исполнитель не взял её в работу
   error: string | null
   created_at: string
   url: string | null

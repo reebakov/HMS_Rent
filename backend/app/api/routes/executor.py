@@ -1,20 +1,25 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, status
 
 from app.api.deps import DB, ExecutorUser
 from app.models import ServiceRequestKind
 from app.schemas.booking import (
     FAULTY_REASON,
+    ExecutorBuildIssue,
+    ExecutorBuildOut,
+    ExecutorBuildReject,
     ExecutorDiagnosticOut,
     ExecutorOrderOut,
     ExecutorProblemOut,
     ExecutorReject,
     ExecutorReplace,
     ExecutorResult,
+    PoolShort,
     ProblemTransitionIn,
     ProblemTransitionOut,
     ReplacementOut,
 )
 from app.schemas.vm import ExecutorVmOut, ExecutorVmReject
+from app.services import builds
 from app.services import executor as service
 from app.services.bookings import get_booking, push_to_insight
 
@@ -81,6 +86,33 @@ async def replace_computer(
     tasks.add_task(service.send_diagnose_request, old_computer_id, user.id)
     tasks.add_task(service.rename_prepare_task, booking.id)
     return await service.order_out(session, booking)
+
+
+@router.get("/builds", response_model=list[ExecutorBuildOut])
+async def list_builds(_: ExecutorUser, session: DB) -> list[ExecutorBuildOut]:
+    """Заказы на сборку ПК, ждущие выдачи."""
+    return await builds.list_builds(session)
+
+
+@router.get("/pools", response_model=list[PoolShort])
+async def list_pools(_: ExecutorUser, session: DB) -> list[PoolShort]:
+    """Опубликованные пулы: в какой пул попадёт собранный ПК."""
+    return await builds.list_pools(session)
+
+
+@router.post("/builds/{request_id}/issue", response_model=ExecutorOrderOut)
+async def issue_build(
+    request_id: int, data: ExecutorBuildIssue, user: ExecutorUser, session: DB, tasks: BackgroundTasks
+) -> ExecutorOrderOut:
+    """Выдать собранный ПК заказчику: бронь, данные подключения, пул."""
+    booking = await builds.issue(session, user, request_id, data)
+    tasks.add_task(push_to_insight)
+    return await service.order_out(session, await get_booking(session, booking.id))
+
+
+@router.post("/builds/{request_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+async def reject_build(request_id: int, data: ExecutorBuildReject, user: ExecutorUser, session: DB) -> None:
+    await builds.reject(session, user, request_id, data.reason, data.comment)
 
 
 @router.get("/vms", response_model=list[ExecutorVmOut])

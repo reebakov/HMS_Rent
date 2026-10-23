@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorBuild, ExecutorBuildIssue, PoolShort, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
 } from './types'
 
 export interface ComputerFilters {
@@ -316,6 +316,14 @@ export const useSdConfig = () =>
 export const useMyRequests = () =>
   useQuery({ queryKey: ['my-requests'], queryFn: () => api.get<ServiceRequest[]>('/requests/my'), refetchInterval: 30_000 })
 
+export function useCancelBuild() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<void>(`/requests/${id}/cancel`),
+    onSettled: () => Promise.all(['my-requests', 'executor'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
+
 export function useCreateBuild() {
   const qc = useQueryClient()
   return useMutation({
@@ -512,6 +520,35 @@ export function useMoveProblem() {
     mutationFn: ({ id, transitionId }: { id: number; transitionId: string }) =>
       api.post<ExecutorProblem>(`/executor/problems/${id}/transition`, { transition_id: transitionId }),
     onSettled: () => qc.invalidateQueries({ queryKey: ['executor'] }),
+  })
+}
+
+/** Заказы на сборку, ждущие выдачи собранного ПК */
+export const useExecutorBuilds = () =>
+  useQuery({ queryKey: ['executor', 'builds'], queryFn: () => api.get<ExecutorBuild[]>('/executor/builds'), refetchInterval: 60_000 })
+
+/** Пулы для выдачи собранного ПК: после возврата ПК остаётся в выбранном */
+export const useExecutorPools = (enabled: boolean) =>
+  useQuery({
+    queryKey: ['executor', 'pools'],
+    queryFn: () => api.get<Pick<PoolShort, 'id' | 'name'>[]>('/executor/pools'),
+    enabled,
+  })
+
+export function useIssueBuild() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: ExecutorBuildIssue & { id: number }) => api.post<ExecutorOrder>(`/executor/builds/${id}/issue`, data),
+    onSettled: () =>
+      Promise.all(['executor', 'my-requests', 'my-bookings', 'computers', 'catalog-summary', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
+  })
+}
+
+export function useRejectBuild() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: ExecutorReject & { id: number }) => api.post<void>(`/executor/builds/${id}/reject`, data),
+    onSettled: () => Promise.all(['executor', 'my-requests'].map((key) => qc.invalidateQueries({ queryKey: [key] }))),
   })
 }
 

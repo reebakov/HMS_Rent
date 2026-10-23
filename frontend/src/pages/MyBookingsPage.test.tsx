@@ -647,6 +647,33 @@ describe('MyBookingsPage: сборки по запросу и ОС', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
+  it('отмена сборки: кнопка только у заказа, который ещё можно отменить; после подтверждения идёт запрос', async () => {
+    requests = [
+      makeRequest({ id: 21, kind: 'build', booking_id: null, issue_key: 'HMS-700', summary: 'HMS Rent: сборка ПК — тип A (заказ №12)', can_cancel: true }),
+      makeRequest({ id: 22, kind: 'build', booking_id: null, issue_key: 'HMS-701', summary: 'HMS Rent: сборка ПК — тип B (заказ №13)', can_cancel: false }),
+    ]
+    vi.mocked(api.post).mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Сборки по запросу')
+    expect(screen.getAllByRole('button', { name: 'Отменить' })).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Отменить' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Отменить заказ' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/requests/21/cancel'))
+    expect(toast.success).toHaveBeenCalledWith('Заказ на сборку отменён')
+  })
+
+  it('отмену сборки отклонили (исполнитель уже взял заказ) — текст ошибки, окно остаётся', async () => {
+    requests = [makeRequest({ id: 21, kind: 'build', booking_id: null, issue_key: 'HMS-700', can_cancel: true })]
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Исполнитель уже взял заказ в работу'))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Отменить' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Отменить заказ' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Исполнитель уже взял заказ в работу'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('без сборок блока нет', async () => {
     bookings = [makeBooking()]
     renderPage()

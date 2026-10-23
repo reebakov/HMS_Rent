@@ -5,14 +5,15 @@ import { CalendarClock, CalendarPlus, Inbox, Undo2, Wrench } from 'lucide-react'
 import { Badge, TierBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, EmptyState, PageHeader, Skeleton } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataState, QueryError } from '@/components/ui/data-state'
 import { ExtendDialog, ReturnDialog, type ExtendTarget } from '@/features/booking/BookingDialog'
 import { RequesterNote } from '@/features/booking/RequesterNote'
 import { PendingTermNote } from '@/features/booking/TermLimit'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
-import { useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
-import type { Booking } from '@/lib/types'
+import { useCancelBuild, useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
+import type { Booking, ServiceRequest } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
 export function MyBookingsPage() {
@@ -23,6 +24,8 @@ export function MyBookingsPage() {
   const [returning, setReturning] = useState<Booking | null>(null)
   const [extending, setExtending] = useState<ExtendTarget | null>(null)
   const requests = useMyRequests()
+  const cancelBuild = useCancelBuild()
+  const [cancelling, setCancelling] = useState<ServiceRequest | null>(null)
   const [problem, setProblem] = useState<ProblemTarget>(null)
   const [openedRequest, setOpenedRequest] = useState<number | null>(null)
   const requestsFor = (bookingId: number) => requests.data?.filter((r) => r.booking_id === bookingId) ?? []
@@ -39,6 +42,17 @@ export function MyBookingsPage() {
       setReturning(null)
     } catch (e) {
       toast.error(errorMessage(e, returning.prepared_at ? 'Не удалось вернуть' : 'Не удалось отменить заказ'))
+    }
+  }
+
+  const confirmCancelBuild = async () => {
+    if (!cancelling) return
+    try {
+      await cancelBuild.mutateAsync(cancelling.id)
+      toast.success('Заказ на сборку отменён')
+      setCancelling(null)
+    } catch (e) {
+      toast.error(errorMessage(e, 'Не удалось отменить заказ'))
     }
   }
 
@@ -65,7 +79,14 @@ export function MyBookingsPage() {
                     <p className="text-xs text-muted-foreground">{formatDateTime(r.created_at)}</p>
                   </div>
                 </div>
-                <RequestBadges requests={[r]} onOpen={setOpenedRequest} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RequestBadges requests={[r]} onOpen={setOpenedRequest} />
+                  {r.can_cancel && (
+                    <Button size="sm" variant="outline" onClick={() => setCancelling(r)}>
+                      Отменить
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -235,6 +256,15 @@ export function MyBookingsPage() {
         pending={returnMutation.isPending}
         onConfirm={confirmReturn}
         onClose={() => setReturning(null)}
+      />
+      <ConfirmDialog
+        open={!!cancelling}
+        onClose={() => setCancelling(null)}
+        title="Отменить заказ на сборку?"
+        description="Пока исполнитель не взял заказ в работу, его можно отменить: задача в Jira будет закрыта. Позже отмена недоступна."
+        confirmLabel="Отменить заказ"
+        pending={cancelBuild.isPending}
+        onConfirm={confirmCancelBuild}
       />
       <ExtendDialog target={extending} onClose={() => setExtending(null)} />
       <ReportProblemDialog target={problem} onClose={() => setProblem(null)} />
