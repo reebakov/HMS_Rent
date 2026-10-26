@@ -184,6 +184,10 @@ def parse_specs(text: str | None) -> dict[str, str]:
     return result
 
 
+# Площадка по имени шлюза, если в Insight нет своего атрибута «Расположение»: подстрока шлюза -> название
+GATEWAY_LOCATIONS = (("aut-gz", "Godzen"), ("aut-sib", "Sib"), ("aut-adcdata", "ADCData"))
+
+
 def map_object(obj, mapping: InsightMapping) -> ComputerData:
     """obj — InsightObject (импорт не делаем, чтобы не было циклической зависимости)."""
     specs = parse_specs(obj.attributes.get(mapping.specs_attribute)) if mapping.specs_attribute else {}
@@ -206,14 +210,8 @@ def map_object(obj, mapping: InsightMapping) -> ComputerData:
         same = from_specs and parse_size_gb(from_specs) == parse_int(storage)
         storage = from_specs if same else f"{storage} ГБ"
 
-    gateway = get("gateway")
-    location = "" # По умолчанию
-    if gateway:
-        gw_lower = gateway.lower()
-        if "aut-gz" in gw_lower:
-            location = "Godzen"
-        elif "aut-sib" in gw_lower:
-            location = "Sib"    
+    gateway = (get("gateway") or "").lower()
+    location = next((name for marker, name in GATEWAY_LOCATIONS if marker in gateway), "")
 
     return ComputerData(
         name=get("name") or obj.label,
