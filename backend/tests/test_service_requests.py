@@ -228,6 +228,7 @@ async def test_create_problem_for_booking(session, env, sd):
     assert (type_id, behalf) == (1252, "owner")
     assert "A001" in summary and f"заказ №{env.booking.order_number}" in summary
     assert description.startswith("Не включается\n\n---\n")
+    assert "Что сделать: разобраться с проблемой и ответить заказчику" in description
     for part in ["Компьютер: A001 (ITAM-1)", f"Заказ №{env.booking.order_number}", "i9 · 64 ГБ · 2 TB · RTX 4090",
                  "Команда-получатель: QA", "Арендатор: Иван Иванов (ivan)", "Обращение отправил: Иван Иванов (ivan@corp.test)"]:
         assert part in description
@@ -307,6 +308,7 @@ async def test_create_return_saves_request(session, env, sd, monkeypatch):
     assert "возврат ПК A001" in summary and f"заказ №{env.booking.order_number}" in summary
     assert "Комментарий при возврате: Всё цело" in description and "Вернул: mate (mate)" in description
     assert "Компьютер: A001 (ITAM-1)" in description
+    assert "Диск очищен" in description and "/executor" in description  # что сделать исполнителю
     [saved] = await rows()
     assert (saved.kind, saved.user_id, saved.booking_id, saved.issue_key, saved.error) == ("return", env.mate.id, env.booking.id, "HMS-1", None)
     assert saved.status_category == "new" and saved.last_checked_at is not None
