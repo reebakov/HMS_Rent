@@ -16,7 +16,7 @@ VIEW_AS_COOKIE = "hmsrent_view_as"  # режим «Открыть как пол�
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
-def _apply_role(user: User) -> User:
+def apply_role(user: User) -> User:
     if user.auth_source != "local":
         # права SSO-пользователей (Bouncer) берутся из config/admins.txt и config/executors.txt на каждом запросе:
         # добавили/убрали почту — изменение действует сразу, без повторного входа
@@ -40,7 +40,7 @@ async def get_real_user(request: Request, session: DB) -> User:
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или отключён")
-    return _apply_role(user)
+    return apply_role(user)
 
 
 async def get_current_user(request: Request, session: DB) -> User:
@@ -57,7 +57,7 @@ async def get_current_user(request: Request, session: DB) -> User:
         return real
     if request.method not in SAFE_METHODS:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Режим просмотра: действия недоступны, выйдите из него, чтобы работать")
-    return _apply_role(target)
+    return apply_role(target)
 
 
 async def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:

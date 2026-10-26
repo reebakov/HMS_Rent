@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import DB, VIEW_AS_COOKIE, CurrentUser, get_real_user
+from app.api.deps import DB, VIEW_AS_COOKIE, CurrentUser, apply_role, get_real_user
 from app.core.config import settings
 from app.core.security import create_oauth_state, create_session_token, create_view_as_token, read_oauth_state
 from app.integrations.auth import bouncer
@@ -137,7 +137,7 @@ async def view_as(data: ViewAsIn, response: Response, session: DB, admin: Annota
         samesite="lax", max_age=settings.session_ttl_hours * 3600, path="/",
     )
     log.info("Администратор %s открыл портал глазами %s", admin.username, target.username)
-    return _session_out(target, admin)
+    return _session_out(apply_role(target), admin)  # роль считается так же, как на каждом запросе: в ответе не устаревшая из БД
 
 
 @router.delete("/view-as", response_model=SessionOut)
