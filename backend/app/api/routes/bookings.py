@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, status
 
 from app.api.deps import DB, CurrentUser
 from app.models import Booking, BookingStatus
-from app.schemas.booking import BookingCreate, BookingExtend, BookingOut, BookingReturn
+from app.schemas.booking import BookingCreate, BookingExtend, BookingOut, BookingReturn, ExternalRentalOut
 from app.services import bookings as service
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -19,6 +19,12 @@ async def create_booking(data: BookingCreate, user: CurrentUser, session: DB, ta
 @router.get("/my", response_model=list[BookingOut])
 async def my_bookings(user: CurrentUser, session: DB) -> list[Booking]:
     return await service.list_user_bookings(session, user)
+
+
+@router.get("/external", response_model=list[ExternalRentalOut])
+async def external_rentals(user: CurrentUser, session: DB) -> list[ExternalRentalOut]:
+    """ПК отдела сотрудника, выданные мимо портала (по «Команде-получателю» в Insight); только просмотр."""
+    return await service.list_external_rentals(session, user)
 
 
 @router.post("/{booking_id}/return", response_model=BookingOut)

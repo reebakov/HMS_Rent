@@ -126,6 +126,13 @@ export interface Booking {
 export type ConnectionMethod = 'RDP' | 'VNC'
 
 /** Заказ в разделе «Исполнитель»: заказчику имя исполнителя не показывается */
+/** ПК, выданный отделу мимо портала (в Insight «Используется», «Команда-получатель» — отдел): брони нет, только просмотр */
+export interface ExternalRental {
+  computer: ComputerShort
+  department: { id: number; name: string }
+  usage_until: string | null
+}
+
 export interface ExecutorOrder extends Booking {
   prepared_by: UserShort | null
   insight_ip: string | null // IPv4 ПК из Insight, если записан: подставляется в форму результата

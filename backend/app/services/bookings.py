@@ -13,9 +13,10 @@ from app.integrations.insight.factory import create_insight_source, get_mapping
 from app.integrations.insight.mapping import ComputerData, map_object
 from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
-from app.schemas.booking import BookingCreate, BookingExtend
+from app.schemas.booking import BookingCreate, BookingExtend, ExternalRentalOut
 from app.services import departments, overdue, runtime, service_requests, term_limit
 from app.services.access import ensure_access, mine_or_team
+from app.services.catalog import natural_key
 from app.services.events import add_event
 from app.services.orders import next_order_number, requester_name
 from app.services.pools import pool_visible
@@ -251,6 +252,21 @@ async def list_user_bookings(session: AsyncSession, user: User) -> list[Booking]
         .order_by(Booking.booked_at.desc()).limit(200)
     )
     return list(rows.unique().all())
+
+
+async def list_external_rentals(session: AsyncSession, user: User) -> list[ExternalRentalOut]:
+    """ПК, выданные отделу сотрудника мимо портала: по «Команде-получателю» из Insight. Только просмотр: брони нет,
+    вернуть или продлить такой ПК в портале нельзя."""
+    if user.department_id is None:
+        return []
+    rows = (await session.scalars(
+        select(Computer).where(
+            Computer.status == ComputerStatus.in_use, Computer.department_id == user.department_id,
+            Computer.is_archived.is_(False), Computer.is_virtual.is_(False),
+        )
+    )).unique().all()
+    return [ExternalRentalOut(computer=c, department=c.department, usage_until=c.usage_until)
+            for c in sorted(rows, key=lambda c: natural_key(c.name))]
 
 
 # Фоновые задачи после ответа: сессия запроса к этому моменту уже закрыта, поэтому у задач своя.
