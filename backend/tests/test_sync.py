@@ -295,6 +295,29 @@ async def test_default_pool_skips_cleaning_and_pending_computers(session, monkey
     assert comps["A001"].pool_id is None and comps["A002"].pool_id is None  # их состояние пока важнее Insight
 
 
+# ---------- «Резерв» в пуле не из общего ----------
+
+@pytest.mark.parametrize("pool, status", [
+    ("ECO", "available"),  # пул не общий — свободен для команд пула
+    ("Общий пул", "maintenance"),  # в общем «Резерв» остаётся недоступным
+    (None, "maintenance"),
+])
+async def test_reserve_status_is_free_only_in_non_general_pool(session, monkeypatch, make_pool, make_computer, pool, status):
+    pools = {name: await make_pool(name) for name in ("Общий пул", "ECO")}
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    await make_computer("A001", status="available", insight_object_id=1, pool=pools.get(pool))
+    use(monkeypatch, insight_obj(1, "A001", status="Резерв"))
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].status == status
+
+
+async def test_reserve_status_stays_maintenance_without_general_pool_setting(session, monkeypatch, make_pool, make_computer):
+    await make_computer("A001", status="available", insight_object_id=1, pool=await make_pool("ECO"))
+    use(monkeypatch, insight_obj(1, "A001", status="Резерв"))
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].status == "maintenance"  # правило выключено
+
+
 # ---------- SyncRun и ошибки источника ----------
 
 async def test_failing_source_keeps_data_and_logs_run(session, monkeypatch):

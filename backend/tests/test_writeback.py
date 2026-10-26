@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import Computer, EventType
 from app.services import runtime
@@ -193,3 +194,31 @@ async def test_cleaning_pc_is_not_written_and_flag_is_cleared(session, fake, wb_
     assert await push_pending(session) == 0
     assert fake.calls == []
     assert (await reload_computers(session))["A001"].writeback_pending is False
+
+
+# ---------- «Резерв»: свободный ПК в пуле не из общего ----------
+
+@pytest.mark.parametrize("general, pool, status, expected", [
+    ("Общий пул", "ECO Builder Studio", "available", "Резерв"),  # ушёл из общего пула — резерв
+    ("Общий пул", "Общий пул", "available", "Свободен"),
+    ("общий ПУЛ", "Общий пул", "available", "Свободен"),  # регистр не важен
+    ("", "ECO Builder Studio", "available", "Свободен"),  # общий пул не задан — правило выключено
+    ("Общий пул", None, "available", "Свободен"),
+    ("Общий пул", "ECO Builder Studio", "maintenance", "В ремонте"),  # неисправность важнее резерва
+])
+async def test_free_pc_outside_general_pool_is_written_as_reserve(
+        session, fake, wb_on, make_computer, make_pool, monkeypatch, general, pool, status, expected):
+    """Регрессия: «Резерв» из Insight читался как обслуживание и после смены пула затирался на «ТО»."""
+    monkeypatch.setattr(settings, "insight_default_pool", general)
+    await pending(make_computer, pool=await make_pool(pool) if pool else None, status=status)
+    await push_pending(session)
+    assert fake.calls[0]["values"]["Статус"] == expected
+
+
+async def test_booked_pc_outside_general_pool_is_written_as_in_use(session, fake, wb_on, make_computer, make_pool, make_user,
+                                                                   make_department, monkeypatch):
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    comp = await pending(make_computer, pool=await make_pool("ECO Builder Studio"), status="booked")
+    await add_booking(session, comp, await make_user("ivanov"), await make_department("QA"), expected_return_at=date(2030, 5, 17))
+    await push_pending(session)
+    assert fake.calls[0]["values"]["Статус"] == "В использовании"

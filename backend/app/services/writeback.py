@@ -16,6 +16,7 @@ import logging
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, VirtualMachine
@@ -23,6 +24,15 @@ from app.services import runtime
 from app.services.events import add_event
 
 log = logging.getLogger(__name__)
+
+RESERVE = "reserve"  # ключ в writeback.status_values: свободный ПК в пуле не из общего
+
+
+def _in_reserve_pool(comp: Computer) -> bool:
+    """Свободный ПК в пуле, отличном от общего (INSIGHT_DEFAULT_POOL): в Insight он «Резерв», а не «Ожидает».
+    Без заданного общего пула правило выключено."""
+    general = settings.insight_default_pool.strip().lower()
+    return bool(general and comp.pool and comp.pool.name.lower() != general)
 
 
 async def clear_pending(session: AsyncSession, row: Computer | VirtualMachine, flag: str) -> None:
@@ -63,10 +73,11 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
             # неисправный ПК (его отметил исполнитель) пишется статусом «ТО», если он задан в маппинге, а не «Ожидает»
             idle = ComputerStatus.maintenance if comp.status == ComputerStatus.maintenance else ComputerStatus.available
             target = ComputerStatus.booked if booking else idle
+            status_key = RESERVE if target == ComputerStatus.available and _in_reserve_pool(comp) else target
             values: dict[str, str | None] = {}
             extras: dict[str, str | None] = {}  # необязательные поля: их сбой не должен мешать записи статуса
-            if wb.status_attribute and wb.status_values.get(target):
-                values[wb.status_attribute] = wb.status_values[target]
+            if wb.status_attribute and (wb.status_values.get(status_key) or wb.status_values.get(target)):
+                values[wb.status_attribute] = wb.status_values.get(status_key) or wb.status_values[target]
             if wb.pool_attribute:
                 extras[wb.pool_attribute] = comp.pool.name if comp.pool else None
             if wb.department_attribute:
