@@ -157,6 +157,13 @@ describe('ExecutorProblemsPage: смена статуса', () => {
     expect(screen.getByRole('button', { name: 'Сменить статус' })).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('переходы идут столбцом ограниченной ширины и не раздвигают таблицу', async () => {
+    await open()
+    await screen.findByRole('button', { name: 'Готово' })
+    const group = screen.getByRole('group', { name: 'Переходы статуса' })
+    expect(group).toHaveClass('flex-col', 'w-48')
+  })
+
   it('выбор перехода: POST, тост, меню закрывается', async () => {
     vi.mocked(api.post).mockResolvedValue(makeProblem({ status: 'В работе' }))
     const user = await open()

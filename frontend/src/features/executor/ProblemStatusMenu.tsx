@@ -58,7 +58,8 @@ export function ProblemStatusMenu({ problem }: { problem: ExecutorProblem }) {
         <ChevronDown className="h-3.5 w-3.5" />
       </Button>
       {open && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        // столбцом и ограниченной ширины: в ряд кнопки раздвигали колонку «Статус» и ломали таблицу
+        <div role="group" aria-label="Переходы статуса" className="mt-2 flex w-48 flex-col items-stretch gap-1.5">
           {transitions.isError ? (
             <>
               <span className="text-xs text-danger">{errorMessage(transitions.error, 'Не удалось получить переходы')}</span>
@@ -76,6 +77,7 @@ export function ProblemStatusMenu({ problem }: { problem: ExecutorProblem }) {
                 key={t.id}
                 variant={t.closes ? 'primary' : 'outline'}
                 size="sm"
+                className="justify-start"
                 disabled={move.isPending}
                 onClick={() => (t.closes ? setClosing(t) : run(t))}
               >
