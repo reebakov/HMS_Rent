@@ -124,7 +124,8 @@ async def test_only_available_false_shows_booked_and_reserved(client, fleet, api
     ({"tier": "powerful", "only_available": "false"}, ["A2", "A10"]),
     ({"tier": "vm"}, ["vm-1"]),
     ({"min_ram": 16}, ["A9", "A10"]),
-    ({"gpu_only": "true"}, ["A10"]),
+    ({"gpu": "discrete"}, ["A10"]),
+    ({"gpu": "integrated"}, ["A9", "vm-1"]),  # у A9 видеокарты нет, дискретной тоже
     ({"q": "rtx"}, ["A10"]),
     ({"q": "BEAST"}, ["A10"]),          # hostname, регистр не важен
     ({"q": "ryzen"}, ["A9"]),           # cpu
@@ -139,7 +140,31 @@ async def test_list_filters(client, fleet, api, params, expected):
     assert await _names(client, api, **params) == expected
 
 
-@pytest.mark.parametrize("params", [{"tier": "mega"}, {"sort": "random"}, {"min_ram": "lots"}])
+@pytest.fixture
+async def gpus(make_pool, make_computer, make_user, login):
+    pool = await make_pool("Gpus")
+    for name, gpu in [("G1", "GeForce GTX 1050 Ti"), ("G2", "Intel(R) UHD Graphics 630"), ("G3", "HD Graphics 630"),
+                      ("G4", "AMD Radeon(TM) Graphics"), ("G5", "NVIDIA RTX A4000"), ("G6", "  "), ("G7", None),
+                      ("G8", "AMD Radeon RX 6700 XT")]:
+        await make_computer(name, ram_gb=16, tier="medium", gpu=gpu, pool=pool)
+    login(await make_user("emp"))
+
+
+@pytest.mark.parametrize("kind, expected", [
+    ("discrete", ["G1", "G5", "G8"]),
+    ("integrated", ["G2", "G3", "G4", "G6", "G7"]),
+])
+async def test_gpu_kind_filter_splits_discrete_and_integrated(client, gpus, api, kind, expected):
+    """Регрессия: фильтр «с видеокартой» пропускал всех, у кого поле видеокарты заполнено, хотя там часто встройка."""
+    assert await _names(client, api, gpu=kind) == expected
+
+
+async def test_gpu_kind_patterns_come_from_settings(client, gpus, api, monkeypatch):
+    monkeypatch.setattr(settings, "integrated_gpu", "1050")
+    assert await _names(client, api, gpu="integrated") == ["G1", "G6", "G7"]
+
+
+@pytest.mark.parametrize("params", [{"tier": "mega"}, {"sort": "random"}, {"min_ram": "lots"}, {"gpu": "any"}, {"gpu": "1"}])
 async def test_list_rejects_invalid_params(client, fleet, api, params):
     assert (await client.get(api("/computers"), params=params)).status_code == 422
 
