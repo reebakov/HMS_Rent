@@ -1,4 +1,5 @@
-"""Нормативы исполнителей (регламент, раздел 1): задачу берут за 1 рабочий час, срок работы зависит от вида задачи.
+"""Нормативы исполнителей (регламент, раздел 1): задачу берут за 1 рабочий час (возврат ПК — за рабочий день), срок работы
+зависит от вида задачи.
 
 Рабочее время — 10:00–18:00 GMT+7 рабочих дней по производственному календарю. Пока задача «Заморожена», норматив стоит
 на паузе. Нарушение портал только сообщает в канал исполнителей Mattermost (один раз на задачу и на вид нарушения).
@@ -17,10 +18,17 @@ from app.models import ServiceRequest, ServiceRequestKind
 
 log = logging.getLogger(__name__)
 
-TAKE_LIMIT = workdays.WORK_HOUR  # задачу нужно взять в течение 1 рабочего часа
 TAKE_KINDS = (ServiceRequestKind.prepare, ServiceRequestKind.return_, ServiceRequestKind.build, ServiceRequestKind.diagnose)
 NOT_TAKEN = ("Backlog", "To Do")  # статусы «никто не взял»
 BATCH = 200
+
+
+def take_limit(req: ServiceRequest) -> tuple[int, str]:
+    """За сколько рабочих секунд задачу нужно взять и название срока для сообщения: час, а возврат ПК (очистка диска) —
+    рабочий день: сервер вернули, но очистка не срочная, и час был бы слишком жёсткой границей."""
+    if req.kind == ServiceRequestKind.return_:
+        return workdays.WORK_DAY, "1 рабочий день"
+    return workdays.WORK_HOUR, "1 рабочий час"
 
 
 def norm(req: ServiceRequest) -> tuple[int, str] | None:
@@ -43,7 +51,7 @@ def _link(req: ServiceRequest) -> str:
 
 
 async def check(session: AsyncSession) -> None:
-    """Worker: сообщить в канал о задачах, не взятых за час, и о нарушенных нормативах."""
+    """Worker: сообщить в канал о задачах, не взятых в срок, и о нарушенных нормативах."""
     if not settings.service_desk_configured:
         return
     rows = (await session.scalars(
@@ -58,9 +66,10 @@ async def check(session: AsyncSession) -> None:
     cal, now = workdays.load(), datetime.now(timezone.utc)
     for req in rows:
         elapsed = cal.working_seconds(req.created_at, now)
-        if req.take_alerted_at is None and req.workflow_status in NOT_TAKEN and elapsed > TAKE_LIMIT:
+        take_seconds, take_name = take_limit(req)
+        if req.take_alerted_at is None and req.workflow_status in NOT_TAKEN and elapsed > take_seconds:
             req.take_alerted_at = now
-            await notify(f"⏰ Задача {_link(req)} не взята за 1 рабочий час")
+            await notify(f"⏰ Задача {_link(req)} не взята за {take_name}")
         limit = norm(req)
         if limit and req.norm_alerted_at is None:
             paused = (req.frozen_work_seconds or 0) + (cal.working_seconds(req.frozen_since, now) if req.frozen_since else 0)

@@ -62,6 +62,27 @@ def texts(channel) -> list[str]:
     return [c.args[0] for c in channel.await_args_list]
 
 
+# ---------- возврат ПК: взять за рабочий день ----------
+
+async def test_return_task_may_wait_a_working_day_before_not_taken_alert(session, make_user, clock, channel):
+    """Регрессия: час на взятие задачи очистки — слишком жёсткая граница, ей отведён рабочий день."""
+    req = await task(session, make_user, created=at(27, 10), kind="return")
+    clock(at(27, 17, 30))  # почти весь день, а задачу ещё не взяли
+    await norms.check(session)
+    channel.assert_not_awaited()
+    clock(at(28, 10, 30))  # прошёл рабочий день (8 ч)
+    await norms.check(session)
+    assert any("не взята за 1 рабочий день" in t for t in texts(channel))
+    assert (await fresh(req.id)).take_alerted_at is not None
+
+
+async def test_other_kinds_still_use_one_hour(session, make_user, clock, channel):
+    await task(session, make_user, created=at(27, 10), kind="build")
+    clock(at(27, 11, 30))
+    await norms.check(session)
+    assert "не взята за 1 рабочий час" in texts(channel)[0]
+
+
 # ---------- не взята за час ----------
 
 async def test_not_taken_in_an_hour_is_reported_once(session, make_user, clock, channel):
