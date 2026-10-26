@@ -27,6 +27,7 @@ from app.models import (
 )
 from app.services import runtime
 from app.services.events import add_event
+from app.services.pools import portal_status
 from app.services.tiering import classify
 
 log = logging.getLogger(__name__)
@@ -161,8 +162,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                     session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments,
                     default_pool=default_pool,
                 )
-            if _is_reserve(comp, data, mapping, default_pool, ours, comp.id in booked_ids):
-                comp.status = ComputerStatus.available.value  # «Резерв» в пуле не из общего — свободен для команд пула
+            if not ours and comp.id not in booked_ids:  # пул уже известен: «Резерв» вне общего пула — свободный ПК
+                comp.status = portal_status(mapping, data.insight_status, _pool_name(pools, comp.pool_id))
             if comp.is_archived:
                 comp.is_archived = False
                 changed = True
@@ -220,14 +221,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         return await _save_failed(session, source.mode, str(exc))
 
 
-def _is_reserve(comp: Computer, data: ComputerData, mapping: InsightMapping, general: Pool | None, ours: bool,
-                booked: bool) -> bool:
-    """В Insight «Резерв» у ПК из пула, который не общий: это свободный ПК команды пула, а не обслуживание."""
-    reserve = mapping.writeback.status_values.get("reserve")
-    return bool(
-        general and reserve and not ours and not booked and comp.status == ComputerStatus.maintenance.value
-        and comp.pool_id not in (None, general.id) and (data.insight_status or "").lower() == reserve.lower()
-    )
+def _pool_name(pools: dict[str, Pool], pool_id: int | None) -> str | None:
+    return next((p.name for p in pools.values() if p.id == pool_id), None)
 
 
 async def _pull_rental_fields(
@@ -279,6 +274,9 @@ async def _pull_rental_fields(
 
     if not booked:
         team = departments.get(data.team_name.lower()) if data.team_name else None
+        if data.team_name and team is None:
+            log.warning("«Команда-получатель» %r у ПК %s не найдена среди отделов портала: назначение не подтянуто",
+                        data.team_name, comp.name)
         team_id = team.id if team else None
         if comp.department_id != team_id:
             comp.department_id = team_id

@@ -19,7 +19,7 @@ from app.services.access import ensure_access, mine_or_team
 from app.services.catalog import natural_key
 from app.services.events import add_event
 from app.services.orders import next_order_number, requester_name
-from app.services.pools import pool_visible
+from app.services.pools import pool_visible, portal_status
 from app.services.writeback import push_pending
 
 log = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ async def get_booking(session: AsyncSession, booking_id: int) -> Booking:
 
 def status_after_return(comp: Computer) -> str:
     """Во что превращается ПК после возврата — решает статус в Insight."""
-    insight = get_mapping().portal_status(comp.insight_status)
+    insight = portal_status(get_mapping(), comp.insight_status, comp.pool.name if comp.pool else None)
     if insight == ComputerStatus.in_use and runtime.current().insight_writeback:
         return ComputerStatus.available.value  # «занят» в Insight поставили мы сами — сейчас вернём «свободен»
     return insight
@@ -77,9 +77,10 @@ async def create_booking(session: AsyncSession, user: User, data: BookingCreate)
         raise NotFound("Этот компьютер сейчас не выдаётся")
     if comp.status != ComputerStatus.available:
         raise Conflict(f"{comp.name} уже занят или недоступен")
-    if fresh is not None and fresh.status != ComputerStatus.available:
+    fresh_status = portal_status(get_mapping(), fresh.insight_status, comp.pool.name if comp.pool else None) if fresh else None
+    if fresh is not None and fresh_status != ComputerStatus.available:
         # в Jira ПК успели занять руками, а синхронизация ещё не дошла — обновляем и не даём бронировать
-        comp.insight_status, comp.status = fresh.insight_status, fresh.status
+        comp.insight_status, comp.status = fresh.insight_status, fresh_status
         await session.commit()
         raise Conflict(f"{comp.name} уже занят в Insight (статус «{fresh.insight_status}»)")
     dept = await departments.for_order(session, user, data.department_id)

@@ -4,6 +4,7 @@ import re
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.errors import Conflict, NotFound, Unprocessable
 from app.db.integrity import conflict_on_integrity_error
 from app.models import Computer, ComputerStatus, Department, EventType, Pool, User
@@ -12,6 +13,23 @@ from app.services import departments, runtime
 from app.services.events import add_event
 
 NAME_TAKEN = "Пул с таким названием уже есть"
+
+
+def outside_general_pool(pool_name: str | None) -> bool:
+    """ПК лежит в пуле, который не общий (INSIGHT_DEFAULT_POOL). Без заданного общего пула правило выключено."""
+    general = settings.insight_default_pool.strip().lower()
+    return bool(general and pool_name and pool_name.lower() != general)
+
+
+def portal_status(mapping, insight_status: str | None, pool_name: str | None) -> str:
+    """Статус ПК в портале по статусу Insight. «Резерв» вне общего пула — свободный ПК команды пула, а не обслуживание:
+    это единственное место правила, им пользуются синхронизация, бронь и возврат."""
+    status = mapping.portal_status(insight_status)
+    reserve = mapping.writeback.status_values.get("reserve")
+    if (status == ComputerStatus.maintenance and reserve and (insight_status or "").lower() == reserve.lower()
+            and outside_general_pool(pool_name)):
+        return ComputerStatus.available.value
+    return status
 
 
 def visible_pool_ids(user: User):
