@@ -322,6 +322,19 @@ async def test_insight_busy_blocks_and_updates_db(session, env, insight_comp, us
     notify_mock.assert_not_awaited()
 
 
+@pytest.mark.parametrize("general, allowed", [("Общий пул", True), ("Main", False), ("", False)])
+async def test_reserve_in_insight_is_free_only_outside_general_pool(session, env, insight_comp, use_insight, monkeypatch, general, allowed):
+    """Регрессия: каталог показывал «Резерв» вне общего пула свободным, а бронь отклоняла «уже занят в Insight»."""
+    monkeypatch.setattr(settings, "insight_default_pool", general)
+    use_insight(FakeInsight(insight_obj("Резерв")))
+    if allowed:
+        b = await bookings.create_booking(session, env.user, payload(insight_comp, env.dept))
+        assert b.status == BookingStatus.active
+    else:
+        with pytest.raises(Conflict, match="Резерв"):
+            await bookings.create_booking(session, env.user, payload(insight_comp, env.dept))
+
+
 async def test_insight_free_allows_booking(session, env, insight_comp, use_insight):
     fake = use_insight(FakeInsight(insight_obj("Свободен")))
     b = await bookings.create_booking(session, env.user, payload(insight_comp, env.dept))

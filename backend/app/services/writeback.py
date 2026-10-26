@@ -16,23 +16,28 @@ import logging
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.integrations.insight.base import InsightSource
 from app.integrations.insight.factory import create_insight_source
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, VirtualMachine
 from app.services import runtime
 from app.services.events import add_event
+from app.services.pools import outside_general_pool
 
 log = logging.getLogger(__name__)
 
 RESERVE = "reserve"  # ключ в writeback.status_values: свободный ПК в пуле не из общего
 
 
-def _in_reserve_pool(comp: Computer) -> bool:
-    """Свободный ПК в пуле, отличном от общего (INSIGHT_DEFAULT_POOL): в Insight он «Резерв», а не «Ожидает».
-    Без заданного общего пула правило выключено."""
-    general = settings.insight_default_pool.strip().lower()
-    return bool(general and comp.pool and comp.pool.name.lower() != general)
+FOREIGN = (ComputerStatus.in_use, ComputerStatus.retired, ComputerStatus.unknown)  # состояние ведёт не портал
+
+
+def _needs_status(comp: Computer, mapping, status_key: str, target: str, value: str) -> bool:
+    """Статус пишется, только если в Insight сейчас другой по смыслу: «Тест» или «Резерв» не затираются на «ТО»,
+    а «Ожидает» — на то же «Ожидает». «Резерв» вместо «Ожидает» для пула не из общего пишется всегда."""
+    current = comp.insight_status
+    if status_key == RESERVE:
+        return (current or "").lower() != value.lower()
+    return mapping.portal_status(current) != target
 
 
 async def clear_pending(session: AsyncSession, row: Computer | VirtualMachine, flag: str) -> None:
@@ -73,23 +78,28 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
             # неисправный ПК (его отметил исполнитель) пишется статусом «ТО», если он задан в маппинге, а не «Ожидает»
             idle = ComputerStatus.maintenance if comp.status == ComputerStatus.maintenance else ComputerStatus.available
             target = ComputerStatus.booked if booking else idle
-            status_key = RESERVE if target == ComputerStatus.available and _in_reserve_pool(comp) else target
+            status_key = RESERVE if target == ComputerStatus.available and outside_general_pool(comp.pool.name if comp.pool else None) else target
+            # ПК занят или выбыл мимо портала (в Insight «Используется», «Списано»…): статус, команда, срок и номер
+            # заказа не наши, портал не перезаписывает их «свободным ПК». Пишется только пул.
+            foreign = not booking and comp.status in FOREIGN
             values: dict[str, str | None] = {}
             extras: dict[str, str | None] = {}  # необязательные поля: их сбой не должен мешать записи статуса
-            if wb.status_attribute and (wb.status_values.get(status_key) or wb.status_values.get(target)):
-                values[wb.status_attribute] = wb.status_values.get(status_key) or wb.status_values[target]
+            status_value = wb.status_values.get(status_key) or wb.status_values.get(target)
+            if wb.status_attribute and status_value and not foreign and _needs_status(comp, source.mapping, status_key, target, status_value):
+                values[wb.status_attribute] = status_value
             if wb.pool_attribute:
                 extras[wb.pool_attribute] = comp.pool.name if comp.pool else None
-            if wb.department_attribute:
-                extras[wb.department_attribute] = booking.department.name if booking else None
-            if wb.owner_attribute:
-                extras[wb.owner_attribute] = booking.user.username if booking else None
-            if wb.period_attribute:
-                extras[wb.period_attribute] = (
-                    booking.expected_return_at.isoformat() if booking and booking.expected_return_at else None
-                )
-            if wb.order_attribute:
-                extras[wb.order_attribute] = str(booking.order_number) if booking else None
+            if not foreign:
+                if wb.department_attribute:
+                    extras[wb.department_attribute] = booking.department.name if booking else None
+                if wb.owner_attribute:
+                    extras[wb.owner_attribute] = booking.user.username if booking else None
+                if wb.period_attribute:
+                    extras[wb.period_attribute] = (
+                        booking.expected_return_at.isoformat() if booking and booking.expected_return_at else None
+                    )
+                if wb.order_attribute:
+                    extras[wb.order_attribute] = str(booking.order_number) if booking else None
             values.update(extras)
 
             try:
@@ -98,6 +108,8 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
                     warning = await write_object(source, comp.insight_object_id, comp.insight_object_type_id,
                                                  values, extras, wb.status_attribute)
                 await clear_pending(session, comp, "writeback_pending")
+                if wb.status_attribute in values:
+                    comp.insight_status = values[wb.status_attribute]  # до следующей синхронизации Insight именно такой
                 if warning and warning != comp.writeback_error:  # не спамим журнал одной и той же ошибкой
                     add_event(session, computer_id=comp.id, event_type=EventType.writeback_failed, message=warning)
                 comp.writeback_error = warning

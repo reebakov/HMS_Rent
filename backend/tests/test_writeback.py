@@ -222,3 +222,37 @@ async def test_booked_pc_outside_general_pool_is_written_as_in_use(session, fake
     await add_booking(session, comp, await make_user("ivanov"), await make_department("QA"), expected_return_at=date(2030, 5, 17))
     await push_pending(session)
     assert fake.calls[0]["values"]["Статус"] == "В использовании"
+
+
+# ---------- чужое состояние портал не затирает ----------
+
+@pytest.mark.parametrize("status, insight", [("in_use", "Используется"), ("retired", "Списано"), ("unknown", "Неизвестно")])
+async def test_foreign_state_keeps_status_and_rental_fields_and_writes_only_pool(
+        session, fake, wb_on, make_computer, make_pool, status, insight):
+    """Регрессия: ПК, занятый мимо портала, при смене пула получал в Insight «Ожидает» и терял команду и срок."""
+    await pending(make_computer, pool=await make_pool("ECO Builder Studio"), status=status, insight_status=insight)
+    await push_pending(session)
+    assert fake.calls[0]["values"] == {"Пул выдачи": "ECO Builder Studio"}
+
+
+@pytest.mark.parametrize("insight, expected", [
+    ("Свободен", None),  # уже свободен — статус не трогаем
+    ("В использовании", "Свободен"),  # вернули — освобождаем
+])
+async def test_status_is_written_only_when_insight_holds_a_different_one(session, fake, wb_on, make_computer, insight, expected):
+    await pending(make_computer, status="available", insight_status=insight)
+    await push_pending(session)
+    assert fake.calls[0]["values"].get("Статус") == expected
+
+
+async def test_maintenance_in_insight_is_not_overwritten_by_tech_status(session, fake, wb_on, make_computer):
+    """Регрессия: «Резерв» (и «Тест») затирались на «ТО» при любой записи по ПК; в демо-маппинге «Резерв» — обслуживание."""
+    await pending(make_computer, status="maintenance", insight_status="Резерв")
+    await push_pending(session)
+    assert "Статус" not in fake.calls[0]["values"]
+
+
+async def test_written_status_is_remembered_until_next_sync(session, fake, wb_on, make_computer):
+    await pending(make_computer, status="available", insight_status="В использовании")
+    await push_pending(session)
+    assert (await reload_computers(session))["A001"].insight_status == "Свободен"
