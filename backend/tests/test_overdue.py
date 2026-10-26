@@ -173,6 +173,33 @@ async def test_digest_sent_once_per_day_and_again_next_day(session, make_compute
     assert await digest_date() == tomorrow.isoformat()
 
 
+@pytest.mark.parametrize("day, holidays", [
+    (date(2026, 6, 13), ()),  # суббота
+    (date(2026, 6, 14), ()),  # воскресенье
+    (TODAY, (TODAY,)),  # праздник в будний день
+])
+async def test_digest_is_silent_on_days_off(session, make_computer, owner, clock, mm, monkeypatch, day, holidays):
+    """Регрессия: сводка просрочек и напоминание об очистке уходили в канал и в выходные."""
+    user, dept = owner
+    monkeypatch.setattr(workdays, "load", lambda: WorkCalendar(holidays=frozenset(holidays)))
+    await add_booking(session, await make_computer(), user, dept, expected_return_at=day - timedelta(days=5))
+    clock(11, day)
+    await overdue.daily_digest(session)
+    mm.assert_not_called()
+    assert await digest_date() == day.isoformat()  # день помечен: цикл worker'а не перечитывает данные зря
+
+
+async def test_digest_resumes_on_first_workday_after_weekend(session, make_computer, owner, clock, mm):
+    user, dept = owner
+    await add_booking(session, await make_computer(), user, dept, expected_return_at=OVERDUE)
+    clock(11, date(2026, 6, 14))  # воскресенье
+    await overdue.daily_digest(session)
+    mm.assert_not_called()
+    clock(11, TODAY)  # понедельник
+    await overdue.daily_digest(session)
+    mm.assert_awaited_once()
+
+
 async def test_digest_without_overdue_sends_nothing_but_marks_day(session, make_computer, owner, clock, mm):
     user, dept = owner
     # не просрочено: срок сегодня, возвращённая бронь, ВМ в очереди

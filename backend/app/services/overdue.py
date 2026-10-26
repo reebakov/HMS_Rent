@@ -120,8 +120,12 @@ async def _mark_sent(session: AsyncSession, key: str, day: date) -> None:
 
 
 async def daily_digest(session: AsyncSession) -> None:
+    """Сводка для исполнителей раз в рабочий день: в выходные и праздники канал молчит."""
     today = await _unsent_today(session, DIGEST_KEY, enabled=bool(settings.mattermost_webhook_url))
     if today is None:
+        return
+    if not workdays.load().is_workday(today):
+        await _mark_sent(session, DIGEST_KEY, today)
         return
     bookings, vms = await list_overdue(session)
     stale = await cleaning.list_waiting(session, older_than=timedelta(days=CLEANING_ALERT_DAYS))
