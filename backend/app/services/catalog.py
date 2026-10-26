@@ -13,6 +13,7 @@ from app.schemas.computer import ComputerDetail, TierSummary
 from app.services.pools import pool_visible, visible_pool_ids
 
 Sort = Literal["name", "ram_desc", "ram_asc"]
+GpuKind = Literal["discrete", "integrated"]
 
 AVAILABLE = Computer.status == ComputerStatus.available
 
@@ -58,6 +59,12 @@ async def tier_summary(session: AsyncSession, user: User) -> list[TierSummary]:
     return result
 
 
+def _integrated_gpu():
+    """Встроенная видеокарта: поле пусто (дискретной нет) или совпадает с шаблоном INTEGRATED_GPU. Остальное — дискретная."""
+    gpu = func.coalesce(Computer.gpu, "")
+    return or_(func.trim(gpu) == "", *(gpu.icontains(p, autoescape=True) for p in settings.integrated_gpu_patterns))
+
+
 async def list_computers(
     session: AsyncSession,
     user: User,
@@ -65,7 +72,7 @@ async def list_computers(
     tier: Tier | None = None,
     q: str | None = None,
     min_ram: int | None = None,
-    gpu_only: bool = False,
+    gpu: GpuKind | None = None,
     only_available: bool = True,
     sort: Sort = "name",
 ) -> list[Computer]:
@@ -76,8 +83,8 @@ async def list_computers(
         stmt = stmt.where(Computer.tier == tier.value)
     if min_ram:
         stmt = stmt.where(Computer.ram_gb >= min_ram)
-    if gpu_only:
-        stmt = stmt.where(Computer.gpu.is_not(None), Computer.gpu != "")
+    if gpu:
+        stmt = stmt.where(_integrated_gpu() if gpu == "integrated" else ~_integrated_gpu())
     if q:
         stmt = stmt.where(ilike_any(q, Computer.name, Computer.hostname, Computer.cpu, Computer.gpu, Computer.location))
     computers = list((await session.scalars(stmt)).unique().all())

@@ -13,7 +13,7 @@ export interface ComputerFilters {
   tier?: Tier
   q?: string
   min_ram?: number
-  gpu_only?: boolean
+  gpu?: 'discrete' | 'integrated' // дискретная или встроенная видеокарта (нет карты — встроенная)
   sort?: 'name' | 'ram_desc' | 'ram_asc'
 }
 

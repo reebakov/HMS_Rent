@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     tier_powerful_min_ram_gb: int = 32
     tier_medium_gpu: str = "1050,1060,1650,RX 5"
     tier_powerful_gpu: str = "RTX,1660,1070,1080,RX 6,RX 7,A4000,A5000"
+    integrated_gpu: str = "UHD,HD Graphics,Iris,Vega,Radeon Graphics,Radeon(TM) Graphics,Intel(R) Graphics"  # встроенные видеокарты (фильтр каталога)
 
     # --- Jira Service Desk: заявки «Сообщить о проблеме» и на возврат ПК (docs/SERVICE_DESK.md) ---
     sd_jira_url: str = "https://jira.getcom.pw"
@@ -145,6 +146,10 @@ class Settings(BaseSettings):
     @property
     def powerful_gpu_patterns(self) -> list[str]:
         return _split(self.tier_powerful_gpu)
+
+    @property
+    def integrated_gpu_patterns(self) -> list[str]:
+        return _split(self.integrated_gpu)
 
     @property
     def default_department_list(self) -> list[str]:

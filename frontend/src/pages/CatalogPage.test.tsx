@@ -52,11 +52,20 @@ describe('CatalogPage', () => {
     expect(lastComputerQuery()).toMatchObject({ tier: 'medium', sort: 'name' })
   })
 
-  it('фильтры читаются из адресной строки', async () => {
+  it('в адресной строке gpu=integrated — встроенная видеокарта, неизвестное значение игнорируется', async () => {
+    renderWithProviders(<CatalogPage />, { route: '/?gpu=integrated' })
+    await screen.findByText('PC-001')
+    expect(lastComputerQuery()).toMatchObject({ gpu: 'integrated' })
+    expect(screen.getByRole('combobox', { name: 'Видеокарта' })).toHaveValue('integrated')
+    renderWithProviders(<CatalogPage />, { route: '/?gpu=any' })
+    await waitFor(() => expect(lastComputerQuery()?.gpu).toBeUndefined())
+  })
+
+  it('фильтры читаются из адресной строки (gpu=1 из старых ссылок — дискретная)', async () => {
     renderWithProviders(<CatalogPage />, { route: '/?tier=powerful&q=rtx&min_ram=32&gpu=1&sort=ram_desc' })
     await screen.findByText('PC-001')
     expect(lastComputerQuery()).toEqual({
-      tier: 'powerful', q: 'rtx', min_ram: 32, gpu_only: true, sort: 'ram_desc',
+      tier: 'powerful', q: 'rtx', min_ram: 32, gpu: 'discrete', sort: 'ram_desc',
     })
     expect(screen.getByPlaceholderText(/Имя, процессор/)).toHaveValue('rtx')
   })
@@ -69,17 +78,17 @@ describe('CatalogPage', () => {
     expect(screen.getByDisplayValue('По имени')).toBeInTheDocument()
   })
 
-  it('поиск, фильтры и кнопка «С видеокартой» доступны по подписи и роли', async () => {
+  it('поиск и фильтры доступны по подписи и роли', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CatalogPage />)
     await screen.findByText('PC-001')
     expect(screen.getByRole('textbox', { name: 'Поиск по каталогу' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Минимум ОЗУ' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Сортировка' })).toBeInTheDocument()
-    const gpu = screen.getByRole('button', { name: 'С видеокартой' })
-    expect(gpu).toHaveAttribute('aria-pressed', 'false')
-    await user.click(gpu)
-    expect(screen.getByRole('button', { name: 'С видеокартой' })).toHaveAttribute('aria-pressed', 'true')
+    const gpu = screen.getByRole('combobox', { name: 'Видеокарта' })
+    expect(gpu).toHaveValue('')
+    await user.selectOptions(gpu, 'Встроенная')
+    expect(screen.getByRole('combobox', { name: 'Видеокарта' })).toHaveValue('integrated')
   })
 
   it('поиск уходит в API с задержкой (debounce), а не на каждую букву', async () => {
@@ -109,21 +118,25 @@ describe('CatalogPage', () => {
     await waitFor(() => expect(lastComputerQuery()?.min_ram).toBeUndefined())
   })
 
-  it('кнопка «С видеокартой» включает и выключает фильтр gpu_only', async () => {
+  it('выбор «Дискретная» и «Встроенная» уходит в API как gpu, «Любая» снимает фильтр', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CatalogPage />)
     await screen.findByText('PC-001')
+    const select = screen.getByRole('combobox', { name: 'Видеокарта' })
+    expect(select).toHaveTextContent('Любая видеокарта')
 
-    await user.click(screen.getByRole('button', { name: 'С видеокартой' }))
-    await waitFor(() => expect(lastComputerQuery()).toMatchObject({ gpu_only: true }))
-    await user.click(screen.getByRole('button', { name: 'С видеокартой' }))
-    await waitFor(() => expect(lastComputerQuery()?.gpu_only).toBeUndefined())
+    await user.selectOptions(select, 'Дискретная')
+    await waitFor(() => expect(lastComputerQuery()).toMatchObject({ gpu: 'discrete' }))
+    await user.selectOptions(select, 'Встроенная')
+    await waitFor(() => expect(lastComputerQuery()).toMatchObject({ gpu: 'integrated' }))
+    await user.selectOptions(select, 'Любая видеокарта')
+    await waitFor(() => expect(lastComputerQuery()?.gpu).toBeUndefined())
   })
 
-  it('в категории ВМ фильтра «С видеокартой» нет', async () => {
+  it('в категории ВМ фильтра по видеокарте нет', async () => {
     renderWithProviders(<CatalogPage />, { route: '/?tier=vm' })
     await screen.findByText('PC-001')
-    expect(screen.queryByRole('button', { name: 'С видеокартой' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Видеокарта' })).not.toBeInTheDocument()
   })
 
   it('смена категории по клику на карточку', async () => {
@@ -146,7 +159,7 @@ describe('CatalogPage', () => {
     await waitFor(() => {
       const q = lastComputerQuery()
       expect(q?.q).toBeUndefined()
-      expect(q?.gpu_only).toBeUndefined()
+      expect(q?.gpu).toBeUndefined()
       expect(q?.tier).toBe('weak')
     })
   })

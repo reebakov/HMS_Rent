@@ -29,12 +29,12 @@ async def list_computers(
     tier: Tier | None = None,
     q: str | None = None,
     min_ram: int | None = None,
-    gpu_only: bool = False,
+    gpu: catalog.GpuKind | None = None,
     only_available: bool = True,
     sort: catalog.Sort = "name",
 ) -> list[Computer]:
     return await catalog.list_computers(
-        session, user, tier=tier, q=q, min_ram=min_ram, gpu_only=gpu_only, only_available=only_available, sort=sort
+        session, user, tier=tier, q=q, min_ram=min_ram, gpu=gpu, only_available=only_available, sort=sort
     )
 
 

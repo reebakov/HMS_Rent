@@ -61,7 +61,7 @@ describe('запросы на чтение', () => {
 
   it('useComputers: фильтры уходят query-параметрами, ключ зависит от фильтров', async () => {
     vi.mocked(api.get).mockResolvedValue([])
-    const filters: q.ComputerFilters = { tier: 'powerful', q: 'rtx', min_ram: 32, gpu_only: true, sort: 'ram_desc' }
+    const filters: q.ComputerFilters = { tier: 'powerful', q: 'rtx', min_ram: 32, gpu: 'discrete', sort: 'ram_desc' }
     const { result } = hook(() => q.useComputers(filters))
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(api.get).toHaveBeenCalledWith('/computers', filters)

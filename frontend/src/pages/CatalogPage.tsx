@@ -14,10 +14,11 @@ import { useDebouncedSearch } from '@/lib/hooks'
 import { useCatalogSummary, useComputers, useSdConfig, type ComputerFilters } from '@/lib/queries'
 import { TIERS, TIER_ORDER } from '@/lib/dictionaries'
 import type { Computer, Tier } from '@/lib/types'
-import { cn, plural } from '@/lib/utils'
+import { plural } from '@/lib/utils'
 
 const RAM_OPTIONS = [0, 8, 16, 32, 64]
 const SORTS: NonNullable<ComputerFilters['sort']>[] = ['name', 'ram_desc', 'ram_asc']
+const GPU_KINDS: NonNullable<ComputerFilters['gpu']>[] = ['discrete', 'integrated']
 
 /** Значение из адресной строки, если оно допустимо, иначе значение по умолчанию */
 const oneOf = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
@@ -31,7 +32,8 @@ export function CatalogPage() {
     tier,
     q: params.get('q') ?? undefined,
     min_ram: Number(params.get('min_ram')) || undefined,
-    gpu_only: params.get('gpu') === '1' || undefined,
+    // старые ссылки с gpu=1 («с видеокартой») открываются как «дискретная»
+    gpu: params.get('gpu') === '1' ? 'discrete' : GPU_KINDS.find((k) => k === params.get('gpu')),
     sort: oneOf(params.get('sort'), SORTS, 'name'),
   }
 
@@ -108,16 +110,11 @@ export function CatalogPage() {
           <option value="ram_asc">Сначала проще</option>
         </Select>
         {tier !== 'vm' && (
-          <button
-            onClick={() => update({ gpu: filters.gpu_only ? undefined : '1' })}
-            aria-pressed={!!filters.gpu_only}
-            className={cn(
-              'h-9 rounded-lg border px-3 text-[13px] font-medium transition-colors',
-              filters.gpu_only ? 'border-primary bg-primary/10 text-primary' : 'bg-card hover:bg-muted/60',
-            )}
-          >
-            С видеокартой
-          </button>
+          <Select className="w-44" aria-label="Видеокарта" value={filters.gpu ?? ''} onChange={(e) => update({ gpu: e.target.value || undefined })}>
+            <option value="">Любая видеокарта</option>
+            <option value="discrete">Дискретная</option>
+            <option value="integrated">Встроенная</option>
+          </Select>
         )}
         <ViewToggle value={view} onChange={setView} />
       </div>
