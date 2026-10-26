@@ -28,7 +28,7 @@ export function OrderDepartmentField({
 }) {
   if (session.user.role === 'admin') {
     return (
-      <Field label="Отдел" required hint="Админ может оформить заказ на любой отдел">
+      <Field label="Отдел" required hint="Можно выбрать любой отдел">
         <Select value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="" disabled>
             {departments.isLoading ? 'Загрузка…' : 'Выберите отдел'}

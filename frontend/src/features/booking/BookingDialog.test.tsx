@@ -110,6 +110,20 @@ describe('BookingDialog', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings', expect.objectContaining({ department_id: 2 })))
   })
 
+  it('подсказка про выбор любого отдела есть только у администратора', async () => {
+    setup()
+    await waitForDepartments()
+    expect(screen.getByText('Можно выбрать любой отдел')).toBeInTheDocument()
+  })
+
+  it('у сотрудника подсказки про выбор отдела нет, а есть пояснение про его отдел', async () => {
+    session = makeSession({ department_id: 2 })
+    setup()
+    await screen.findByText('Аналитика')
+    expect(screen.queryByText('Можно выбрать любой отдел')).not.toBeInTheDocument()
+    expect(screen.getByText(/Заказ оформляется на ваш отдел/)).toBeInTheDocument()
+  })
+
   it('сотрудник без отдела не может забронировать', async () => {
     localStorage.setItem('hmsrent:last-department', '2') // сотрудник не берёт отдел из прошлого выбора
     session = makeSession()
