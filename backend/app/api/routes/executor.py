@@ -66,7 +66,7 @@ async def problem_transitions(request_id: int, _: ExecutorUser, session: DB) -> 
 
 @router.post("/problems/{request_id}/transition", response_model=ExecutorProblemOut)
 async def move_problem(request_id: int, data: ProblemTransitionIn, _: ExecutorUser, session: DB) -> ExecutorProblemOut:
-    return await service.move_problem(session, request_id, data.transition_id)
+    return await service.move_problem(session, request_id, data.transition_id, data.comment)
 
 
 @router.get("/orders/{booking_id}/replacements", response_model=list[ReplacementOut])

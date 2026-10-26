@@ -131,10 +131,11 @@ async def problem_transitions(session: AsyncSession, request_id: int) -> list[Pr
             for t in await service_requests.available_transitions(req)]
 
 
-async def move_problem(session: AsyncSession, request_id: int, transition_id: str) -> ExecutorProblemOut:
-    """Исполнитель переводит задачу по проблеме в новый статус прямо из портала."""
+async def move_problem(session: AsyncSession, request_id: int, transition_id: str,
+                       comment: str | None = None) -> ExecutorProblemOut:
+    """Исполнитель переводит задачу по проблеме в новый статус прямо из портала; комментарий уходит заказчику публично."""
     req = await _problem(session, request_id)
-    await service_requests.move_issue(session, req, transition_id)
+    await service_requests.move_issue(session, req, transition_id, comment)
     return (await _problems_out(session, [req]))[0]
 
 

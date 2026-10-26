@@ -56,6 +56,12 @@ describe('ExecutorOrdersPage', () => {
     expect(await screen.findAllByText('Задача закрыта в Jira — внесите данные подключения')).toHaveLength(1)
   })
 
+  it('раздел называется «Задачи исполнителя», а выданные ПК — блок «Заказы на подготовку»', async () => {
+    mount()
+    expect(await screen.findByRole('heading', { name: 'Задачи исполнителя' })).toBeInTheDocument()
+    expect(screen.getByText('Заказы на подготовку')).toBeInTheDocument()
+  })
+
   it('показывает заказы со статусом подготовки и число ждущих', async () => {
     mount()
     const waiting = (await screen.findByRole('link', { name: 'A032' })).closest('tr')!

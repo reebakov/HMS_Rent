@@ -517,8 +517,8 @@ export const useProblemTransitions = (id: number, enabled: boolean) =>
 export function useMoveProblem() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, transitionId }: { id: number; transitionId: string }) =>
-      api.post<ExecutorProblem>(`/executor/problems/${id}/transition`, { transition_id: transitionId }),
+    mutationFn: ({ id, transitionId, comment }: { id: number; transitionId: string; comment?: string }) =>
+      api.post<ExecutorProblem>(`/executor/problems/${id}/transition`, { transition_id: transitionId, ...(comment ? { comment } : {}) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ['executor'] }),
   })
 }

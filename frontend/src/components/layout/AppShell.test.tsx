@@ -106,7 +106,7 @@ describe('AppShell: меню по роли', () => {
     executorOrders = [order(1, false), order(2, false), order(3, true)]
     mountShell()
     expect(screen.getByText('Исполнитель')).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    const link = screen.getByRole('link', { name: /Задачи исполнителя/ })
     expect(link).toHaveAttribute('href', '/executor')
     await waitFor(() => expect(within(link).getByText('2')).toBeInTheDocument())
     expect(screen.queryByText('Администрирование')).not.toBeInTheDocument()
@@ -118,7 +118,7 @@ describe('AppShell: меню по роли', () => {
     executorOrders = [order(1, false), order(3, true)]
     executorReturns = [order(4, true), order(5, true)]
     mountShell()
-    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    const link = screen.getByRole('link', { name: /Задачи исполнителя/ })
     await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
   })
 
@@ -127,13 +127,13 @@ describe('AppShell: меню по роли', () => {
     executorOrders = [order(1, false)]
     executorVms = [{ id: 7 }, { id: 8 }]
     mountShell()
-    const link = screen.getByRole('link', { name: /Заказы на подготовку/ })
+    const link = screen.getByRole('link', { name: /Задачи исполнителя/ })
     await waitFor(() => expect(within(link).getByText('3')).toBeInTheDocument())
   })
 
   it('сотрудник не видит блок «Исполнитель» и не запрашивает очередь', () => {
     mountShell()
-    expect(screen.queryByRole('link', { name: /Заказы на подготовку/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Задачи исполнителя/ })).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/executor/orders')
     expect(api.get).not.toHaveBeenCalledWith('/executor/returns')
     expect(api.get).not.toHaveBeenCalledWith('/executor/problems')
@@ -172,7 +172,7 @@ describe('AppShell: меню по роли', () => {
   it('админу раздел исполнителя тоже доступен', () => {
     session = makeSession({ role: 'admin' })
     mountShell()
-    expect(screen.getByRole('link', { name: /Заказы на подготовку/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Задачи исполнителя/ })).toBeInTheDocument()
   })
 
   it('подсвечивается только активный пункт: /admin не активирует вложенные и «Каталог»', () => {

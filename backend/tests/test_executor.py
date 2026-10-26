@@ -173,6 +173,38 @@ async def test_problem_closing_transition_sets_resolution_done(client, api, env,
     assert r.json()["status_category"] == "done"
 
 
+async def test_problem_closing_with_comment_answers_customer_publicly(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    sd.status = real_sd.SdStatus("Done", "done")
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"),
+                          json={"transition_id": "151", "comment": "  Заменили кабель  "})
+    assert r.status_code == 200 and sd.moved == [("DR-5", "151", "Done")]
+    assert sd.sent == [("DR-5", None, "Заменили кабель")]  # обрезан, без метки портала
+
+
+@pytest.mark.parametrize("comment", [None, "", "   "])
+async def test_problem_transition_without_comment_posts_nothing(client, api, env, session, sd, comment):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available = PROBLEM_TRANSITIONS
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "161", "comment": comment})
+    assert r.status_code == 200 and sd.sent == [] and sd.moved == [("DR-5", "161", None)]
+
+
+async def test_problem_comment_failure_keeps_status_unchanged(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    sd.available, sd.send_error = PROBLEM_TRANSITIONS, boom()
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "151", "comment": "Готово"})
+    assert r.status_code == 400 and r.json()["detail"].startswith("Не удалось отправить комментарий")
+    assert sd.moved == []  # повтор не даст дубля комментария и не оставит задачу закрытой без ответа
+
+
+async def test_problem_comment_too_long_is_422(client, api, env, session, sd):  # noqa: F811
+    req = await _open_problem(session, env)
+    r = await client.post(api(f"/executor/problems/{req.id}/transition"), json={"transition_id": "151", "comment": "x" * 2001})
+    assert r.status_code == 422
+
+
 async def test_problem_transition_unknown_or_stale_is_conflict(client, api, env, session, sd):  # noqa: F811
     req = await _open_problem(session, env)
     sd.available = PROBLEM_TRANSITIONS

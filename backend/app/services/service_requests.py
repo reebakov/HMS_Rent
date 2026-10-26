@@ -136,7 +136,7 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
         kind=ServiceRequestKind.return_.value, user_id=actor.id, booking_id=b.id,
         summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
         description="Отформатировать диски вернувшегося ПК и подтвердить очистку: «Диск очищен» в блоке «Ждут очистки» на "
-        f"странице «Заказы на подготовку» ({settings.public_url.rstrip('/')}/executor) или закрыть эту задачу в Jira после очистки "
+        f"странице «Задачи исполнителя» ({settings.public_url.rstrip('/')}/executor) или закрыть эту задачу в Jira после очистки "
         "диска: ПК снова станет свободным.\n\n"
         + _booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
         + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
@@ -156,7 +156,7 @@ def new_diagnose(b: Booking, pool, actor: User, comment: str) -> ServiceRequest:
                     f"Комментарий исполнителя: {comment}\n"
                     + (f"Отметил: {actor.display_name} ({actor.email or actor.username})\n" if actor else "")
                     + (f"Прежний пул: {pool.name}\n" if pool else "")
-                    + "\nПроведите диагностику. После ремонта нажмите «Вернуть в пул» в «Заказах на подготовку» портала или "
+                    + "\nПроведите диагностику. После ремонта нажмите «Вернуть в пул» в «Задачах исполнителя» портала или "
                     "закройте эту задачу в Jira: ПК вернётся в прежний пул и станет свободным. Если запись в Insight в портале "
                     "выключена, статус ПК в Insight меняйте вручную («ТО» на время диагностики, «Ожидает» после).\n\n"
                     + _booking_text(b),
@@ -225,7 +225,7 @@ async def create_prepare_vm(session: AsyncSession, vm_id: int, note: str | None 
         kind=ServiceRequestKind.prepare.value, user_id=vm.user_id, vm_id=vm.id,
         summary=f"HMS Rent: подготовить ВМ {vm.name} (заказ №{vm.order_number})",
         description="Проверить ВМ: она запущена, ОС, CPU, RAM и диски соответствуют заказу, есть доступ в интернет, имя хоста "
-        "разрешается, подключение по RDP или VNC работает. Затем подтвердить ВМ на странице «Заказы на подготовку» "
+        "разрешается, подключение по RDP или VNC работает. Затем подтвердить ВМ на странице «Задачи исполнителя» "
         f"({settings.public_url.rstrip('/')}/executor); если проверка не прошла и ремонт не помог — «Пересоздать» или «Отклонить».\n\n"
         + (f"{note}\n\n" if note else "") + _vm_text(vm),
     ), vm.user)
@@ -260,7 +260,7 @@ async def create_build(session: AsyncSession, user: User, data: BuildCreate) -> 
         kind=ServiceRequestKind.build.value, user_id=user.id, department_id=dept.id,
         summary=f"HMS Rent: сборка ПК — {variant} (заказ №{order_number})",
         description="Проверить комплектующие, собрать и настроить ПК, завести его в Insight и выдать заказчику "
-        f"на странице «Заказы на подготовку» портала ({settings.public_url.rstrip('/')}/executor).\n\n" + "\n".join(lines),
+        f"на странице «Задачи исполнителя» портала ({settings.public_url.rstrip('/')}/executor).\n\n" + "\n".join(lines),
         payload={  # из него исполнитель выдаёт собранный ПК: бронь с тем же номером, сроком, ОС и ником
             "order_number": order_number, "expected_return_at": data.expected_return_at.isoformat(),
             "requester_nick": data.requester_nick, "os_label": data.os_label, "purpose": data.purpose or None,
@@ -434,12 +434,22 @@ async def available_transitions(req: ServiceRequest) -> list[dict]:
         raise DomainError(f"Не удалось получить переходы: {exc.user_message}") from exc
 
 
-async def move_issue(session: AsyncSession, req: ServiceRequest, transition_id: str) -> None:
-    """Переводит задачу Jira в новый статус; переход в закрытый ставит резолюцию Done."""
+async def move_issue(session: AsyncSession, req: ServiceRequest, transition_id: str, comment: str | None = None) -> None:
+    """Переводит задачу Jira в новый статус; переход в закрытый ставит резолюцию Done.
+
+    Комментарий исполнителя публикуется до перехода, после проверки, что переход ещё возможен: при сбое комментария
+    статус не меняется и действие можно повторить без дубля.
+    """
     found = {str(t["id"]): t for t in await available_transitions(req)}
     transition = found.get(transition_id)
     if transition is None:
         raise Conflict("Такого перехода уже нет: статус задачи изменили, обновите список")
+    if comment and comment.strip():
+        try:
+            await sd.add_staff_comment(req.issue_key, comment.strip())
+        except sd.ServiceDeskError as exc:
+            log.warning("Заявка %s: комментарий не отправлен: %s", req.issue_key, exc)
+            raise DomainError(f"Не удалось отправить комментарий: {exc.user_message}") from exc
     try:
         await sd.transition_issue(req.issue_key, transition_id,
                                   sd.RESOLUTION_DONE if sd.is_done_transition(transition) else None)
