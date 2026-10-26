@@ -25,16 +25,20 @@ export function ExecutorOrdersPage() {
   return (
     <>
       <PageHeader
-        title="Заказы на подготовку"
+        title="Задачи исполнителя"
         description={
           orders.data
             ? waiting.length
               ? `Ждут подготовки: ${waiting.length} ${plural(waiting.length, ['заказ', 'заказа', 'заказов'])}`
               : 'Все выданные ПК подготовлены'
-            : 'Выданные ПК: установите ОС, настройте и внесите данные для подключения'
+            : 'Подготовка ПК, сборки, проверка ВМ, очистка и диагностика'
         }
       />
       <Card>
+        <div className="border-b px-5 py-4">
+          <p className="font-semibold">Заказы на подготовку</p>
+          <p className="text-[13px] text-muted-foreground">Выданные ПК: установите ОС, настройте и внесите данные для подключения</p>
+        </div>
         <DataState
           query={orders}
           errorTitle="Не удалось загрузить заказы"

@@ -23,7 +23,7 @@ const userNav: NavItem[] = [
 ]
 
 const executorNav: NavItem[] = [
-  { to: '/executor', label: 'Заказы на подготовку', icon: Wrench },
+  { to: '/executor', label: 'Задачи исполнителя', icon: Wrench },
   { to: '/problems', label: 'Проблемы по заказам', icon: LifeBuoy },
 ]
 
@@ -74,7 +74,7 @@ export function AppShell() {
   const session = useSession()
   const isAdmin = session.user.role === 'admin'
   const isExecutor = canExecute(session.user.role)
-  // счётчик у «Заказов на подготовку»: выданные ПК, по которым исполнитель ещё не внёс данные для подключения
+  // счётчик у «Задач исполнителя»: выданные ПК, по которым исполнитель ещё не внёс данные для подключения
   // заказы, ждущие подготовки, вернувшиеся ПК, ждущие очистки диска, и ВМ, ждущие проверки
   const waitingCount =
     (useExecutorOrders(isExecutor).data?.filter((o) => !o.prepared_at).length ?? 0) +
