@@ -17,7 +17,7 @@ async def env(make_user, make_department, make_computer, make_pool):
     other = await make_user("other", department=qa)
     nodept = await make_user("nodept")
     mk = lambda name, **kw: make_computer(name, pool=pool, **kw)  # noqa: E731
-    await mk("A10", status="in_use", department_id=eco.id, usage_until=date(2026, 12, 31))
+    await mk("A10", status="in_use", department_id=eco.id, usage_until=date(2026, 12, 31), ip_address="10.5.0.10")
     await mk("A9", status="in_use", department_id=eco.id)
     await mk("A20", status="in_use", department_id=qa.id)  # чужой отдел
     await mk("A30", status="available", department_id=eco.id)  # не занят
@@ -38,7 +38,7 @@ async def test_team_sees_computers_given_to_its_department_outside_portal(client
     login(env.emp)
     assert await names(client, api) == ["A9", "A10"]  # естественный порядок; чужие, свободные, брони, архив, ВМ не попадают
     row = (await client.get(api("/bookings/external"))).json()[1]
-    assert (row["department"]["name"], row["usage_until"]) == ("Product Eco Department", "2026-12-31")
+    assert (row["department"]["name"], row["usage_until"], row["ip_address"]) == ("Product Eco Department", "2026-12-31", "10.5.0.10")
     assert "order_number" not in row
 
 

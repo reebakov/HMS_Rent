@@ -761,6 +761,7 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     computer: { id: 40, name: 'A-EXT', tier: 'medium', is_virtual: false, cpu: 'Ryzen 7', ram_gb: 32, storage: 'SSD 1TB', gpu: null },
     department: { id: 3, name: 'Product Eco Department' },
     usage_until: '3000-12-31',
+    ip_address: '10.5.0.7',
     ...over,
   })
 
@@ -773,6 +774,7 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     const card = screen.getByText('A-EXT').closest('div.p-5') as HTMLElement
     expect(within(card).getByText('Product Eco Department')).toBeInTheDocument()
     expect(within(card).getByText(formatDate('3000-12-31'))).toBeInTheDocument()
+    expect(within(card).getByText('10.5.0.7')).toBeInTheDocument()
     expect(within(card).getByText(/Выдан вне портала/)).toBeInTheDocument()
     expect(within(card).queryByText('Продлить')).not.toBeInTheDocument() // срок ведётся в Insight
     expect(within(card).queryByText(/Заказ №/)).not.toBeInTheDocument()
@@ -787,6 +789,12 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     expect(screen.queryByText('Активных бронирований нет')).not.toBeInTheDocument()
     expect(within(screen.getByText('A-OLD').closest('div.p-5') as HTMLElement).getByText('Без срока')).toBeInTheDocument()
     expect(within(screen.getByText('A-LATE').closest('div.p-5') as HTMLElement).getByText('Срок вышел')).toBeInTheDocument()
+  })
+
+  it('IP не указан в Insight — об этом сказано', async () => {
+    outside = [rental({ ip_address: null })]
+    renderPage()
+    expect(await screen.findByText('не указан')).toBeInTheDocument()
   })
 
   it('нет ни броней, ни таких ПК — понятная заглушка', async () => {
