@@ -99,16 +99,21 @@ async def _problems_out(session: AsyncSession, requests: list[ServiceRequest]) -
         select(Booking).where(Booking.id.in_([r.booking_id for r in requests if r.booking_id])))).unique()}
     vms = {v.id: v for v in (await session.scalars(
         select(VirtualMachine).where(VirtualMachine.id.in_([r.vm_id for r in requests if r.vm_id])))).unique()}
+    computers = {c.id: c for c in (await session.scalars(
+        select(Computer).where(Computer.id.in_([r.computer_id for r in requests if r.computer_id and not r.booking_id
+                                                  and not r.vm_id])))).unique()}
     rows = []
     for req in requests:
-        booking, vm = bookings.get(req.booking_id), vms.get(req.vm_id)
+        booking, vm, outside = bookings.get(req.booking_id), vms.get(req.vm_id), computers.get(req.computer_id)
         item = booking or vm
         rows.append(ExecutorProblemOut(
             id=req.id, issue_key=req.issue_key, issue_url=agent_url(req.issue_key) if req.issue_key else None,
             status=req.status, status_category=req.status_category, error=req.error,
             message=req.description.split(CONTEXT_SEPARATOR, 1)[0], created_at=req.created_at, reporter=req.user,
-            department=item.department, order_number=item.order_number,
-            target_name=booking.computer.name if booking else vm.name, is_vm=vm is not None,
+            # ПК вне портала: брони нет, отдел — «Команда-получатель» (или отдел автора, если ПК уже вернули)
+            department=item.department if item else (outside.department if outside and outside.department else req.user.department),
+            order_number=item.order_number if item else None,
+            target_name=booking.computer.name if booking else vm.name if vm else outside.name if outside else "ПК", is_vm=vm is not None,
             booking_id=booking.id if booking else None,
         ))
     return rows

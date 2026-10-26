@@ -78,11 +78,11 @@ export function ExecutorProblemsPage() {
                       <span className="font-semibold">{p.target_name}</span>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      {p.is_vm ? 'ВМ' : 'ПК'} · заказ №{p.order_number}
+                      {p.is_vm ? 'ВМ' : 'ПК'} · {p.order_number ? `заказ №${p.order_number}` : 'выдан вне портала'}
                     </p>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium">{p.department.name}</p>
+                    <p className="font-medium">{p.department?.name ?? '—'}</p>
                     <p className="text-xs text-muted-foreground">{p.reporter.display_name}</p>
                   </td>
                   <td className="max-w-md whitespace-pre-line px-4 py-3">{p.message}</td>

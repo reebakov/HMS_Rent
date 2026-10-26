@@ -92,6 +92,14 @@ describe('ExecutorProblemsPage', () => {
     expect(screen.getByText('ВМ · заказ №555')).toBeInTheDocument()
   })
 
+  it('ПК, выданный вне портала: вместо номера заказа пометка, без отдела — прочерк', async () => {
+    problems = [makeProblem({ booking_id: null, target_name: 'A-EXT', order_number: null, department: null })]
+    mount()
+    expect(await screen.findByText('A-EXT')).toBeInTheDocument()
+    expect(screen.getByText('ПК · выдан вне портала')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
   it('заявка в Jira не создалась — об этом сказано, ссылки нет', async () => {
     problems = [makeProblem({ issue_key: null, issue_url: null, status: null, status_category: null, error: 'Service Desk недоступен' })]
     mount()

@@ -27,6 +27,14 @@ async def external_rentals(user: CurrentUser, session: DB) -> list[ExternalRenta
     return await service.list_external_rentals(session, user)
 
 
+@router.post("/external/{computer_id}/return", response_model=BookingOut)
+async def return_external(computer_id: int, data: BookingReturn, user: CurrentUser, session: DB, tasks: BackgroundTasks) -> Booking:
+    """Возврат ПК, выданного отделу мимо портала: в журнале появляется закрытая бронь, ПК уходит на очистку."""
+    booking = await service.return_external(session, user, computer_id, data.comment)
+    tasks.add_task(service.create_return_request, booking.id, user.id)
+    return booking
+
+
 @router.post("/{booking_id}/return", response_model=BookingOut)
 async def return_booking(
     booking_id: int, data: BookingReturn, user: CurrentUser, session: DB, tasks: BackgroundTasks

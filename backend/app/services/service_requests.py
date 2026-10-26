@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import workdays
@@ -14,6 +14,8 @@ from app.models import (
     AssetEvent,
     Booking,
     BookingStatus,
+    Computer,
+    ComputerStatus,
     EventType,
     ServiceRequest,
     ServiceRequestKind,
@@ -23,7 +25,7 @@ from app.models import (
 )
 from app.schemas.service_request import BuildCreate, RequestOut
 from app.services import departments, notifications, runtime, term_limit
-from app.services.access import ensure_access, mine_or_team
+from app.services.access import ensure_access, ensure_external_rental, mine_or_team
 from app.services.orders import next_order_number, requester_name
 
 log = logging.getLogger(__name__)
@@ -78,8 +80,17 @@ async def _send(req: ServiceRequest, on_behalf_of: str | None) -> None:
         log.warning("Шапка задачи %s не изменена: %s", key, exc)
 
 
+def _computer_text(c: Computer) -> str:
+    specs = " · ".join(x for x in (c.cpu, f"{c.ram_gb} ГБ" if c.ram_gb else None, c.storage, c.gpu) if x)
+    return "\n".join([
+        f"Компьютер: {c.name} ({c.insight_key or 'без ключа'}), выдан вне портала",
+        f"Характеристики: {specs or '—'}",
+        f"Команда-получатель: {c.department.name if c.department else '—'}",
+    ])
+
+
 async def create_problem(session: AsyncSession, user: User, *, booking_id: int | None, vm_id: int | None,
-                         message: str) -> ServiceRequest:
+                         message: str, computer_id: int | None = None) -> ServiceRequest:
     if not settings.service_desk_configured:
         raise DomainError("Заявки в Service Desk пока не подключены — напишите в HMS")
     if booking_id:
@@ -96,11 +107,16 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
         ensure_access(user, item.user_id, item.department_id, "Это не ваша виртуалка")
         summary = f"HMS Rent: проблема с ВМ {item.name} (заказ №{item.order_number})"
         context = _vm_text(item)
+    elif computer_id:
+        item = ensure_external_rental(user, await session.get(Computer, computer_id), "Это не ваш компьютер")
+        summary = f"HMS Rent: проблема с ПК {item.name} (выдан вне портала)"
+        context = _computer_text(item)
     else:
         raise DomainError("Укажите компьютер или виртуалку")
 
     req = ServiceRequest(
-        kind=ServiceRequestKind.problem.value, user_id=user.id, booking_id=booking_id, vm_id=vm_id, summary=summary,
+        kind=ServiceRequestKind.problem.value, user_id=user.id, booking_id=booking_id, vm_id=vm_id, computer_id=computer_id,
+        summary=summary,
         description=f"{message}\n\n---\nЧто сделать: разобраться с проблемой и ответить заказчику публичным комментарием "
                     f"(он увидит его в портале). Статус задачи можно менять в Jira или на вкладке «Проблемы по заказам».\n\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
@@ -281,8 +297,10 @@ def _visible_to(user: User):
     """Условие доступа к заявке: своя, сборка команды или заявка по ПК и виртуалкам пользователя и его команды."""
     bookings = select(Booking.id).where(mine_or_team(user, Booking.user_id, Booking.department_id))
     vms = select(VirtualMachine.id).where(mine_or_team(user, VirtualMachine.user_id, VirtualMachine.department_id))
+    outside = select(Computer.id).where(Computer.department_id == user.department_id, Computer.status == ComputerStatus.in_use)
     return or_(mine_or_team(user, ServiceRequest.user_id, ServiceRequest.department_id),
-               ServiceRequest.booking_id.in_(bookings), ServiceRequest.vm_id.in_(vms))
+               ServiceRequest.booking_id.in_(bookings), ServiceRequest.vm_id.in_(vms),
+               and_(ServiceRequest.kind == ServiceRequestKind.problem.value, ServiceRequest.computer_id.in_(outside)))
 
 
 async def list_for_user(session: AsyncSession, user: User) -> list[ServiceRequest]:

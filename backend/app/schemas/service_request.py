@@ -10,12 +10,13 @@ from app.schemas.common import InputModel, ORMModel, ReturnDate
 class RequestCreate(InputModel):
     booking_id: int | None = None
     vm_id: int | None = None
+    computer_id: int | None = None  # ПК, выданный отделу мимо портала (брони нет)
     message: str = Field(min_length=5, max_length=5000)
 
     @model_validator(mode="after")
     def one_item(self):
-        if bool(self.booking_id) == bool(self.vm_id):
-            raise ValueError("Укажите либо компьютер (booking_id), либо виртуалку (vm_id)")
+        if sum(bool(x) for x in (self.booking_id, self.vm_id, self.computer_id)) != 1:
+            raise ValueError("Укажите ровно одно: компьютер по брони (booking_id), виртуалку (vm_id) или ПК вне портала (computer_id)")
         return self
 
 
@@ -66,6 +67,7 @@ class RequestOut(ORMModel):
     kind: str
     booking_id: int | None
     vm_id: int | None
+    computer_id: int | None
     department_id: int | None
     issue_key: str | None
     summary: str
