@@ -101,7 +101,8 @@ async def create_problem(session: AsyncSession, user: User, *, booking_id: int |
 
     req = ServiceRequest(
         kind=ServiceRequestKind.problem.value, user_id=user.id, booking_id=booking_id, vm_id=vm_id, summary=summary,
-        description=f"{message}\n\n---\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
+        description=f"{message}\n\n---\nЧто сделать: разобраться с проблемой и ответить заказчику публичным комментарием "
+                    f"(он увидит его в портале). Статус задачи можно менять в Jira или на вкладке «Проблемы по заказам».\n\n{context}\nОбращение отправил: {user.display_name} ({user.email or user.username})",
     )
     try:
         await _send(req, user.username)
@@ -134,7 +135,10 @@ async def create_return(session: AsyncSession, booking_id: int, actor: User) -> 
     await _save_in_background(session, ServiceRequest(
         kind=ServiceRequestKind.return_.value, user_id=actor.id, booking_id=b.id,
         summary=f"HMS Rent: возврат ПК {b.computer.name} (заказ №{b.order_number})",
-        description=_booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
+        description="Отформатировать диски вернувшегося ПК и подтвердить очистку: «Диск очищен» в блоке «Ждут очистки» на "
+        f"странице «Заказы на подготовку» ({settings.public_url.rstrip('/')}/executor) или закрыть эту задачу в Jira после очистки "
+        "диска: ПК снова станет свободным.\n\n"
+        + _booking_text(b) + (f"\nКомментарий при возврате: {b.return_comment}" if b.return_comment else "")
         + f"\nВернул: {actor.display_name} ({actor.email or actor.username})",
     ), actor)
 
@@ -148,7 +152,7 @@ def new_diagnose(b: Booking, pool, actor: User, comment: str) -> ServiceRequest:
     return ServiceRequest(
         kind=ServiceRequestKind.diagnose.value, user_id=actor.id if actor else b.user_id, computer_id=b.computer_id,
         pool_id=pool.id if pool else None, summary=f"HMS Rent: диагностика комплекта {b.computer.name}",
-        description=f"ПК выведен из пула как неисправный (заказ №{b.order_number}, отклонён).\n"
+        description=f"ПК выведен из пула как неисправный (заказ №{b.order_number}).\n"
                     f"Комментарий исполнителя: {comment}\n"
                     + (f"Отметил: {actor.display_name} ({actor.email or actor.username})\n" if actor else "")
                     + (f"Прежний пул: {pool.name}\n" if pool else "")

@@ -354,6 +354,7 @@ async def test_diagnose_request_remembers_computer_and_previous_pool(client, api
     (req,) = await session.scalars(select(ServiceRequest))
     assert (req.computer_id, req.pool_id, req.issue_key, req.portal_done_at) == (comp.id, pool_id, "HMS-1", None)
     assert "Прежний пул: Main" in req.description and "Вернуть в пул" in req.description
+    assert "отклонён" not in req.description.splitlines()[0]  # та же заявка нужна и при замене сервера
 
 
 async def test_diagnose_request_is_kept_even_without_service_desk(client, api, env, session, monkeypatch):
