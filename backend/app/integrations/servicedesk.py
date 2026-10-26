@@ -96,7 +96,10 @@ def _error(resp: httpx.Response) -> str:
 def _status(data: dict) -> SdStatus:
     cur = data.get("currentStatus")
     cur = cur if isinstance(cur, dict) else {}
-    return SdStatus(status=cur.get("status"), category=(cur.get("statusCategory") or "").lower() or None)
+    category = (cur.get("statusCategory") or "").lower() or None
+    if cur.get("status") in DONE_STATUSES:  # «Готово» закрыто и тогда, когда категорию статуса Service Desk не отдал
+        category = "done"
+    return SdStatus(status=cur.get("status"), category=category)
 
 
 def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
@@ -172,12 +175,21 @@ COMMENT_PAGE_SIZE = 100
 COMMENT_PAGES = 10  # потолок: переписка длиннее 1000 комментариев не нужна, а цикл не должен быть бесконечным
 
 
-async def add_comment(issue_key: str, author_name: str, text: str) -> None:
+async def _post_comment(issue_key: str, body: str) -> None:
     async with _client() as http:
-        resp = await _send(http, "POST", f"/request/{issue_key}/comment",
-                           json={"body": f"{PORTAL_PREFIX}{author_name}: {text}", "public": True})
+        resp = await _send(http, "POST", f"/request/{issue_key}/comment", json={"body": body, "public": True})
         if resp.status_code >= 400:
             raise ServiceDeskError(_error(resp))
+
+
+async def add_comment(issue_key: str, author_name: str, text: str) -> None:
+    """Сообщение заказчика из портала: с меткой, по ней его отличают от ответов исполнителей."""
+    await _post_comment(issue_key, f"{PORTAL_PREFIX}{author_name}: {text}")
+
+
+async def add_staff_comment(issue_key: str, text: str) -> None:
+    """Ответ исполнителя из портала: публичный и без метки, заказчик видит его как ответ поддержки (имя не раскрывается)."""
+    await _post_comment(issue_key, text)
 
 
 async def request_type_fields(request_type_id: int) -> list[dict]:

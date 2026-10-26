@@ -107,6 +107,13 @@ async def test_get_status(jira):
     assert await sd.get_status("HMS-5") == sd.SdStatus("Решено", "done")
 
 
+@pytest.mark.parametrize("status, category", [("Готово", "INDETERMINATE"), ("Done", None), ("Готово", "NEW")])
+async def test_get_status_done_by_name_even_if_category_says_otherwise(jira, status, category):
+    """Регрессия: «Готово» висело открытым, если Service Desk отдавал для него не ту категорию."""
+    jira.get(f"{API}/request/HMS-5").respond(200, json=created("HMS-5", status, category))
+    assert await sd.get_status("HMS-5") == sd.SdStatus(status, "done")
+
+
 @pytest.mark.parametrize("data, expected", [
     ({"currentStatus": {"status": "Открыта"}}, sd.SdStatus("Открыта", None)),  # без категории
     ({}, sd.SdStatus(None, None)),  # без статуса вообще
@@ -172,6 +179,12 @@ async def test_add_comment_format_and_public(jira):
     assert sent(route)["body"].startswith(sd.PORTAL_PREFIX)
 
 
+async def test_add_staff_comment_is_public_and_without_portal_prefix(jira):
+    route = jira.post(f"{API}/request/HMS-5/comment").respond(201, json={})
+    await sd.add_staff_comment("HMS-5", "Заменили кабель")
+    assert sent(route) == {"body": "Заменили кабель", "public": True}  # без метки: это не сообщение заказчика
+
+
 async def test_request_type_fields(jira):
     fields = [{"fieldId": "summary", "required": True}, {"fieldId": "description", "required": False}]
     route = jira.get(f"{API}/servicedesk/54/requesttype/1248/field").respond(200, json={"requestTypeFields": fields})
@@ -190,6 +203,7 @@ CALLS = {
     "status": (lambda: sd.get_status("HMS-5"), "get", "/request/HMS-5"),
     "comments": (lambda: sd.get_comments("HMS-5"), "get", "/request/HMS-5/comment"),
     "add_comment": (lambda: sd.add_comment("HMS-5", "И", "т"), "post", "/request/HMS-5/comment"),
+    "add_staff_comment": (lambda: sd.add_staff_comment("HMS-5", "т"), "post", "/request/HMS-5/comment"),
     "fields": (lambda: sd.request_type_fields(1248), "get", "/servicedesk/54/requesttype/1248/field"),
 }
 

@@ -434,12 +434,22 @@ async def available_transitions(req: ServiceRequest) -> list[dict]:
         raise DomainError(f"Не удалось получить переходы: {exc.user_message}") from exc
 
 
-async def move_issue(session: AsyncSession, req: ServiceRequest, transition_id: str) -> None:
-    """Переводит задачу Jira в новый статус; переход в закрытый ставит резолюцию Done."""
+async def move_issue(session: AsyncSession, req: ServiceRequest, transition_id: str, comment: str | None = None) -> None:
+    """Переводит задачу Jira в новый статус; переход в закрытый ставит резолюцию Done.
+
+    Комментарий исполнителя публикуется до перехода, после проверки, что переход ещё возможен: при сбое комментария
+    статус не меняется и действие можно повторить без дубля.
+    """
     found = {str(t["id"]): t for t in await available_transitions(req)}
     transition = found.get(transition_id)
     if transition is None:
         raise Conflict("Такого перехода уже нет: статус задачи изменили, обновите список")
+    if comment and comment.strip():
+        try:
+            await sd.add_staff_comment(req.issue_key, comment.strip())
+        except sd.ServiceDeskError as exc:
+            log.warning("Заявка %s: комментарий не отправлен: %s", req.issue_key, exc)
+            raise DomainError(f"Не удалось отправить комментарий: {exc.user_message}") from exc
     try:
         await sd.transition_issue(req.issue_key, transition_id,
                                   sd.RESOLUTION_DONE if sd.is_done_transition(transition) else None)

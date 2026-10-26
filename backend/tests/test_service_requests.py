@@ -113,6 +113,9 @@ class FakeSd:
         if self.send_error:
             raise self.send_error
 
+    async def add_staff_comment(self, key, text):
+        await self.add_comment(key, None, text)  # ответ исполнителя: автора и метки портала нет
+
 
 def boom(text="Service Desk 500: boom") -> Exception:
     return real_sd.ServiceDeskError(text)

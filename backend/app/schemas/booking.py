@@ -161,6 +161,7 @@ class ProblemTransitionOut(BaseModel):
 
 class ProblemTransitionIn(InputModel):
     transition_id: str = Field(min_length=1, max_length=16)
+    comment: str | None = Field(default=None, max_length=2000)  # публичный ответ заказчику перед сменой статуса
 
 
 REJECT_REASONS = ("Сервер неисправен", "Заказчик не ответил", "Некорректный заказ")

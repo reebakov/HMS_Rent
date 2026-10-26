@@ -166,12 +166,54 @@ describe('ExecutorProblemsPage: смена статуса', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument())
   })
 
-  it('ошибка Jira показана тостом, меню остаётся открытым', async () => {
+  it('ошибка Jira при обычном переходе показана тостом, меню остаётся открытым', async () => {
     vi.mocked(api.post).mockRejectedValue(new ApiError(400, 'Не удалось сменить статус: Service Desk недоступен'))
     const user = await open()
-    await user.click(await screen.findByRole('button', { name: 'Готово' }))
+    await user.click(await screen.findByRole('button', { name: 'В работе' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Не удалось сменить статус: Service Desk недоступен'))
     expect(screen.getByRole('button', { name: 'Готово' })).toBeInTheDocument()
+  })
+
+  describe('закрытие задачи', () => {
+    const openClose = async () => {
+      const user = await open()
+      await user.click(await screen.findByRole('button', { name: 'Готово' }))
+      return { user, dialog: await screen.findByRole('dialog', { name: 'Закрыть задачу DR-501?' }) }
+    }
+
+    it('переход в закрытый статус просит подтверждение и без него ничего не отправляет', async () => {
+      const { user, dialog } = await openClose()
+      expect(api.post).not.toHaveBeenCalled()
+      await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('подтверждение без комментария: POST без comment', async () => {
+      vi.mocked(api.post).mockResolvedValue(makeProblem({ status: 'Готово', status_category: 'done' }))
+      const { user, dialog } = await openClose()
+      await user.click(within(dialog).getByRole('button', { name: 'Закрыть задачу' }))
+      expect(api.post).toHaveBeenCalledWith('/executor/problems/1/transition', { transition_id: '151' })
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Задача DR-501: Готово'))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    })
+
+    it('свой комментарий уходит вместе с переходом, пробелы по краям обрезаются', async () => {
+      vi.mocked(api.post).mockResolvedValue(makeProblem({ status: 'Готово', status_category: 'done' }))
+      const { user, dialog } = await openClose()
+      await user.type(within(dialog).getByLabelText(/Комментарий для заказчика/), '  Заменили кабель  ')
+      await user.click(within(dialog).getByRole('button', { name: 'Закрыть задачу' }))
+      expect(api.post).toHaveBeenCalledWith('/executor/problems/1/transition', { transition_id: '151', comment: 'Заменили кабель' })
+    })
+
+    it('ошибка показана в окне, оно остаётся открытым с введённым комментарием', async () => {
+      vi.mocked(api.post).mockRejectedValue(new ApiError(400, 'Не удалось отправить комментарий: Service Desk недоступен'))
+      const { user, dialog } = await openClose()
+      await user.type(within(dialog).getByLabelText(/Комментарий для заказчика/), 'Готово')
+      await user.click(within(dialog).getByRole('button', { name: 'Закрыть задачу' }))
+      expect(await within(dialog).findByText('Не удалось отправить комментарий: Service Desk недоступен')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText(/Комментарий для заказчика/)).toHaveValue('Готово')
+    })
   })
 
   it('переходов нет — об этом сказано', async () => {
