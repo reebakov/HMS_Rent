@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorBuild, ExecutorBuildIssue, PoolShort, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorBuild, ExecutorBuildIssue, ExternalRental, PoolShort, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
 } from './types'
 
 export interface ComputerFilters {
@@ -48,6 +48,9 @@ export const useDepartments = () =>
 /** ОС и типовые сборки для брони ПК и сборки по запросу */
 export const useOrderOptions = (enabled = true) =>
   useQuery({ queryKey: ['order-options'], queryFn: () => api.get<OrderOptions>('/catalog/order-options'), enabled, staleTime: 5 * 60_000 })
+
+export const useExternalRentals = () =>
+  useQuery({ queryKey: ['external-rentals'], queryFn: () => api.get<ExternalRental[]>('/bookings/external') })
 
 export const useMyBookings = () =>
   useQuery({ queryKey: ['my-bookings'], queryFn: () => api.get<Booking[]>('/bookings/my') })

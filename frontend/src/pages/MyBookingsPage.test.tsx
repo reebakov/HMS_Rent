@@ -8,7 +8,7 @@ import { api, ApiError } from '@/lib/api'
 import { useSdConfig } from '@/lib/queries'
 import { failGetOnce, makeServiceRequest, makeSession, prepared, renderWithProviders, unprepared } from '@/test/helpers'
 import { formatDate } from '@/lib/utils'
-import type { Booking, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
+import type { Booking, ExternalRental, ServiceComment, ServiceRequest, Vm } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -72,6 +72,7 @@ const makeRequest = makeServiceRequest
 let bookings: Booking[]
 let vms: Vm[]
 let requests: ServiceRequest[]
+let outside: ExternalRental[]
 let comments: ServiceComment[]
 let sdEnabled: boolean // включается в блоке «заявки Service Desk»
 
@@ -82,6 +83,7 @@ beforeEach(() => {
   bookings = []
   vms = []
   requests = []
+  outside = []
   comments = []
   sdEnabled = false
   vi.mocked(api.get).mockReset()
@@ -89,6 +91,7 @@ beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async (path: string) => {
     if (path === '/bookings/my') return bookings
     if (path === '/vms/my') return vms
+    if (path === '/bookings/external') return outside
     if (path === '/requests/config') return { enabled: sdEnabled }
     if (path === '/requests/my') return requests
     const m = /^\/requests\/(\d+)$/.exec(path)
@@ -749,5 +752,50 @@ describe('MyBookingsPage: отмена заказа до подготовки', 
     const table = await screen.findByRole('table')
     expect(within(table).getByText('Отменён')).toBeInTheDocument()
     expect(within(table).getByText('Отклонён')).toBeInTheDocument()
+  })
+})
+
+
+describe('MyBookingsPage: ПК, выданные вне портала', () => {
+  const rental = (over: Partial<ExternalRental> = {}): ExternalRental => ({
+    computer: { id: 40, name: 'A-EXT', tier: 'medium', is_virtual: false, cpu: 'Ryzen 7', ram_gb: 32, storage: 'SSD 1TB', gpu: null },
+    department: { id: 3, name: 'Product Eco Department' },
+    usage_until: '3000-12-31',
+    ...over,
+  })
+
+  it('показываются карточкой рядом с обычными бронями: имя, отдел, срок, без номера заказа и без кнопок', async () => {
+    bookings = [makeBooking()]
+    outside = [rental()]
+    renderPage()
+    expect(await screen.findByText('A-EXT')).toBeInTheDocument()
+    expect(screen.getByText('PC-010')).toBeInTheDocument()
+    const card = screen.getByText('A-EXT').closest('div.p-5') as HTMLElement
+    expect(within(card).getByText('Product Eco Department')).toBeInTheDocument()
+    expect(within(card).getByText(formatDate('3000-12-31'))).toBeInTheDocument()
+    expect(within(card).getByText(/Выдан вне портала/)).toBeInTheDocument()
+    expect(within(card).queryByText(/Заказ №/)).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('без брони, но с такими ПК пустого состояния нет; без срока — «Без срока», просроченный — «Срок вышел»', async () => {
+    outside = [rental(), rental({ computer: { ...rental().computer, id: 41, name: 'A-OLD' }, usage_until: null }),
+               rental({ computer: { ...rental().computer, id: 42, name: 'A-LATE' }, usage_until: '2000-01-01' })]
+    renderPage()
+    expect(await screen.findByText('A-EXT')).toBeInTheDocument()
+    expect(screen.queryByText('Активных бронирований нет')).not.toBeInTheDocument()
+    expect(within(screen.getByText('A-OLD').closest('div.p-5') as HTMLElement).getByText('Без срока')).toBeInTheDocument()
+    expect(within(screen.getByText('A-LATE').closest('div.p-5') as HTMLElement).getByText('Срок вышел')).toBeInTheDocument()
+  })
+
+  it('нет ни броней, ни таких ПК — понятная заглушка', async () => {
+    renderPage()
+    expect(await screen.findByText('Активных бронирований нет')).toBeInTheDocument()
+  })
+
+  it('ошибка загрузки показана явно', async () => {
+    failGetOnce(vi.mocked(api.get), '/bookings/external')
+    renderPage()
+    expect(await screen.findByText('Не удалось загрузить ПК, выданные вне портала')).toBeInTheDocument()
   })
 })

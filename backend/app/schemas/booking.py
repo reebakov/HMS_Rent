@@ -49,6 +49,14 @@ class BookingOut(ORMModel):
     prepared_at: datetime | None
 
 
+class ExternalRentalOut(ORMModel):
+    """ПК, выданный мимо портала: в Insight «Используется» и «Команда-получатель» — отдел сотрудника. Брони нет."""
+
+    computer: ComputerShort
+    department: DepartmentShort
+    usage_until: date | None  # «Срок использования» из Insight
+
+
 class ExecutorOrderOut(BookingOut):
     """Заказ для исполнителя: заказчику имя исполнителя не показывается, поэтому поле только здесь."""
 

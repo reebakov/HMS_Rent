@@ -12,7 +12,7 @@ import { RequesterNote } from '@/features/booking/RequesterNote'
 import { PendingTermNote } from '@/features/booking/TermLimit'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
-import { useCancelBuild, useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
+import { useCancelBuild, useExternalRentals, useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
 import type { Booking, ServiceRequest } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
@@ -24,6 +24,8 @@ export function MyBookingsPage() {
   const [returning, setReturning] = useState<Booking | null>(null)
   const [extending, setExtending] = useState<ExtendTarget | null>(null)
   const requests = useMyRequests()
+  const external = useExternalRentals()
+  const outside = external.data ?? []
   const cancelBuild = useCancelBuild()
   const [cancelling, setCancelling] = useState<ServiceRequest | null>(null)
   const [problem, setProblem] = useState<ProblemTarget>(null)
@@ -65,6 +67,7 @@ export function MyBookingsPage() {
       />
 
       <QueryError query={requests} title="Не удалось загрузить заявки" cardClass="mb-8" />
+      <QueryError query={external} title="Не удалось загрузить ПК, выданные вне портала" cardClass="mb-8" />
 
       {builds.length > 0 && (
         <Card className="mb-8">
@@ -109,7 +112,7 @@ export function MyBookingsPage() {
             <Skeleton className="h-44 rounded-xl" />
           </div>
         }
-        isEmpty={() => active.length === 0}
+        isEmpty={() => active.length === 0 && outside.length === 0}
         empty={
           <Card>
             <EmptyState
@@ -193,6 +196,36 @@ export function MyBookingsPage() {
                     </Button>
                     </div>
                   </div>
+                </Card>
+              )
+            })}
+            {outside.map((r) => {
+              const overdue = isOverdue(r.usage_until)
+              return (
+                <Card key={r.computer.id} className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-semibold tracking-tight">{r.computer.name}</p>
+                        <TierBadge tier={r.computer.tier} />
+                      </div>
+                      <p className="mt-0.5 text-[13px] text-muted-foreground">{computerSpecs(r.computer)}</p>
+                    </div>
+                    {overdue ? <Badge tone="danger">Срок вышел</Badge> : <Badge tone="primary" dot>Активна</Badge>}
+                  </div>
+                  <dl className="mt-5 grid grid-cols-2 gap-4 text-[13px]">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Отдел</dt>
+                      <dd className="mt-0.5 font-medium">{r.department.name}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Вернуть до</dt>
+                      <dd className={overdue ? 'mt-0.5 font-medium text-danger' : 'mt-0.5 font-medium'}>
+                        {r.usage_until ? formatDate(r.usage_until) : 'Без срока'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-4 text-[13px] text-muted-foreground">Выдан вне портала: вернуть или продлить его здесь нельзя.</p>
                 </Card>
               )
             })}
