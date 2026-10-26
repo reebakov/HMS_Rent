@@ -55,6 +55,7 @@ class ExternalRentalOut(ORMModel):
     computer: ComputerShort
     department: DepartmentShort
     usage_until: date | None  # «Срок использования» из Insight
+    ip_address: str | None  # IP из Insight
 
 
 class ExecutorOrderOut(BookingOut):

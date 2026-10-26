@@ -301,7 +301,7 @@ async def list_external_rentals(session: AsyncSession, user: User) -> list[Exter
             Computer.is_archived.is_(False), Computer.is_virtual.is_(False),
         )
     )).unique().all()
-    return [ExternalRentalOut(computer=c, department=c.department, usage_until=c.usage_until)
+    return [ExternalRentalOut(computer=c, department=c.department, usage_until=c.usage_until, ip_address=c.ip_address)
             for c in sorted(rows, key=lambda c: natural_key(c.name))]
 
 

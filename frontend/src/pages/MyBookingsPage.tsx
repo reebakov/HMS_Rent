@@ -237,6 +237,12 @@ export function MyBookingsPage() {
                         {r.usage_until ? formatDate(r.usage_until) : 'Без срока'}
                       </dd>
                     </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">IP-адрес</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {r.ip_address ? <span className="font-mono">{r.ip_address}</span> : <span className="text-muted-foreground">не указан</span>}
+                      </dd>
+                    </div>
                   </dl>
                   <p className="mt-4 text-[13px] text-muted-foreground">Выдан вне портала: продлить срок здесь нельзя, срок ведётся в Insight.</p>
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">

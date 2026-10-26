@@ -131,6 +131,7 @@ export interface ExternalRental {
   computer: ComputerShort
   department: { id: number; name: string }
   usage_until: string | null
+  ip_address: string | null
 }
 
 export interface ExecutorOrder extends Booking {
