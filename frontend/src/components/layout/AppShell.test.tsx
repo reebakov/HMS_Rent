@@ -10,9 +10,10 @@ import type { ExecutorOrder, ExtensionOut, OverdueItem, Session, TermRequestOut 
 
 let session: Session
 const logout = vi.fn()
+const stopViewAs = vi.fn()
 vi.mock('@/auth/AuthProvider', () => ({
   useSession: () => session,
-  useAuth: () => ({ session, loading: false, login: vi.fn(), logout }),
+  useAuth: () => ({ session, loading: false, login: vi.fn(), logout, stopViewAs }),
 }))
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -461,5 +462,21 @@ describe('AppShell: «Сроки аренды»', () => {
     expect(api.get).not.toHaveBeenCalledWith('/admin/overdue')
     expect(api.get).not.toHaveBeenCalledWith('/admin/term-requests')
     expect(api.get).not.toHaveBeenCalledWith('/admin/extensions')
+  })
+
+  it('в режиме просмотра есть плашка с именем сотрудника и кнопкой выхода', async () => {
+    session = { ...makeSession({ display_name: 'Иван Иванов' }), view_as_by: { id: 9, display_name: 'Босс' } }
+    stopViewAs.mockReset().mockResolvedValue(undefined)
+    mountShell()
+    const banner = screen.getByRole('status')
+    expect(banner).toHaveTextContent('Режим просмотра: вы видите портал глазами Иван Иванов. Действия недоступны.')
+    await userEvent.click(within(banner).getByRole('button', { name: 'Выйти из режима' }))
+    expect(stopViewAs).toHaveBeenCalled()
+  })
+
+  it('без режима просмотра плашки нет', async () => {
+    session = makeSession()
+    mountShell()
+    expect(screen.queryByText(/Режим просмотра/)).not.toBeInTheDocument()
   })
 })

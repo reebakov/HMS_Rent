@@ -5,6 +5,10 @@ import { PeoplePage } from './PeoplePage'
 import { api } from '@/lib/api'
 import { renderWithProviders } from '@/test/helpers'
 
+vi.mock('@/auth/AuthProvider', () => ({
+  useSession: () => ({ user: { id: 1 } }),
+  useAuth: () => ({ viewAs: vi.fn() }),
+}))
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },

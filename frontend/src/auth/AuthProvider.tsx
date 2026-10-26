@@ -8,6 +8,9 @@ interface AuthContextValue {
   loading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** Администратор открывает портал глазами сотрудника (только просмотр); stop — возврат к своей учётке */
+  viewAs: (userId: number) => Promise<void>
+  stopViewAs: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -42,7 +45,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null)
   }, [qc])
 
-  return <AuthContext.Provider value={{ session, loading, login, logout }}>{children}</AuthContext.Provider>
+  // данные в кэше принадлежали другому пользователю: после переключения их нужно загрузить заново
+  const viewAs = useCallback(async (userId: number) => {
+    setSession(await api.post<Session>('/auth/view-as', { user_id: userId }))
+    qc.clear()
+  }, [qc])
+
+  const stopViewAs = useCallback(async () => {
+    setSession(await api.del<Session>('/auth/view-as'))
+    qc.clear()
+  }, [qc])
+
+  return <AuthContext.Provider value={{ session, loading, login, logout, viewAs, stopViewAs }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

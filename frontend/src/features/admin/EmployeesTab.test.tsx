@@ -7,6 +7,11 @@ import { api } from '@/lib/api'
 import { failGetOnce, renderWithProviders } from '@/test/helpers'
 import type { AdminUserRow } from '@/lib/types'
 
+const viewAs = vi.fn()
+vi.mock('@/auth/AuthProvider', () => ({
+  useSession: () => ({ user: { id: 2 } }), // администратор — второй в списке
+  useAuth: () => ({ viewAs }),
+}))
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), url: vi.fn() },
@@ -31,6 +36,7 @@ beforeEach(() => {
     makeUser({ id: 3, username: 'new@example.com', display_name: 'new', email: 'new@example.com', auth_source: 'microsoft', is_active: false }),
   ]
   for (const m of [api.get, api.post, api.patch, api.del]) vi.mocked(m).mockReset()
+  viewAs.mockReset().mockResolvedValue(undefined)
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
   vi.mocked(api.get).mockImplementation(async (path: string) => {
@@ -43,6 +49,31 @@ beforeEach(() => {
 })
 
 const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement
+
+describe('EmployeesTab: «Открыть как пользователь»', () => {
+  it('кнопка есть у чужих активных сотрудников, нет у себя и у заблокированных', async () => {
+    renderWithProviders(<EmployeesTab />)
+    await screen.findByText('Иван Иванов')
+    expect(within(rowOf('Иван Иванов')).getByRole('button', { name: 'Открыть как пользователь' })).toBeInTheDocument()
+    expect(within(rowOf('Админ')).queryByRole('button', { name: 'Открыть как пользователь' })).not.toBeInTheDocument()
+    expect(within(rowOf('new')).queryByRole('button', { name: 'Открыть как пользователь' })).not.toBeInTheDocument()
+  })
+
+  it('нажатие открывает портал глазами выбранного сотрудника', async () => {
+    renderWithProviders(<EmployeesTab />)
+    await screen.findByText('Иван Иванов')
+    await userEvent.click(within(rowOf('Иван Иванов')).getByRole('button', { name: 'Открыть как пользователь' }))
+    expect(viewAs).toHaveBeenCalledWith(1)
+  })
+
+  it('ошибка показана тостом', async () => {
+    viewAs.mockRejectedValue(new Error('Пользователь не найден или отключён'))
+    renderWithProviders(<EmployeesTab />)
+    await screen.findByText('Иван Иванов')
+    await userEvent.click(within(rowOf('Иван Иванов')).getByRole('button', { name: 'Открыть как пользователь' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Пользователь не найден или отключён'))
+  })
+})
 
 describe('EmployeesTab', () => {
   it('рисует сотрудников: источник входа, роль, отдел; заранее заведённый (microsoft) — «Bouncer»', async () => {

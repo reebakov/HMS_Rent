@@ -1,24 +1,28 @@
+import logging
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import DB, CurrentUser
+from app.api.deps import DB, VIEW_AS_COOKIE, CurrentUser, get_real_user
 from app.core.config import settings
-from app.core.security import create_oauth_state, create_session_token, read_oauth_state
+from app.core.security import create_oauth_state, create_session_token, create_view_as_token, read_oauth_state
 from app.integrations.auth import bouncer
 from app.integrations.auth.base import AuthError
 from app.models import User
-from app.schemas.auth import AuthConfigOut, LoginIn, SessionOut, UserOut
+from app.schemas.auth import AuthConfigOut, LoginIn, SessionOut, UserOut, ViewAsBy, ViewAsIn
 from app.services import auth, runtime
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+log = logging.getLogger(__name__)
 
 OAUTH_COOKIE = "hmsrent_oauth"
 
 
-def _session_out(user: User) -> SessionOut:
-    return SessionOut(user=UserOut.model_validate(user), app_name=settings.app_name,
+def _session_out(user: User, viewer: User | None = None) -> SessionOut:
+    return SessionOut(user=UserOut.model_validate(user), view_as_by=ViewAsBy.model_validate(viewer) if viewer else None,
+                      app_name=settings.app_name,
                       app_subtitle=settings.app_subtitle, insight_mode=settings.insight_mode,
                       catalog_refresh_sec=runtime.current().catalog_refresh_sec)
 
@@ -109,8 +113,34 @@ async def bouncer_callback(request: Request, session: DB, code: str = "", state:
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(response: Response) -> None:
     response.delete_cookie(settings.cookie_name, path="/")
+    response.delete_cookie(VIEW_AS_COOKIE, path="/")
 
 
 @router.get("/me", response_model=SessionOut)
-async def me(user: CurrentUser) -> SessionOut:
+async def me(request: Request, user: CurrentUser) -> SessionOut:
+    real = request.state.real_user
+    return _session_out(user, real if real.id != user.id else None)
+
+
+@router.post("/view-as", response_model=SessionOut)
+async def view_as(data: ViewAsIn, response: Response, session: DB, admin: Annotated[User, Depends(get_real_user)]) -> SessionOut:
+    """Администратор открывает портал глазами сотрудника: только просмотр, действия отклоняются (см. get_current_user)."""
+    if not admin.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Нужны права администратора")
+    target = await session.get(User, data.user_id)
+    if target is None or not target.is_active:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден или отключён")
+    if target.id == admin.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Это вы сами: режим просмотра нужен для другого сотрудника")
+    response.set_cookie(
+        VIEW_AS_COOKIE, create_view_as_token(admin.id, target.id), httponly=True, secure=settings.cookie_secure,
+        samesite="lax", max_age=settings.session_ttl_hours * 3600, path="/",
+    )
+    log.info("Администратор %s открыл портал глазами %s", admin.username, target.username)
+    return _session_out(target, admin)
+
+
+@router.delete("/view-as", response_model=SessionOut)
+async def stop_view_as(response: Response, user: Annotated[User, Depends(get_real_user)]) -> SessionOut:
+    response.delete_cookie(VIEW_AS_COOKIE, path="/")
     return _session_out(user)

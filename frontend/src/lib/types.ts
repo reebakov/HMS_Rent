@@ -18,6 +18,7 @@ export interface User {
 
 export interface Session {
   user: User
+  view_as_by?: { id: number; display_name: string } | null // режим просмотра: user — чьими глазами смотрит этот администратор
   app_name: string
   app_subtitle: string
   insight_mode: 'mock' | 'live'

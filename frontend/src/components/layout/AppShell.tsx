@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type MouseEvent } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, LogOut, Menu, LifeBuoy, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { AlarmClock, ArrowLeftRight, BarChart3, Boxes, ClipboardList, Cloud, Layers, LayoutGrid, Eye, LogOut, Menu, LifeBuoy, MonitorSmartphone, RefreshCw, Settings, Users, Wrench, X, Activity } from 'lucide-react'
 import { useExecutorOrders, useExecutorProblems, useExecutorReturns, useExecutorVms, useExtensions, useOverdue, useTermRequests } from '@/lib/queries'
 import { canExecute, isOpenProblem, ROLE_LABELS } from '@/lib/dictionaries'
 import { useSeenProblemId } from '@/lib/seen-problems'
@@ -88,7 +88,12 @@ export function AppShell() {
     (useOverdue(isAdmin).data?.length ?? 0) +
     (useTermRequests(isAdmin).data?.length ?? 0) +
     (useExtensions(isAdmin).data?.filter((e) => !e.acknowledged_at).length ?? 0)
-  const { logout } = useAuth()
+  const { logout, stopViewAs } = useAuth()
+  const navigate = useNavigate()
+  const leaveViewAs = async () => {
+    await stopViewAs()
+    navigate('/admin/people')
+  }
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const burger = useRef<HTMLButtonElement>(null)
@@ -195,7 +200,19 @@ export function AppShell() {
       )}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
+        <div className="sticky top-0 z-20">
+        {session.view_as_by && (
+          <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-warning px-4 py-2 text-[13px] font-medium text-white lg:px-8">
+            <Eye className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1">
+              Режим просмотра: вы видите портал глазами {session.user.display_name}. Действия недоступны.
+            </span>
+            <button onClick={leaveViewAs} className="rounded-md bg-white/20 px-3 py-1 font-semibold transition-colors hover:bg-white/30">
+              Выйти из режима
+            </button>
+          </div>
+        )}
+        <header className="flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur lg:px-8">
           <button
             ref={burger}
             className="rounded-md p-1.5 hover:bg-muted lg:hidden"
@@ -220,6 +237,7 @@ export function AppShell() {
           <ShortcutsButton />
           <ThemeToggle />
         </header>
+        </div>
 
         <main ref={main} id="content" tabIndex={-1} key={location.pathname} className="mx-auto max-w-7xl animate-fade-in px-4 py-8 focus:outline-none lg:px-8">
           <Outlet />
