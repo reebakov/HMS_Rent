@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     insight_mapping_file: str = ""  # пусто — config/insight_mapping.yaml (live) или .mock.yaml (mock)
     insight_sync_interval_sec: int = 600
     insight_writeback: bool = False
+    insight_default_pool: str = ""  # пул для свободных ПК без «Пула выдачи» (имя, например «Общий пул»); пусто — выключено
     mock_data_file: str = "seed/mock_computers.json"
 
     # --- vSphere: виртуалки по запросу (конструктор в каталоге) ---
