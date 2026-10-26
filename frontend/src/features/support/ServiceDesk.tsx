@@ -50,7 +50,7 @@ export function ReportProblemButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-export type ProblemTarget = { bookingId?: number; vmId?: number; name: string } | null
+export type ProblemTarget = { bookingId?: number; vmId?: number; computerId?: number; name: string } | null
 
 export function ReportProblemDialog({ target, onClose }: { target: ProblemTarget; onClose: () => void }) {
   const create = useCreateRequest()
@@ -60,7 +60,7 @@ export function ReportProblemDialog({ target, onClose }: { target: ProblemTarget
   const submit = async () => {
     if (!target) return
     try {
-      const req = await create.mutateAsync({ booking_id: target.bookingId, vm_id: target.vmId, message })
+      const req = await create.mutateAsync({ booking_id: target.bookingId, vm_id: target.vmId, computer_id: target.computerId, message })
       toast.success(`Заявка ${req.issue_key} создана — ответ придёт сюда, в «Мою аренду»`)
       onClose()
     } catch (e) {

@@ -4,8 +4,8 @@
 """
 from sqlalchemy import ColumnElement, or_
 
-from app.core.errors import Forbidden
-from app.models import User
+from app.core.errors import Conflict, Forbidden, NotFound
+from app.models import Computer, ComputerStatus, User
 
 
 def is_team_member(user: User, department_id: int) -> bool:
@@ -26,3 +26,15 @@ def mine_or_team(user: User, owner_col: ColumnElement, department_col: ColumnEle
     if user.department_id is None:
         return owner_col == user.id
     return or_(owner_col == user.id, department_col == user.department_id)
+
+
+def ensure_external_rental(user: User, comp: Computer | None, message: str) -> Computer:
+    """ПК, выданный отделу мимо портала: «Используется» в Insight и отдел сотрудника в «Команде-получателе».
+    Действовать с ним может сотрудник этого отдела и администратор."""
+    if comp is None or comp.is_archived or comp.is_virtual:
+        raise NotFound("Компьютер не найден")
+    if comp.department_id is None or not (user.is_admin or is_team_member(user, comp.department_id)):
+        raise Forbidden(message)
+    if comp.status != ComputerStatus.in_use:
+        raise Conflict(f"{comp.name} уже не числится выданным вашему отделу: обновите страницу")
+    return comp

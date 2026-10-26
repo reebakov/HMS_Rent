@@ -22,7 +22,7 @@ async def my_requests(user: CurrentUser, session: DB) -> list[RequestOut]:
 @router.post("", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 async def create_request(data: RequestCreate, user: CurrentUser, session: DB) -> RequestOut:
     req = await service.create_problem(session, user, booking_id=data.booking_id, vm_id=data.vm_id,
-                                       message=data.message)
+                                       computer_id=data.computer_id, message=data.message)
     return service.request_out(req)
 
 

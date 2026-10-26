@@ -764,7 +764,7 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     ...over,
   })
 
-  it('показываются карточкой рядом с обычными бронями: имя, отдел, срок, без номера заказа и без кнопок', async () => {
+  it('показываются карточкой рядом с обычными бронями: имя, отдел, срок, без номера заказа', async () => {
     bookings = [makeBooking()]
     outside = [rental()]
     renderPage()
@@ -774,8 +774,9 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     expect(within(card).getByText('Product Eco Department')).toBeInTheDocument()
     expect(within(card).getByText(formatDate('3000-12-31'))).toBeInTheDocument()
     expect(within(card).getByText(/Выдан вне портала/)).toBeInTheDocument()
+    expect(within(card).queryByText('Продлить')).not.toBeInTheDocument() // срок ведётся в Insight
     expect(within(card).queryByText(/Заказ №/)).not.toBeInTheDocument()
-    expect(within(card).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Вернуть компьютер' })).toBeInTheDocument()
   })
 
   it('без брони, но с такими ПК пустого состояния нет; без срока — «Без срока», просроченный — «Срок вышел»', async () => {
@@ -797,5 +798,51 @@ describe('MyBookingsPage: ПК, выданные вне портала', () => {
     failGetOnce(vi.mocked(api.get), '/bookings/external')
     renderPage()
     expect(await screen.findByText('Не удалось загрузить ПК, выданные вне портала')).toBeInTheDocument()
+  })
+
+  it('«Сообщить о проблеме» у такого ПК шлёт заявку с computer_id, а не с бронью', async () => {
+    outside = [rental()]
+    sdEnabled = true
+    vi.mocked(api.post).mockResolvedValue(makeRequest({ id: 31, booking_id: null, computer_id: 40, issue_key: 'HMS-900' }))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('A-EXT')
+    await user.click(await screen.findByRole('button', { name: 'Сообщить о проблеме' }))
+    await user.type(await screen.findByRole('textbox'), 'Не включается')
+    await user.click(screen.getByRole('button', { name: 'Отправить' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/requests', { computer_id: 40, message: 'Не включается' }))
+  })
+
+  it('заявка по такому ПК показана бейджем на его карточке', async () => {
+    outside = [rental()]
+    requests = [makeRequest({ id: 31, booking_id: null, computer_id: 40, issue_key: 'HMS-900', status: 'В работе' })]
+    renderPage()
+    expect(await screen.findByRole('button', { name: /HMS-900/ })).toBeInTheDocument()
+  })
+
+  it('«Вернуть компьютер»: подтверждение, POST на /bookings/external/{id}/return с комментарием, тост', async () => {
+    outside = [rental()]
+    vi.mocked(api.post).mockResolvedValue(makeBooking({ status: 'returned' }))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('A-EXT')
+    await user.click(screen.getByRole('button', { name: 'Вернуть компьютер' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'Не нужен')
+    await user.click(within(dialog).getByRole('button', { name: 'Вернуть' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bookings/external/40/return', { comment: 'Не нужен' }))
+    expect(toast.success).toHaveBeenCalledWith('A-EXT возвращён')
+  })
+
+  it('ошибка возврата показана тостом, окно остаётся открытым', async () => {
+    outside = [rental()]
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'A-EXT уже не числится выданным вашему отделу'))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('A-EXT')
+    await user.click(screen.getByRole('button', { name: 'Вернуть компьютер' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Вернуть' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A-EXT уже не числится выданным вашему отделу'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

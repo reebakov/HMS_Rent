@@ -66,6 +66,17 @@ function useInvalidateAll() {
     )
 }
 
+/** Возврат ПК, выданного отделу мимо портала: в журнале появляется закрытая бронь, ПК уходит на очистку */
+export function useReturnExternal() {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, comment }: { id: number; comment?: string }) =>
+      api.post<Booking>(`/bookings/external/${id}/return`, { comment }),
+    onSettled: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['external-rentals'] })]),
+  })
+}
+
 export function useCreateBooking() {
   const invalidate = useInvalidateAll()
   return useMutation({
@@ -346,7 +357,7 @@ export const useRequestDetail = (id: number | null) =>
 export function useCreateRequest() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { booking_id?: number; vm_id?: number; message: string }) => api.post<ServiceRequest>('/requests', data),
+    mutationFn: (data: { booking_id?: number; vm_id?: number; computer_id?: number; message: string }) => api.post<ServiceRequest>('/requests', data),
     onSettled: () => qc.invalidateQueries({ queryKey: ['my-requests'] }),
   })
 }

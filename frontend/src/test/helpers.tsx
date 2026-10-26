@@ -130,6 +130,7 @@ export const makeServiceRequest = (over: Partial<ServiceRequest> = {}): ServiceR
   kind: 'problem',
   booking_id: 1,
   vm_id: null,
+  computer_id: null,
   department_id: null,
   issue_key: 'HMS-101',
   summary: 'Не включается',

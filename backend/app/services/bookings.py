@@ -15,7 +15,7 @@ from app.integrations.notify import notify
 from app.models import Booking, BookingStatus, Computer, ComputerStatus, EventType, User
 from app.schemas.booking import BookingCreate, BookingExtend, ExternalRentalOut
 from app.services import departments, overdue, runtime, service_requests, term_limit
-from app.services.access import ensure_access, mine_or_team
+from app.services.access import ensure_access, ensure_external_rental, mine_or_team
 from app.services.catalog import natural_key
 from app.services.events import add_event
 from app.services.orders import next_order_number, requester_name
@@ -204,6 +204,41 @@ async def return_booking(session: AsyncSession, user: User, booking_id: int, com
 
     await notify(f"🚫 Заказ №{booking.order_number} на **{comp.name}** отменён до подготовки ({booking.department.name})"
                  if cancelled else f"↩️ **{comp.name}** возвращён (заказ №{booking.order_number}, {booking.department.name})")
+    return await get_booking(session, booking.id)
+
+
+async def return_external(session: AsyncSession, user: User, computer_id: int, comment: str | None) -> Booking:
+    """Возврат ПК, выданного отделу мимо портала. Брони не было, поэтому в журнале появляется уже закрытая бронь
+    (отметка «выдан вне портала»): дальше всё как у обычного возврата — ПК ждёт очистки диска у исполнителя, задача
+    «Возврат ПК» создаётся фоном."""
+    comp = await session.scalar(
+        select(Computer).where(Computer.id == computer_id).with_for_update(of=Computer)
+        .execution_options(populate_existing=True)
+    )
+    ensure_external_rental(user, comp, _denied(RETURN_ACTION))
+    now = datetime.now(timezone.utc)
+    dept = comp.department
+    booking = Booking(
+        computer_id=comp.id, department_id=dept.id, user_id=user.id, order_number=await next_order_number(session),
+        requester_name=requester_name(user), requester_nick=user.username, purpose="Выдан вне портала, возврат оформлен в портале",
+        expected_return_at=comp.usage_until, status=BookingStatus.returned.value, booked_at=now, returned_at=now,
+        returned_by_id=user.id, return_comment=(comment or "").strip() or None, prepared_at=now,
+    )
+    session.add(booking)
+    await session.flush()
+    add_event(
+        session, computer_id=comp.id, booking_id=booking.id, actor_id=user.id, event_type=EventType.returned,
+        from_status=comp.status, to_status=ComputerStatus.cleaning.value,
+        message=f"Выдан вне портала, возвращён отделом «{dept.name}» (заказ №{booking.order_number})"
+                + (f": {booking.return_comment}" if booking.return_comment else "") + ". Ждёт очистки диска",
+    )
+    comp.status = ComputerStatus.cleaning.value
+    comp.department_id = None
+    comp.usage_until = None
+    comp.order_number = None
+    comp.writeback_pending = False  # на очистке в Insight остаётся «Используется»: запись пойдёт после подтверждения
+    await session.commit()
+    await notify(f"↩️ **{comp.name}** возвращён (выдан вне портала, {dept.name})")
     return await get_booking(session, booking.id)
 
 

@@ -82,8 +82,8 @@ class ExecutorProblemOut(ORMModel):
     message: str  # что написал заказчик
     created_at: datetime
     reporter: UserShort
-    department: DepartmentShort
-    order_number: int
+    department: DepartmentShort | None  # у проблемы по ПК вне портала, который уже вернули, отдела может не быть
+    order_number: int | None  # у ПК, выданного вне портала, номера заказа нет
     target_name: str  # имя ПК или ВМ
     is_vm: bool
     booking_id: int | None  # у ПК — заказ, страница которого есть в разделе исполнителя

@@ -155,8 +155,8 @@ export interface ExecutorProblem {
   message: string
   created_at: string
   reporter: UserShort
-  department: { id: number; name: string }
-  order_number: number
+  department: { id: number; name: string } | null
+  order_number: number | null // у ПК, выданного вне портала, номера заказа нет
   target_name: string
   is_vm: boolean
   booking_id: number | null // у ПК — заказ со страницей исполнителя
@@ -578,6 +578,7 @@ export interface ServiceRequest {
   kind: 'problem' | 'return' | 'prepare' | 'build' | 'diagnose'
   booking_id: number | null
   vm_id: number | null
+  computer_id: number | null // ПК, выданный отделу мимо портала (проблема без брони)
   department_id: number | null // команда сборки по запросу
   issue_key: string | null
   summary: string

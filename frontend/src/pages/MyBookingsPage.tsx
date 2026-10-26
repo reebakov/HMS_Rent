@@ -12,8 +12,8 @@ import { RequesterNote } from '@/features/booking/RequesterNote'
 import { PendingTermNote } from '@/features/booking/TermLimit'
 import { MyVms } from '@/features/vms/MyVms'
 import { ReportProblemButton, ReportProblemDialog, RequestBadges, RequestSheet, type ProblemTarget } from '@/features/support/ServiceDesk'
-import { useCancelBuild, useExternalRentals, useMyBookings, useMyRequests, useReturnBooking } from '@/lib/queries'
-import type { Booking, ServiceRequest } from '@/lib/types'
+import { useCancelBuild, useExternalRentals, useMyBookings, useMyRequests, useReturnBooking, useReturnExternal } from '@/lib/queries'
+import type { Booking, ExternalRental, ServiceRequest } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, isOverdue } from '@/lib/utils'
 
 export function MyBookingsPage() {
@@ -25,6 +25,8 @@ export function MyBookingsPage() {
   const [extending, setExtending] = useState<ExtendTarget | null>(null)
   const requests = useMyRequests()
   const external = useExternalRentals()
+  const returnExternal = useReturnExternal()
+  const [returningOutside, setReturningOutside] = useState<ExternalRental | null>(null)
   const outside = external.data ?? []
   const cancelBuild = useCancelBuild()
   const [cancelling, setCancelling] = useState<ServiceRequest | null>(null)
@@ -44,6 +46,17 @@ export function MyBookingsPage() {
       setReturning(null)
     } catch (e) {
       toast.error(errorMessage(e, returning.prepared_at ? 'Не удалось вернуть' : 'Не удалось отменить заказ'))
+    }
+  }
+
+  const confirmReturnOutside = async (comment: string) => {
+    if (!returningOutside) return
+    try {
+      await returnExternal.mutateAsync({ id: returningOutside.computer.id, comment: comment || undefined })
+      toast.success(`${returningOutside.computer.name} возвращён`)
+      setReturningOutside(null)
+    } catch (e) {
+      toast.error(errorMessage(e, 'Не удалось вернуть'))
     }
   }
 
@@ -225,7 +238,17 @@ export function MyBookingsPage() {
                       </dd>
                     </div>
                   </dl>
-                  <p className="mt-4 text-[13px] text-muted-foreground">Выдан вне портала: вернуть или продлить его здесь нельзя.</p>
+                  <p className="mt-4 text-[13px] text-muted-foreground">Выдан вне портала: продлить срок здесь нельзя, срок ведётся в Insight.</p>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+                    <RequestBadges requests={requests.data?.filter((q) => q.computer_id === r.computer.id) ?? []} onOpen={setOpenedRequest} />
+                    <div className="ml-auto flex gap-1">
+                      <ReportProblemButton onClick={() => setProblem({ computerId: r.computer.id, name: r.computer.name })} />
+                      <Button variant="outline" size="sm" onClick={() => setReturningOutside(r)}>
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Вернуть компьютер
+                      </Button>
+                    </div>
+                  </div>
                 </Card>
               )
             })}
@@ -289,6 +312,13 @@ export function MyBookingsPage() {
         pending={returnMutation.isPending}
         onConfirm={confirmReturn}
         onClose={() => setReturning(null)}
+      />
+      <ReturnDialog
+        open={!!returningOutside}
+        title={returningOutside ? `Вернуть ${returningOutside.computer.name}?` : ''}
+        pending={returnExternal.isPending}
+        onConfirm={confirmReturnOutside}
+        onClose={() => setReturningOutside(null)}
       />
       <ConfirmDialog
         open={!!cancelling}
