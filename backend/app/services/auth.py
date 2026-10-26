@@ -30,7 +30,7 @@ async def upsert_sso_user(session: AsyncSession, result: AuthResult, source: str
     user.display_name = result.display_name
     user.email = result.email
     user.avatar_url = result.avatar_url
-    user.role = sso_role(result.email or result.username, admin=result.is_admin)
+    user.role = sso_role(result.email or result.username, admin=result.is_admin, department=user.department)
     user.last_login_at = datetime.now(timezone.utc)
     await session.commit()
     return user

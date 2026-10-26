@@ -4,23 +4,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.admins import is_admin_email, is_executor_email
 from app.core.errors import Conflict, NotFound
-from app.models import User, UserRole
+from app.models import Department, User, UserRole
 from app.schemas.user import UserAdminOut, UserCreate, UserUpdate
 from app.services import departments
 
 
-def sso_role(email: str | None, *, admin: bool = False) -> str:
-    """Роль сотрудника SSO по спискам в config: администратор важнее исполнителя."""
+def sso_role(email: str | None, *, admin: bool = False, department: Department | None = None) -> str:
+    """Роль сотрудника по спискам в config и отделу: администратор важнее исполнителя, исполнитель — тот, чья почта
+    в executors.txt или кто состоит в отделе исполнителей."""
     if admin or is_admin_email(email):
         return UserRole.admin.value
-    if is_executor_email(email):
+    if is_executor_email(email) or (department is not None and department.is_executors):
         return UserRole.executor.value
     return UserRole.user.value
 
 
 def _out(user: User) -> UserAdminOut:
     row = UserAdminOut.model_validate(user)
-    row.role = sso_role(user.email, admin=user.auth_source == "local" and user.is_admin)
+    row.role = sso_role(user.email, admin=user.auth_source == "local" and user.is_admin, department=user.department)
     return row
 
 
