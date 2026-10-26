@@ -113,3 +113,14 @@ async def test_logout_clears_view_mode(client, api, login, env):
     await start(client, api, env.emp.id)
     assert (await client.post(api("/auth/logout"))).status_code == 204
     assert VIEW_AS_COOKIE not in client.cookies
+
+
+async def test_start_response_has_effective_role_not_stale_one_from_db(client, api, login, env, make_user, make_department):
+    """Регрессия: ответ входа в режим просмотра отдавал роль из БД, и у исполнителя по отделу не было вкладок исполнителя."""
+    hms = await make_department("Hardware Maintenance Support", code="HMS")
+    worker = await make_user("worker@corp.test", auth_source="bouncer", email="worker@corp.test", password=None, department=hms)
+    assert worker.role == "user"  # в БД роль не обновлялась: сотрудник ещё не входил
+    login(env.admin)
+    r = await start(client, api, worker.id)
+    assert r.json()["user"]["role"] == "executor"
+    assert (await client.get(api("/auth/me"))).json()["user"]["role"] == "executor"
