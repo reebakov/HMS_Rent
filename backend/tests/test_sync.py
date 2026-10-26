@@ -219,6 +219,82 @@ async def test_empty_pool_in_insight_does_not_reset(session, monkeypatch, make_p
     assert (await reload_computers(session))["A001"].pool_id == pool.id
 
 
+# ---------- пул по умолчанию для свободных ПК ----------
+
+async def test_default_pool_is_off_by_default(session, monkeypatch):
+    use(monkeypatch, insight_obj(1, "A001"))
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].pool_id is None
+
+
+async def test_free_computer_without_pool_goes_to_default_pool(session, monkeypatch, make_pool):
+    pool = await make_pool("Общий пул")
+    monkeypatch.setattr(settings, "insight_default_pool", " общий пул ")  # регистр и пробелы не важны
+    use(monkeypatch, insight_obj(1, "A001"), insight_obj(2, "A002"))
+    await run_sync(session)
+    use(monkeypatch, insight_obj(1, "A001"), insight_obj(2, "A002"))  # второй круг ничего не меняет
+    run = await run_sync(session)
+    comps = await reload_computers(session)
+    assert comps["A001"].pool_id == pool.id and comps["A002"].pool_id == pool.id
+    assert run.updated == 0
+    assert await events_of(session, comps["A001"], EventType.insight_pool_changed) == []  # новый ПК: события «появился» достаточно
+
+
+@pytest.mark.parametrize("writeback", [True, False])
+async def test_default_pool_queues_writeback_only_when_enabled(session, monkeypatch, make_pool, make_computer, writeback):
+    from app.services import runtime
+    pool = await make_pool("Общий пул")
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    monkeypatch.setattr(runtime.current(), "insight_writeback", writeback)
+    await make_computer("A001", status="available", insight_object_id=1, writeback_pending=False)
+    use(monkeypatch, insight_obj(1, "A001"))
+    await run_sync(session)
+    c = (await reload_computers(session))["A001"]
+    assert (c.pool_id, c.writeback_pending) == (pool.id, writeback)
+    (ev,) = await events_of(session, c, EventType.insight_pool_changed)
+    assert "Общий пул" in ev.message and "по умолчанию" in ev.message
+
+
+@pytest.mark.parametrize("insight_status", ["В использовании", "В ремонте", "Списан"])
+async def test_default_pool_only_for_waiting_computers(session, monkeypatch, make_pool, insight_status):
+    await make_pool("Общий пул")
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    use(monkeypatch, insight_obj(1, "A001", status=insight_status))
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].pool_id is None
+
+
+async def test_default_pool_does_not_override_existing_pool(session, monkeypatch, make_pool, make_computer):
+    await make_pool("Общий пул")
+    mine = await make_pool("Builder")
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    await make_computer("A001", status="available", insight_object_id=1, pool=mine)
+    await make_computer("A002", status="available", insight_object_id=2)
+    use(monkeypatch, insight_obj(1, "A001"), insight_obj(2, "A002", **{"Пул выдачи": "Builder"}))
+    await run_sync(session)
+    comps = await reload_computers(session)
+    assert comps["A001"].pool_id == mine.id and comps["A002"].pool_id == mine.id  # пул из Insight важнее
+
+
+async def test_default_pool_unknown_name_leaves_computers_without_pool(session, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "insight_default_pool", "Нет такого")
+    use(monkeypatch, insight_obj(1, "A001"))
+    run = await run_sync(session)
+    assert run.status == "success" and (await reload_computers(session))["A001"].pool_id is None
+    assert "INSIGHT_DEFAULT_POOL" in caplog.text
+
+
+async def test_default_pool_skips_cleaning_and_pending_computers(session, monkeypatch, make_pool, make_computer):
+    await make_pool("Общий пул")
+    monkeypatch.setattr(settings, "insight_default_pool", "Общий пул")
+    await make_computer("A001", status="cleaning", insight_object_id=1)
+    await make_computer("A002", status="available", insight_object_id=2, writeback_pending=True)
+    use(monkeypatch, insight_obj(1, "A001"), insight_obj(2, "A002"))
+    await run_sync(session)
+    comps = await reload_computers(session)
+    assert comps["A001"].pool_id is None and comps["A002"].pool_id is None  # их состояние пока важнее Insight
+
+
 # ---------- SyncRun и ошибки источника ----------
 
 async def test_failing_source_keeps_data_and_logs_run(session, monkeypatch):

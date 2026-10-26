@@ -25,6 +25,7 @@ from app.models import (
     SyncRun,
     SyncRunStatus,
 )
+from app.services import runtime
 from app.services.events import add_event
 from app.services.tiering import classify
 
@@ -100,6 +101,9 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         )
         pools = {p.name.lower(): p for p in (await session.scalars(select(Pool))).all()}
         departments = {d.name.lower(): d for d in (await session.scalars(select(Department))).all()}
+        default_pool = pools.get(settings.insight_default_pool.strip().lower()) if settings.insight_default_pool.strip() else None
+        if settings.insight_default_pool.strip() and default_pool is None:
+            log.warning("INSIGHT_DEFAULT_POOL: пула «%s» нет, свободные ПК без пула остаются без пула", settings.insight_default_pool)
         now = datetime.now(timezone.utc)
         run = SyncRun(
             mode=source.mode, status=SyncRunStatus.success.value, started_at=started,
@@ -154,7 +158,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
             comp.synced_at = now
             if not ours:
                 changed |= await _pull_rental_fields(
-                    session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments
+                    session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments,
+                    default_pool=default_pool,
                 )
             if comp.is_archived:
                 comp.is_archived = False
@@ -221,12 +226,16 @@ async def _pull_rental_fields(
     booked: bool,
     pools: dict[str, Pool],
     departments: dict[str, Department],
+    default_pool: Pool | None = None,
 ) -> bool:
     """Поля аренды из Insight -> портал: «Пул выдачи», «Команда-получатель», «Срок использования», «Номер заказа».
 
     * Пул: непустое значение в Insight определяет пул ПК. Пула с таким именем ещё нет — создаём его
       НЕопубликованным (сотрудники его не увидят, пока админ не откроет его в «Пулах выдачи»).
       Пустое значение в Insight пул на портале не сбрасывает: убрать ПК из пула можно на портале.
+    * Пул по умолчанию (INSIGHT_DEFAULT_POOL): свободный («Ожидает») ПК без пула — и в Insight, и на портале —
+      попадает в него, а при включённой записи пул уходит в Insight. Вручную убранный из пула свободный ПК вернётся
+      туда при следующей синхронизации: скрыть его можно в неопубликованном пуле.
     * Команда / срок / номер заказа: для ПК, выданных через портал, главный — портал (их ставит бронь);
       для остальных (выданных мимо портала) повторяем то, что записано в Insight.
     """
@@ -248,6 +257,13 @@ async def _pull_rental_fields(
                 )
             comp.pool_id = pool.id
             changed = True
+    elif default_pool and comp.pool_id is None and not data.is_virtual and data.status == ComputerStatus.available.value:
+        if comp.id is not None:
+            add_event(session, computer_id=comp.id, event_type=EventType.insight_pool_changed,
+                      message=f"Пул по умолчанию: — → {default_pool.name} (в Insight пул не указан)")
+        comp.pool_id = default_pool.id
+        comp.writeback_pending = runtime.current().insight_writeback  # пул уйдёт в Insight и перестанет быть пустым
+        changed = True
 
     if not booked:
         team = departments.get(data.team_name.lower()) if data.team_name else None
