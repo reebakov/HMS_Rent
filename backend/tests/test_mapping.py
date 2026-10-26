@@ -146,6 +146,7 @@ def test_map_object_specs_fill_gaps_but_attribute_wins():
 
 @pytest.mark.parametrize("gateway, expected", [
     ("aut-gz-gw01", "Godzen"), ("AUT-GZ-GW01", "Godzen"), ("aut-sib-gw02", "Sib"),
+    ("gw1-aut-adcdata.ff.local", "ADCData"), ("GW2-AUT-ADCDATA.FF.LOCAL", "ADCData"),
     ("other-gw", ""), (None, ""),
 ])
 def test_map_object_location_from_gateway(gateway, expected):
