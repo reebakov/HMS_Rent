@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { UserPlus, Users } from 'lucide-react'
+import { Eye, UserPlus, Users } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Card, EmptyState } from '@/components/ui/card'
 import { DataState, QueryError, RowsSkeleton } from '@/components/ui/data-state'
 import { DataTable, Th } from '@/components/ui/table'
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { DepartmentOptions, Field, Input, SearchInput, Select } from '@/components/ui/input'
+import { useAuth, useSession } from '@/auth/AuthProvider'
 import { useAdminUsers, useDepartments, useSaveUser } from '@/lib/queries'
 import type { AdminUserRow } from '@/lib/types'
 import { errorMessage, formatRelative } from '@/lib/utils'
@@ -22,6 +24,9 @@ export function EmployeesTab() {
   const users = useAdminUsers()
   const departments = useDepartments()
   const save = useSaveUser()
+  const me = useSession().user
+  const { viewAs } = useAuth()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
@@ -41,6 +46,15 @@ export function EmployeesTab() {
       await save.mutateAsync({ id, is_active: !active })
     } catch (e) {
       toast.error(errorMessage(e))
+    }
+  }
+
+  const openAs = async (u: AdminUserRow) => {
+    try {
+      await viewAs(u.id)
+      navigate('/')
+    } catch (e) {
+      toast.error(errorMessage(e, 'Не удалось открыть портал глазами сотрудника'))
     }
   }
 
@@ -80,7 +94,7 @@ export function EmployeesTab() {
               <EmptyState icon={Users} title="Никого не найдено" description="Измените запрос — ищем по имени, нику и почте" />
             ) : (
               <DataTable
-                className="min-w-[820px]"
+                className="min-w-[980px]"
                 head={
                   <>
                     <Th>Сотрудник</Th>
@@ -111,6 +125,12 @@ export function EmployeesTab() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{u.last_login_at ? formatRelative(u.last_login_at) : 'ещё не входил'}</td>
                     <td className="px-4 py-3 text-right">
+                      {u.is_active && u.id !== me.id && (
+                        <Button size="sm" variant="ghost" title="Посмотреть портал так, как его видит этот сотрудник (только просмотр)" onClick={() => openAs(u)}>
+                          <Eye className="h-3.5 w-3.5" />
+                          Открыть как пользователь
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => toggleActive(u.id, u.is_active)}>
                         {u.is_active ? 'Заблокировать' : 'Разблокировать'}
                       </Button>

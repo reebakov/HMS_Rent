@@ -15,12 +15,14 @@ let client: QueryClient
 
 /** Показывает состояние провайдера и кнопки действий */
 function Probe() {
-  const { session, loading, login, logout } = useAuth()
+  const { session, loading, login, logout, viewAs, stopViewAs } = useAuth()
   return (
     <div>
       <p data-testid="state">{loading ? 'loading' : session ? `user:${session.user.username}` : 'anon'}</p>
       <button onClick={() => login('admin', 'secret').catch(() => undefined)}>login</button>
       <button onClick={() => logout()}>logout</button>
+      <button onClick={() => viewAs(7)}>view</button>
+      <button onClick={() => stopViewAs()}>unview</button>
     </div>
   )
 }
@@ -36,7 +38,7 @@ const mountProbe = () =>
 
 beforeEach(() => {
   client = new QueryClient()
-  for (const m of [api.get, api.post]) vi.mocked(m).mockReset()
+  for (const m of [api.get, api.post, api.del]) vi.mocked(m).mockReset()
 })
 
 describe('AuthProvider: начальная загрузка', () => {
@@ -162,5 +164,26 @@ describe('useAuth / useSession', () => {
     }
     render(<Gate />, { wrapper })
     expect(await screen.findByText('Иван Иванов')).toBeInTheDocument()
+  })
+})
+
+
+describe('AuthProvider: режим просмотра', () => {
+  it('viewAs: POST /auth/view-as, сессия сотрудника, кэш очищен; stopViewAs возвращает администратора', async () => {
+    vi.mocked(api.get).mockResolvedValue(makeSession({ username: 'boss' }))
+    vi.mocked(api.post).mockResolvedValue({ ...makeSession({ username: 'emp' }), view_as_by: { id: 1, display_name: 'Босс' } })
+    vi.mocked(api.del).mockResolvedValue(makeSession({ username: 'boss' }))
+    client.setQueryData(['my-bookings'], ['чужие данные'])
+    mountProbe()
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('user:boss'))
+
+    await userEvent.click(screen.getByText('view'))
+    expect(api.post).toHaveBeenCalledWith('/auth/view-as', { user_id: 7 })
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('user:emp'))
+    expect(client.getQueryData(['my-bookings'])).toBeUndefined()
+
+    await userEvent.click(screen.getByText('unview'))
+    expect(api.del).toHaveBeenCalledWith('/auth/view-as')
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('user:boss'))
   })
 })

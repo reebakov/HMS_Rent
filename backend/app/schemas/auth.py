@@ -19,8 +19,20 @@ class UserOut(ORMModel):
     department_id: int | None
 
 
+class ViewAsBy(ORMModel):
+    """Администратор, который смотрит портал глазами другого сотрудника."""
+
+    id: int
+    display_name: str
+
+
+class ViewAsIn(BaseModel):
+    user_id: int
+
+
 class SessionOut(BaseModel):
     user: UserOut
+    view_as_by: ViewAsBy | None = None  # задано в режиме «Открыть как пользователь»: user — тот, чьими глазами смотрят
     app_name: str
     app_subtitle: str = "Аренда техники"
     insight_mode: str

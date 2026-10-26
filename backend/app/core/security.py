@@ -24,6 +24,13 @@ def create_session_token(user_id: int, username: str, role: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
+def create_view_as_token(admin_id: int, user_id: int) -> str:
+    """Режим «Открыть как пользователь»: подписанная пара «кто смотрит → чьими глазами». Живёт столько же, сколько сессия."""
+    now = datetime.now(timezone.utc)
+    payload = {"adm": admin_id, "sub": str(user_id), "iat": now, "exp": now + timedelta(hours=settings.session_ttl_hours)}
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
 def decode_session_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
