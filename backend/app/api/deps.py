@@ -22,7 +22,7 @@ def _apply_role(user: User) -> User:
         # добавили/убрали почту — изменение действует сразу, без повторного входа
         # dev/admin — админ только пока включён AUTH_DEV_ENABLED: демо-запись, попавшая на прод, прав не даёт
         dev_admin = settings.auth_dev_enabled and user.auth_source == "dev" and user.username == "admin"
-        user.role = sso_role(user.email or user.username, admin=dev_admin)
+        user.role = sso_role(user.email or user.username, admin=dev_admin, department=user.department)
     return user
 
 
