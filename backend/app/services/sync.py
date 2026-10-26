@@ -161,6 +161,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                     session, comp, data, booked=comp.id in booked_ids, pools=pools, departments=departments,
                     default_pool=default_pool,
                 )
+            if _is_reserve(comp, data, mapping, default_pool, ours, comp.id in booked_ids):
+                comp.status = ComputerStatus.available.value  # «Резерв» в пуле не из общего — свободен для команд пула
             if comp.is_archived:
                 comp.is_archived = False
                 changed = True
@@ -216,6 +218,16 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         await session.rollback()
         log.exception("Ошибка синхронизации")
         return await _save_failed(session, source.mode, str(exc))
+
+
+def _is_reserve(comp: Computer, data: ComputerData, mapping: InsightMapping, general: Pool | None, ours: bool,
+                booked: bool) -> bool:
+    """В Insight «Резерв» у ПК из пула, который не общий: это свободный ПК команды пула, а не обслуживание."""
+    reserve = mapping.writeback.status_values.get("reserve")
+    return bool(
+        general and reserve and not ours and not booked and comp.status == ComputerStatus.maintenance.value
+        and comp.pool_id not in (None, general.id) and (data.insight_status or "").lower() == reserve.lower()
+    )
 
 
 async def _pull_rental_fields(
