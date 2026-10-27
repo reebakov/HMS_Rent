@@ -128,7 +128,7 @@ class NormOut(BaseModel):
 
 
 class ExecutorBuildReject(InputModel):
-    reason: Literal[*BUILD_REJECT_REASONS]
+    reason: Literal[*BUILD_REJECT_REASONS]  # type: ignore[valid-type]  # mypy не понимает распаковку в Literal
     comment: str = Field(min_length=1, max_length=2000)
 
 
@@ -193,7 +193,7 @@ FAULTY_REASON = REJECT_REASONS[0]  # эта причина ещё и вывод�
 class ExecutorReject(InputModel):
     """Отклонение заказа ПК: основание из списка регламента и обязательный комментарий."""
 
-    reason: Literal[*REJECT_REASONS]
+    reason: Literal[*REJECT_REASONS]  # type: ignore[valid-type]  # mypy не понимает распаковку в Literal
     comment: str = Field(min_length=1, max_length=2000)
 
 

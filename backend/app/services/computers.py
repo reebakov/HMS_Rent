@@ -47,7 +47,7 @@ async def update(session: AsyncSession, admin: User, computer_id: int, data: Com
         payload={k: str(v) for k, v in changes.items()},
     )
     await session.commit()
-    comp = await session.get(Computer, computer_id, populate_existing=True)
+    await session.refresh(comp)
     active = await session.scalar(
         select(Booking).where(Booking.computer_id == comp.id, Booking.status == BookingStatus.active)
     )

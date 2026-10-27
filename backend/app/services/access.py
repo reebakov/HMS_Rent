@@ -3,6 +3,7 @@
 Команда заказа — отдел брони или ВМ (`department_id`), команда пользователя — `users.department_id`.
 """
 from sqlalchemy import ColumnElement, or_
+from sqlalchemy.orm import QueryableAttribute
 
 from app.core.errors import Conflict, Forbidden, NotFound
 from app.models import Computer, ComputerStatus, User
@@ -21,7 +22,9 @@ def ensure_access(user: User, owner_id: int, department_id: int, message: str) -
         raise Forbidden(message)
 
 
-def mine_or_team(user: User, owner_col: ColumnElement, department_col: ColumnElement) -> ColumnElement[bool]:
+def mine_or_team(
+    user: User, owner_col: ColumnElement | QueryableAttribute, department_col: ColumnElement | QueryableAttribute
+) -> ColumnElement[bool]:
     """SQL-условие «заказ пользователя или его команды»."""
     if user.department_id is None:
         return owner_col == user.id

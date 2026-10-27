@@ -90,7 +90,8 @@ async def create_pool(session: AsyncSession, data: PoolSave) -> Pool:
     session.add(pool)
     async with conflict_on_integrity_error(session, NAME_TAKEN):
         await session.commit()
-    return await session.get(Pool, pool.id, populate_existing=True)
+    await session.refresh(pool)
+    return pool
 
 
 async def update_pool(session: AsyncSession, pool_id: int, data: PoolSave) -> PoolOut:
