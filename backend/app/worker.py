@@ -26,7 +26,7 @@ async def _step(name: str, coro_factory) -> None:
     try:
         async with SessionLocal() as session:
             await coro_factory(session)
-    except Exception:  # noqa: BLE001 — воркер не должен падать из-за одной ошибки
+    except Exception:  # воркер не должен падать из-за одной ошибки
         log.exception("%s упал", name)
 
 

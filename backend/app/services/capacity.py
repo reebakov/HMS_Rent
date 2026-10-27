@@ -31,7 +31,7 @@ async def summary() -> ClusterCapacity:
         usage = await asyncio.to_thread(vsphere.cluster_usage)
     except vsphere.VSphereError as exc:
         return ClusterCapacity(ok=False, error=str(exc))
-    except Exception:  # noqa: BLE001 — сводка не должна ронять страницу
+    except Exception:  # сводка не должна ронять страницу
         log.exception("Не удалось получить мощности кластера")
         return ClusterCapacity(ok=False, error="Не удалось получить данные из vCenter")
     return ClusterCapacity(

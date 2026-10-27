@@ -137,7 +137,7 @@ async def write_object(source: InsightSource, object_id: int, type_id: int | Non
     try:
         await source.update_object(object_id, type_id, values, optional=set(extras))
         return None
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if not extras or status_attribute not in values:
             raise
         # доп. поле не прошло (например, у атрибута тип «Select» без такого значения) — статус всё равно пишем

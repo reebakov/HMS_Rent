@@ -43,11 +43,14 @@ def decode_session_token(token: str) -> dict | None:
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 
 
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode()
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode(), salt=salt, dklen=32, **_SCRYPT)
-    b64 = lambda b: base64.b64encode(b).decode()  # noqa: E731
-    return f"scrypt${_SCRYPT['n']}${_SCRYPT['r']}${_SCRYPT['p']}${b64(salt)}${b64(digest)}"
+    return f"scrypt${_SCRYPT['n']}${_SCRYPT['r']}${_SCRYPT['p']}${_b64(salt)}${_b64(digest)}"
 
 
 def verify_password(password: str, stored: str | None) -> bool:

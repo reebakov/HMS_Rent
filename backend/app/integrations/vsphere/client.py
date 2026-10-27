@@ -51,7 +51,7 @@ def connect():
                           pwd=settings.vcenter_password, **kwargs)
     except vim.fault.InvalidLogin as exc:
         raise VSphereError("vCenter: неверный логин или пароль сервисной учётки") from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise VSphereError(f"vCenter недоступен: {exc}") from exc
     try:
         yield si
