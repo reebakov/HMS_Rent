@@ -5,7 +5,7 @@
 import os
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 import app.models  # noqa: F401 — регистрирует таблицы в metadata
 from app.db.base import Base
 from app.db.session import engine
-from app.models import BookingExtension
+from app.models import BookingExtension, ServiceRequest
 from tests.sync_fakes import add_booking
 from tests.test_overdue import add_vm
 
@@ -132,6 +132,29 @@ async def test_downgrade_0009_keeps_pc_extensions_and_drops_vm_ones(session, mak
     finally:
         _alembic("upgrade", "head")
         await engine.dispose()
+
+
+# ---------- 0022: метка неисправности ПК ----------
+
+async def test_0022_marks_computers_with_open_diagnostics_as_faulty(session, make_user, make_computer):
+    """Выведенные исполнителем ПК (обслуживание + открытая диагностика) получают метку, остальные — нет."""
+    user = await make_user("u")
+    sick = await make_computer("PC-sick", status="maintenance")
+    healed = await make_computer("PC-healed", status="maintenance")
+    await make_computer("PC-test", status="maintenance")  # обслуживание из Insight, диагностики нет
+    for comp, done in ((sick, None), (healed, datetime(2026, 10, 1, tzinfo=timezone.utc))):
+        session.add(ServiceRequest(kind="diagnose", user_id=user.id, computer_id=comp.id, summary="d", description="d",
+                                   portal_done_at=done))
+    await session.commit()
+    try:
+        assert _alembic("downgrade", "0021").returncode == 0
+        assert _alembic("upgrade", "head").returncode == 0
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT name, faulty FROM computers ORDER BY name"))).all()
+    finally:
+        _alembic("upgrade", "head")
+        await engine.dispose()
+    assert {r.name: r.faulty for r in rows} == {"PC-healed": False, "PC-sick": True, "PC-test": False}
 
 
 # ---------- 0011: ОС виртуалки и срок в Notes ----------

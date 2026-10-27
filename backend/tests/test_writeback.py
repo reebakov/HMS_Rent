@@ -183,9 +183,18 @@ async def test_computers_are_sent_in_id_order_even_after_updates(session, fake, 
 
 async def test_faulty_pc_is_written_as_maintenance(session, fake, wb_on, make_computer):
     """ПК, отмеченный неисправным исполнителем, уходит в Insight статусом обслуживания, а не «свободен»."""
-    await pending(make_computer, status="maintenance")
+    await pending(make_computer, status="maintenance", faulty=True)
     await push_pending(session)
     assert fake.calls[0]["values"]["Статус"] == "В ремонте"  # в демо-маппинге; в боевом — «ТО»
+
+
+@pytest.mark.parametrize("insight", [None, "Свободен", "В использовании"])
+async def test_maintenance_from_insight_is_never_written_as_tech_status(session, fake, wb_on, make_computer, insight):
+    """Регрессия: обслуживание из Insight («Тест», «На складе»…) при устаревшем статусе в портале затиралось на «ТО»,
+    если в Insight его успели поменять вручную. «ТО» пишется только по метке неисправности."""
+    await pending(make_computer, status="maintenance", faulty=False, insight_status=insight)
+    await push_pending(session)
+    assert "Статус" not in fake.calls[0]["values"]
 
 
 async def test_cleaning_pc_is_not_written_and_flag_is_cleared(session, fake, wb_on, make_computer):
@@ -204,13 +213,13 @@ async def test_cleaning_pc_is_not_written_and_flag_is_cleared(session, fake, wb_
     ("общий ПУЛ", "Общий пул", "available", "Свободен"),  # регистр не важен
     ("", "ECO Builder Studio", "available", "Свободен"),  # общий пул не задан — правило выключено
     ("Общий пул", None, "available", "Свободен"),
-    ("Общий пул", "ECO Builder Studio", "maintenance", "В ремонте"),  # неисправность важнее резерва
+    ("Общий пул", "ECO Builder Studio", "maintenance", "В ремонте"),  # неисправность важнее резерва (faulty ниже)
 ])
 async def test_free_pc_outside_general_pool_is_written_as_reserve(
         session, fake, wb_on, make_computer, make_pool, monkeypatch, general, pool, status, expected):
     """Регрессия: «Резерв» из Insight читался как обслуживание и после смены пула затирался на «ТО»."""
     monkeypatch.setattr(settings, "insight_default_pool", general)
-    await pending(make_computer, pool=await make_pool(pool) if pool else None, status=status)
+    await pending(make_computer, pool=await make_pool(pool) if pool else None, status=status, faulty=status == "maintenance")
     await push_pending(session)
     assert fake.calls[0]["values"]["Статус"] == expected
 

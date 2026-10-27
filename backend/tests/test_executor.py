@@ -370,6 +370,7 @@ async def test_faulty_removes_pc_from_pool_and_opens_diagnose_request(client, ap
     assert r.status_code == 200 and r.json()["status"] == BookingStatus.cancelled
     comp = (await session.scalars(select(Computer).where(Computer.name == "A001").execution_options(populate_existing=True))).one()
     assert (comp.status, comp.pool_id, comp.department_id) == (ComputerStatus.maintenance, None, None)
+    assert comp.faulty is True  # только такой ПК портал пишет в Insight как «ТО»
 
     # заявка «Диагностика комплекта» создана в фоне, к заказу и команде заказчика не привязана
     (type_id, summary, description, _), = sd.created
@@ -486,6 +487,7 @@ async def test_replace_moves_the_order_to_the_new_pc_and_sends_the_old_to_diagno
         == (spare.id, *before)
     old, new = await _pc(session, "A001"), await _pc(session, "A010")
     assert (old.status, old.pool_id, old.department_id, old.order_number) == (ComputerStatus.maintenance, None, None, None)
+    assert (old.faulty, new.faulty) == (True, False)
     assert (new.status, new.department_id, new.order_number, new.usage_until) == (
         ComputerStatus.booked, booking.department_id, booking.order_number, booking.expected_return_at)
     events = [e for e in (await session.scalars(select(AssetEvent))).all() if e.event_type == EventType.replaced]
@@ -565,7 +567,7 @@ async def test_diagnostics_list_and_return_to_pool(client, api, env, session, sd
     done = await client.post(api(f"/executor/diagnostics/{req.id}/repaired"))
     assert done.status_code == 200 and done.json()["id"] == req.id
     comp = await _pc(session)
-    assert (comp.status, comp.pool_id) == (ComputerStatus.available, req.pool_id)
+    assert (comp.status, comp.pool_id, comp.faulty) == (ComputerStatus.available, req.pool_id, False)
     (event,) = await session.scalars(select(AssetEvent).where(AssetEvent.event_type == EventType.repaired))
     assert event.actor_id == env.worker.id and "возвращён в пул «Main»" in event.message
     assert (event.from_status, event.to_status) == (ComputerStatus.maintenance, ComputerStatus.available)

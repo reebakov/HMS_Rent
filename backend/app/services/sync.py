@@ -164,6 +164,8 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
                 )
             if not ours and comp.id not in booked_ids:  # пул уже известен: «Резерв» вне общего пула — свободный ПК
                 comp.status = portal_status(mapping, data.insight_status, _pool_name(pools, comp.pool_id))
+            if comp.status != ComputerStatus.maintenance:
+                comp.faulty = False  # ПК ушёл из обслуживания (в Insight его вернули вручную): метка неисправности устарела
             if comp.is_archived:
                 comp.is_archived = False
                 changed = True
