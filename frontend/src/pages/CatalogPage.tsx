@@ -91,44 +91,48 @@ export function CatalogPage() {
           </p>
         </div>
 
-        <SearchInput className="sm:w-64" label="Поиск по каталогу" placeholder="Имя, процессор, видеокарта…" value={search} onChange={setSearch} />
-        <Select
-          className="w-36"
-          aria-label="Минимум ОЗУ"
-          value={String(filters.min_ram ?? 0)}
-          onChange={(e) => update({ min_ram: e.target.value === '0' ? undefined : e.target.value })}
-        >
-          {RAM_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {r ? `ОЗУ от ${r} ГБ` : 'Любая ОЗУ'}
-            </option>
-          ))}
-        </Select>
-        <Select className="w-44" aria-label="Сортировка" value={filters.sort} onChange={(e) => update({ sort: e.target.value })}>
-          <option value="name">По имени</option>
-          <option value="ram_desc">Сначала мощнее</option>
-          <option value="ram_asc">Сначала проще</option>
-        </Select>
-        {tier !== 'vm' && (
-          <Select className="w-44" aria-label="Видеокарта" value={filters.gpu ?? ''} onChange={(e) => update({ gpu: e.target.value || undefined })}>
-            <option value="">Любая видеокарта</option>
-            <option value="discrete">Дискретная</option>
-            <option value="integrated">Встроенная</option>
+        <div data-tour="filters" className="flex flex-wrap items-center gap-3">
+          <SearchInput className="sm:w-64" label="Поиск по каталогу" placeholder="Имя, процессор, видеокарта…" value={search} onChange={setSearch} />
+          <Select
+            className="w-36"
+            aria-label="Минимум ОЗУ"
+            value={String(filters.min_ram ?? 0)}
+            onChange={(e) => update({ min_ram: e.target.value === '0' ? undefined : e.target.value })}
+          >
+            {RAM_OPTIONS.map((r) => (
+              <option key={r} value={r}>
+                {r ? `ОЗУ от ${r} ГБ` : 'Любая ОЗУ'}
+              </option>
+            ))}
           </Select>
-        )}
-        <ViewToggle value={view} onChange={setView} />
+          <Select className="w-44" aria-label="Сортировка" value={filters.sort} onChange={(e) => update({ sort: e.target.value })}>
+            <option value="name">По имени</option>
+            <option value="ram_desc">Сначала мощнее</option>
+            <option value="ram_asc">Сначала проще</option>
+          </Select>
+          {tier !== 'vm' && (
+            <Select className="w-44" aria-label="Видеокарта" value={filters.gpu ?? ''} onChange={(e) => update({ gpu: e.target.value || undefined })}>
+              <option value="">Любая видеокарта</option>
+              <option value="discrete">Дискретная</option>
+              <option value="integrated">Встроенная</option>
+            </Select>
+          )}
+          <ViewToggle value={view} onChange={setView} />
+        </div>
       </div>
 
-      <ComputerList
-        query={computers}
-        compact={view === 'compact'}
-        onOpen={setOpenedId}
-        onBook={setBooking}
-        onReset={() => {
-          setSearch('')
-          setParams(new URLSearchParams({ tier }), { replace: true })
-        }}
-      />
+      <div data-tour="list">
+        <ComputerList
+          query={computers}
+          compact={view === 'compact'}
+          onOpen={setOpenedId}
+          onBook={setBooking}
+          onReset={() => {
+            setSearch('')
+            setParams(new URLSearchParams({ tier }), { replace: true })
+          }}
+        />
+      </div>
 
       <ComputerSheet
         computerId={openedId}

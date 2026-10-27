@@ -76,7 +76,7 @@ export function CategoryCards({
 
         return (
           <div className="space-y-3">
-            <div className={TIER_GRID}>
+            <div data-tour="categories" className={TIER_GRID}>
               {visible.map((tier) => {
                 const meta = TIERS[tier]
                 const s = byTier[tier]
@@ -113,7 +113,7 @@ export function CategoryCards({
               })}
             </div>
             {(onBuildVm || onOrderBuild) && (
-              <div className={ACTION_GRID}>
+              <div data-tour="actions" className={ACTION_GRID}>
                 {onBuildVm && (
                   <ActionCard
                     icon={Cloud}
