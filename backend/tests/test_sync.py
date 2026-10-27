@@ -115,6 +115,21 @@ async def test_trial_run_with_limit_does_not_archive(session, monkeypatch):
     assert not any(c.is_archived for c in (await reload_computers(session)).values())
 
 
+# ---------- метка неисправности ----------
+
+async def test_faulty_mark_lasts_while_computer_stays_in_maintenance(session, monkeypatch):
+    """Метка живёт, пока ПК в обслуживании; когда в Insight его вернули вручную, она сбрасывается."""
+    use(monkeypatch, insight_obj(1, "A001", status="В ремонте"))
+    await run_sync(session)
+    (await reload_computers(session))["A001"].faulty = True
+    await session.commit()
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].faulty is True
+    use(monkeypatch, insight_obj(1, "A001", status="Свободен"))
+    await run_sync(session)
+    assert (await reload_computers(session))["A001"].faulty is False
+
+
 # ---------- события статуса ----------
 
 async def test_insight_status_change_creates_event(session, monkeypatch):

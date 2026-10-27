@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, false, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,6 +61,9 @@ class Computer(Base, TimestampMixin):
     # --- Обратная запись в Insight (очередь по принципу «отправь текущее состояние») ---
     writeback_pending: Mapped[bool] = mapped_column(default=False)
     writeback_error: Mapped[str | None] = mapped_column(Text)
+    # ПК выведен исполнителем как неисправный («Сервер неисправен», замена): только такой портал пишет в Insight «ТО».
+    # Обслуживание, пришедшее из Insight («Тест», «На складе»…), портал не переписывает
+    faulty: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     department: Mapped[Department | None] = relationship(lazy="joined")
     pool: Mapped[Pool | None] = relationship(lazy="joined")

@@ -85,7 +85,10 @@ async def push_pending(session: AsyncSession, batch: int = 50) -> int:
             values: dict[str, str | None] = {}
             extras: dict[str, str | None] = {}  # необязательные поля: их сбой не должен мешать записи статуса
             status_value = wb.status_values.get(status_key) or wb.status_values.get(target)
-            if wb.status_attribute and status_value and not foreign and _needs_status(comp, source.mapping, status_key, target, status_value):
+            # «ТО» пишется только неисправному ПК: обслуживание из Insight («Тест», «На складе»…) — не наше состояние
+            ours_to_write = target != ComputerStatus.maintenance or comp.faulty
+            if (wb.status_attribute and status_value and not foreign and ours_to_write
+                    and _needs_status(comp, source.mapping, status_key, target, status_value)):
                 values[wb.status_attribute] = status_value
             if wb.pool_attribute:
                 extras[wb.pool_attribute] = comp.pool.name if comp.pool else None

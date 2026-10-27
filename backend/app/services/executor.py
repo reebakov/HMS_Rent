@@ -228,6 +228,7 @@ async def reject(session: AsyncSession, user: User | None, booking_id: int, reas
     comp.usage_until = None
     comp.order_number = None
     if faulty:
+        comp.faulty = True
         session.add(service_requests.new_diagnose(booking, comp.pool, user, comment))  # помнит прежний пул ПК
         comp.pool_id = None
     comp.writeback_pending = runtime.current().insight_writeback
@@ -294,6 +295,7 @@ async def replace_computer(session: AsyncSession, user: User, booking_id: int, d
               message=f"Заказ №{booking.order_number}: ПК заменил {old.name}")
     old.status, old.pool_id, old.department_id, old.usage_until, old.order_number = (
         ComputerStatus.maintenance.value, None, None, None, None)
+    old.faulty = True
     new.status, new.department_id = ComputerStatus.booked.value, booking.department_id
     new.usage_until, new.order_number = booking.expected_return_at, booking.order_number
     old.writeback_pending = new.writeback_pending = writeback
@@ -374,6 +376,7 @@ async def repair_computer(session: AsyncSession, user: User | None, request_id: 
         message="Диагностика закончена, ПК свободен" + (f" и возвращён в пул «{pool.name}»" if pool else ", прежний пул не известен"),
     )
     comp.status = ComputerStatus.available.value
+    comp.faulty = False
     if pool is not None:
         comp.pool_id = pool.id
     comp.writeback_pending = runtime.current().insight_writeback
