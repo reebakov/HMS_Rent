@@ -6,7 +6,7 @@ import { canExecute, isOpenProblem, ROLE_LABELS } from '@/lib/dictionaries'
 import { useSeenProblemId } from '@/lib/seen-problems'
 import { useAuth, useSession } from '@/auth/AuthProvider'
 import { NotificationBell } from './NotificationBell'
-import { ShortcutsButton } from './Shortcuts'
+import { HelpButton } from './Help'
 import { ThemeToggle } from './ThemeToggle'
 import { cn, initials } from '@/lib/utils'
 
@@ -14,12 +14,13 @@ interface NavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
+  tour?: string // data-tour: к этому пункту привязан шаг обучения
   badge?: number // красный счётчик справа (например, сколько просрочек и новых продлений)
 }
 
 const userNav: NavItem[] = [
-  { to: '/', label: 'Каталог', icon: LayoutGrid },
-  { to: '/my', label: 'Моя аренда', icon: ClipboardList },
+  { to: '/', label: 'Каталог', icon: LayoutGrid, tour: 'nav-catalog' },
+  { to: '/my', label: 'Моя аренда', icon: ClipboardList, tour: 'nav-my' },
 ]
 
 const executorNav: NavItem[] = [
@@ -44,10 +45,11 @@ function NavGroup({ title, items, onNavigate }: { title?: string; items: NavItem
   return (
     <div className="space-y-0.5">
       {title && <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">{title}</p>}
-      {items.map(({ to, label, icon: Icon, badge }) => (
+      {items.map(({ to, label, icon: Icon, badge, tour }) => (
         <NavLink
           key={to}
           to={to}
+          data-tour={tour}
           end={to === '/' || to === '/admin'}
           onClick={onNavigate}
           className={({ isActive }) =>
@@ -233,8 +235,10 @@ export function AppShell() {
               Dev-вход
             </span>
           )}
-          <NotificationBell />
-          <ShortcutsButton />
+          <span data-tour="bell">
+            <NotificationBell />
+          </span>
+          <HelpButton />
           <ThemeToggle />
         </header>
         </div>

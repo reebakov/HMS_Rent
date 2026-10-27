@@ -305,21 +305,28 @@ describe('AppShell: клавиатура', () => {
     expect(window.location.hash).toBe('')
   })
 
-  it('в шапке есть кнопка «Горячие клавиши»: открывает окно, Esc закрывает и возвращает фокус', async () => {
+  it('в шапке справа рядом с колокольчиком есть кнопка «Справка»: открывает окно, Esc закрывает и возвращает фокус', async () => {
     const user = userEvent.setup()
     mountShell()
-    const button = screen.getByRole('button', { name: 'Горячие клавиши' })
+    const button = screen.getByRole('button', { name: 'Справка' })
+    expect(button.closest('header')).not.toBeNull()
     await user.click(button)
-    expect(screen.getByRole('dialog', { name: 'Горячие клавиши' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Справка' })).toBeInTheDocument()
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => expect(button).toHaveFocus())
   })
 
-  it('«?» на странице открывает окно горячих клавиш', async () => {
+  it('«?» на странице открывает справку', async () => {
     mountShell()
     await userEvent.keyboard('?')
-    expect(screen.getByRole('dialog', { name: 'Горячие клавиши' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Справка' })).toBeInTheDocument()
+  })
+
+  it('к элементам, на которые указывает обучение, привязаны метки data-tour', () => {
+    mountShell()
+    const marked = [...document.querySelectorAll('[data-tour]')].map((el) => el.getAttribute('data-tour'))
+    expect(marked).toEqual(expect.arrayContaining(['nav-catalog', 'nav-my', 'bell', 'help']))
   })
 })
 

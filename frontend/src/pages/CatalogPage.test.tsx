@@ -52,6 +52,14 @@ describe('CatalogPage', () => {
     expect(lastComputerQuery()).toMatchObject({ tier: 'medium', sort: 'name' })
   })
 
+  it('элементы каталога, на которые указывает обучение, помечены data-tour', async () => {
+    sdEnabled = true
+    renderWithProviders(<CatalogPage />)
+    await screen.findByText('PC-001')
+    await screen.findByText('Сборка по запросу')
+    for (const tour of ['categories', 'filters', 'list', 'actions']) expect(document.querySelector(`[data-tour="${tour}"]`)).not.toBeNull()
+  })
+
   it('в адресной строке gpu=integrated — встроенная видеокарта, неизвестное значение игнорируется', async () => {
     renderWithProviders(<CatalogPage />, { route: '/?gpu=integrated' })
     await screen.findByText('PC-001')
