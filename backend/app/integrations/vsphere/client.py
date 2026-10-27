@@ -78,10 +78,25 @@ def _wait(task, what: str, timeout: int = 1800):
     return task.info.result
 
 
-def _cluster(si):
+def _datacenter(si):
     dc = _find(si, vim.Datacenter, settings.vcenter_datacenter)
     if dc is None:
         raise VSphereError(f"Не найден датацентр «{settings.vcenter_datacenter}»")
+    return dc
+
+
+def _vm_folder(dc):
+    """Папка, где живут ВМ портала: имена ВМ ищутся только в ней, чужие ВМ с тем же именем не в счёт."""
+    folder = dc.vmFolder
+    for part in filter(None, settings.vcenter_folder.split("/")):
+        folder = next((f for f in folder.childEntity if isinstance(f, vim.Folder) and f.name == part), None)
+        if folder is None:
+            raise VSphereError(f"Не найдена папка «{settings.vcenter_folder}»")
+    return folder
+
+
+def _cluster(si):
+    dc = _datacenter(si)
     cluster = _find(si, vim.ClusterComputeResource, settings.vcenter_cluster, dc.hostFolder)
     if cluster is None:
         raise VSphereError(f"Не найден кластер «{settings.vcenter_cluster}»")
@@ -94,11 +109,7 @@ def _placement(si, template_name: str | None = None):
     pool = _find(si, vim.ResourcePool, settings.vcenter_resource_pool, cluster)
     if pool is None:
         raise VSphereError(f"В кластере нет vApp/пула «{settings.vcenter_resource_pool}»")
-    folder = dc.vmFolder
-    for part in filter(None, settings.vcenter_folder.split("/")):
-        folder = next((f for f in folder.childEntity if isinstance(f, vim.Folder) and f.name == part), None)
-        if folder is None:
-            raise VSphereError(f"Не найдена папка «{settings.vcenter_folder}»")
+    folder = _vm_folder(dc)
     template_name = template_name or settings.vcenter_template_windows
     template = _find(si, vim.VirtualMachine, template_name, dc.vmFolder)
     if template is None:
@@ -138,8 +149,9 @@ def cluster_usage() -> ClusterUsage:
 
 
 def find_vm(name: str) -> VmInfo | None:
+    """ВМ портала по имени — только в его папке vCenter."""
     with connect() as si:
-        vm = _find(si, vim.VirtualMachine, name)
+        vm = _find(si, vim.VirtualMachine, name, _vm_folder(_datacenter(si)))
         return _info(vm) if vm else None
 
 
@@ -152,9 +164,9 @@ def create_vm(name: str, cpu: int, ram_gb: int, disk_gb: int, annotation: str,
               template_name: str | None = None, customization_spec: str | None = None) -> VmInfo:
     """Клонирует шаблон в vApp/пул, задаёт CPU/RAM/описание, расширяет диск, включает ВМ."""
     with connect() as si:
-        if _find(si, vim.VirtualMachine, name):
-            raise VSphereError(f"ВМ с именем «{name}» уже есть в vCenter")
         dc, pool, folder, template = _placement(si, template_name)
+        if _find(si, vim.VirtualMachine, name, folder):
+            raise VSphereError(f"ВМ с именем «{name}» уже есть в vCenter")
 
         relocate = vim.vm.RelocateSpec(pool=pool)
         if settings.vcenter_datastore:

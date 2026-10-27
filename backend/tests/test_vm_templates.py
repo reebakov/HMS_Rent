@@ -5,6 +5,7 @@ vSphere — фейки: без pyVmomi-соединения и сети. Общ�
 from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from pydantic import ValidationError
@@ -660,9 +661,11 @@ class FakeInventory:
     def __init__(self, **found):
         self.found = found  # имя -> объект (имена в тестах уникальны между типами)
         self.asked: list[tuple] = []
+        self.roots: dict = {}  # имя -> где искали
 
     def __call__(self, si, vimtype, name, root=None):
         self.asked.append((vimtype, name))
+        self.roots[name] = root
         return self.found.get(name)
 
 
@@ -816,3 +819,28 @@ def test_create_vm_rejects_existing_name(monkeypatch, vc):
     vc(inventory(fake_template("T"), **{"A1006": object()}))
     with pytest.raises(VSphereError, match="уже есть в vCenter"):
         vsphere_client.create_vm("A1006", 2, 4, 50, "note", "T")
+
+
+def test_vm_name_is_searched_only_in_portal_folder(monkeypatch, vc):
+    """Одноимённая ВМ в другой папке vCenter не мешает созданию и не принимается за свою."""
+    inv = vc(inventory(fake_template("T")))
+    folder = SimpleNamespace(name="Rent")
+    monkeypatch.setattr(vsphere_client, "_vm_folder", lambda dc: folder)
+    assert vsphere_client.find_vm("A1007") is None and inv.roots["A1007"] is folder
+    inv.found["A1007"] = object()
+    with pytest.raises(VSphereError, match="уже есть в vCenter"):
+        vsphere_client.create_vm("A1007", 2, 4, 50, "note", "T")
+    assert inv.roots["A1007"] is folder
+
+
+def test_vm_folder_follows_configured_path(monkeypatch):
+    leaf = Mock(spec=vim.Folder)
+    leaf.name = "Rent"
+    parent = Mock(spec=vim.Folder, childEntity=[leaf])
+    parent.name = "Lab"
+    dc = SimpleNamespace(vmFolder=SimpleNamespace(childEntity=[parent]))
+    monkeypatch.setattr(settings, "vcenter_folder", "Lab/Rent")
+    assert vsphere_client._vm_folder(dc) is leaf
+    monkeypatch.setattr(settings, "vcenter_folder", "Lab/Нет")
+    with pytest.raises(VSphereError, match="Не найдена папка"):
+        vsphere_client._vm_folder(dc)
