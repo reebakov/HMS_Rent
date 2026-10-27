@@ -137,6 +137,14 @@ describe('App: администратор', () => {
   })
 })
 
+describe('App: обучение при первом входе', () => {
+  it('по прямой ссылке открывается обучение поверх нужной страницы, не уводя с неё', async () => {
+    mount('/my', employee())
+    expect(await screen.findByRole('dialog', { name: 'Обучение' })).toBeInTheDocument()
+    expect(screen.getByText('stub:my')).toBeInTheDocument()
+  })
+})
+
 describe('App: истечение сессии', () => {
   it('auth:expired на закрытой странице выкидывает на логин', async () => {
     mount('/my', employee())
