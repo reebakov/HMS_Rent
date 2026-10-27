@@ -13,6 +13,8 @@
 `VCENTER_CUSTOMIZATION_SPEC`) описаны со значениями по умолчанию в `.env.example` и
 `backend/app/core/config.py`.
 
+ВМ портала ищутся по имени только в папке `VCENTER_FOLDER` (пусто — весь датацентр): в ней же vCenter требует уникальности имён.
+
 `VCENTER_TEMPLATE_WINDOWS` и `VCENTER_CUSTOMIZATION_SPEC` задают только начальный шаблон «Windows 10»: список шаблонов
 ОС (`vm_templates`) редактируется в Админка → «Настройки» и важнее `.env`; описание полей шаблона — в
 `docs/ARCHITECTURE.md`, раздел «Виртуальные машины и шаблоны ОС».
