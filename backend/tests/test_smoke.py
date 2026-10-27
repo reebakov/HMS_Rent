@@ -11,6 +11,11 @@ async def test_health_reports_build_version(client, monkeypatch):
     assert (await client.get("/api/health")).json() == {"status": "ok", "version": "3f9a1c2"}
 
 
+async def test_openapi_reports_build_version(client):
+    r = await client.get("/api/openapi.json")
+    assert r.json()["info"]["version"] == settings.app_version
+
+
 async def test_db_is_clean_and_migrated(session, make_department):
     dept = await make_department("QA")
     assert dept.id == 1
