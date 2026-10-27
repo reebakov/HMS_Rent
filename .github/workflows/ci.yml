@@ -83,7 +83,7 @@ jobs:
             nginx:1.27-alpine nginx -t
 
   backend:
-    name: Backend (pytest)
+    name: Backend (ruff, mypy, pytest)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
