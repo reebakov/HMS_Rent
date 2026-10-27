@@ -2,13 +2,15 @@ target-version = "py312"
 line-length = 120  # как в остальном коде; влияет только на сортировку импортов (ruff format не используется)
 
 [lint]
-select = ["F", "E4", "E7", "E9", "I", "B"]
+select = ["F", "E4", "E7", "E9", "I", "B", "BLE", "SLF", "RUF100"]
 # B008: FastAPI Depends(...) в значениях аргументов — штатный приём фреймворка
 ignore = ["B008"]
 
 [lint.per-file-ignores]
 # применённые миграции не редактируются (AGENTS.md), в том числе порядок импортов
 "alembic/versions/*" = ["I001"]
+# тесты сбрасывают и проверяют внутреннее состояние модулей (кэши, счётчики входа)
+"tests/*" = ["SLF001"]
 
 [lint.isort]
 known-first-party = ["app"]

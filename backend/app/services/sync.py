@@ -78,7 +78,7 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
     try:
         objects = await source.fetch_objects(limit=limit)
         mapping = source.mapping
-    except Exception as exc:  # noqa: BLE001 — любую ошибку Insight пишем в журнал синхронизаций
+    except Exception as exc:  # любую ошибку Insight пишем в журнал синхронизаций
         log.exception("Ошибка чтения Insight")
         return await _save_failed(session, source.mode, str(exc))
     finally:
@@ -215,7 +215,7 @@ async def run_sync(session: AsyncSession) -> SyncRun | None:
         log.info("Синхронизация: всего %s, новых %s, изменено %s, в архив %s",
                  run.total, run.created, run.updated, run.archived)
         return run
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         await session.rollback()
         log.exception("Ошибка синхронизации")
         return await _save_failed(session, source.mode, str(exc))

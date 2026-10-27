@@ -55,7 +55,7 @@ async def _cluster_shortage(vm: VirtualMachine) -> str | None:
     """Не хватает ли в кластере памяти или диска под ВМ. Если vCenter не отвечает, создаём как обычно: ошибку даст клон."""
     try:
         usage = await asyncio.to_thread(vsphere.cluster_usage)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("Не удалось проверить мощности кластера перед созданием ВМ %s", vm.name, exc_info=True)
         return None
     return capacity.shortage(usage, vm.ram_gb, vm.disk_gb)
@@ -108,7 +108,7 @@ async def create_next(session: AsyncSession) -> bool:
             info = await asyncio.to_thread(
                 vsphere.create_vm, vm.name, vm.cpu, vm.ram_gb, vm.disk_gb, annotation, template, spec,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # оставляем в deleting, повторим на следующем круге
             # недоделанный клон vSphere-клиент убирает сам; по имени здесь не удаляем — оно может быть чужим
             log.exception("Не удалось создать ВМ %s (попытка %d из %d)", vm.name, attempt, CREATE_ATTEMPTS)
             vm.error = str(exc)[:1000]
@@ -137,7 +137,7 @@ async def delete_next(session: AsyncSession) -> bool:
         else:
             vm.status, vm.deleted_at, vm.error = VmStatus.deleted.value, datetime.now(timezone.utc), None
             vm.insight_pending = True  # номер освободится в Insight
-    except Exception as exc:  # noqa: BLE001 — оставляем в deleting, повторим на следующем круге
+    except Exception as exc:
         log.exception("Не удалось удалить ВМ %s", vm.name)
         vm.error = str(exc)[:1000]
     await session.commit()
@@ -200,7 +200,7 @@ async def refresh_annotations(session: AsyncSession, batch: int = 10) -> None:
     for vm in vms:
         try:
             await asyncio.to_thread(vsphere.set_annotation, vm.vsphere_moid, _annotation(vm))
-        except Exception:  # noqa: BLE001 — повторим на следующем круге
+        except Exception:  # повторим на следующем круге
             log.warning("Не удалось обновить описание ВМ %s в vCenter", vm.name, exc_info=True)
             continue
         vm.notes_return_at = vm.expected_return_at

@@ -12,16 +12,16 @@ os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", "postg
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-32b")
 os.environ.setdefault("MATTERMOST_WEBHOOK_URL", "")
 
-import httpx  # noqa: E402
-import pytest  # noqa: E402
-import pytest_asyncio  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+import httpx
+import pytest
+import pytest_asyncio
+from sqlalchemy import text
 
-from app.core.config import settings  # noqa: E402
-from app.core.security import create_session_token, hash_password  # noqa: E402
-from app.db.session import SessionLocal, engine  # noqa: E402
-from app.models import Computer, ComputerStatus, Department, Pool, User, UserRole  # noqa: E402
-from app.services import runtime  # noqa: E402
+from app.core.config import settings
+from app.core.security import create_session_token, hash_password
+from app.db.session import SessionLocal, engine
+from app.models import Computer, ComputerStatus, Department, Pool, User, UserRole
+from app.services import runtime
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 

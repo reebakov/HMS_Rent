@@ -133,7 +133,7 @@ async def insight_check(sample: int, query: str | None, breakdown: str | None) -
 
         objects = await client.fetch_objects(limit=sample, query=query)
         if objects:
-            attrs = await client._type_attributes(objects[0].object_type_id)
+            attrs = await client._type_attributes(objects[0].object_type_id)  # noqa: SLF001 — диагностика маппинга
             print(f"Атрибуты типа «{objects[0].object_type}»: " + ", ".join(a["name"] for a in attrs.values()))
             known = {a["name"].lower() for a in attrs.values()}
             missing = [f"{field} → «{name}»" for field, name in mapping.attributes.items() if name.lower() not in known]

@@ -748,7 +748,7 @@ class FakeCloneTemplate:
             PowerOnVM_Task=lambda: None,
         )
 
-    def CloneVM_Task(self, folder, name, spec):  # noqa: N802 — имя метода pyVmomi
+    def CloneVM_Task(self, folder, name, spec):
         self.clone_spec, self.clone_name = spec, name
         return self.vm
 
