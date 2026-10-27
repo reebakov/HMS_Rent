@@ -296,3 +296,47 @@ async def test_status_without_category_is_still_watched(session, make_user, cloc
     clock(at(28, 10, 30))
     await norms.check(session)
     assert len(texts(channel)) == 1 and "Нарушен норматив" in texts(channel)[0]  # статус неизвестен — это не «закрыта»
+
+
+# ---------- снимок нормативов для интерфейса ----------
+
+async def snap(session):
+    return {n.issue_key: n for n in await norms.snapshot(session)}
+
+
+async def test_snapshot_shows_spent_limit_and_state(session, make_user, clock, channel):
+    await task(session, make_user, created=at(27, 10), key="DR-1")  # подготовка: 1 рабочий день (8 ч)
+    clock(at(27, 12))
+    n = (await snap(session))["DR-1"]
+    assert (n.spent_seconds, n.limit_seconds, n.limit_name, n.state) == (2 * 3600, 8 * 3600, "1 рабочий день", "ok")
+    assert (n.taken, n.not_taken_late, n.frozen) == (False, True, False)  # не взята дольше часа
+
+
+@pytest.mark.parametrize("now, state", [(at(27, 15), "ok"), (at(27, 16), "warning"), (at(27, 17, 59), "warning"), (at(28, 10, 30), "overdue")])
+async def test_snapshot_state_follows_share_of_norm(session, make_user, clock, channel, now, state):
+    await task(session, make_user, created=at(27, 10), key="DR-1", status="In Progress", category="indeterminate")
+    clock(now)
+    n = (await snap(session))["DR-1"]
+    assert n.state == state and n.taken is True and n.not_taken_late is False
+
+
+async def test_snapshot_pauses_on_frozen(session, make_user, clock, channel):
+    await task(session, make_user, created=at(27, 10), key="DR-1", status="Frozen", category="indeterminate",
+               frozen_since=at(27, 11), frozen_work_seconds=0)
+    clock(at(28, 12))  # 10 рабочих часов с создания, из них 9 на паузе
+    n = (await snap(session))["DR-1"]
+    assert n.frozen is True and n.spent_seconds == 3600 and n.state == "ok"
+
+
+async def test_snapshot_skips_closed_and_kinds_without_norm_limit(session, make_user, clock, channel):
+    await task(session, make_user, created=at(27, 10), key="DR-1", status="Done", category="done")
+    await task(session, make_user, created=at(27, 10), key="DR-2", kind="diagnose")
+    clock(at(27, 12))
+    got = await snap(session)
+    assert "DR-1" not in got and got["DR-2"].limit_seconds is None and got["DR-2"].state == "ok"
+
+
+async def test_snapshot_return_task_has_a_day_to_be_taken(session, make_user, clock, channel):
+    await task(session, make_user, created=at(27, 10), key="DR-1", kind="return")
+    clock(at(27, 17))
+    assert (await snap(session))["DR-1"].not_taken_late is False

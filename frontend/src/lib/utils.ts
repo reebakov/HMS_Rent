@@ -29,6 +29,9 @@ export function formatDuration(from: string, to?: string | null) {
   return `${days} ${plural(days, ['день', 'дня', 'дней'])}`
 }
 
+/** Рабочие секунды в часы для интерфейса: 12600 → «3,5» */
+export const workHours = (seconds: number) => (seconds / 3600).toFixed(1).replace('.', ',').replace(',0', '')
+
 export function plural(n: number, forms: [string, string, string]) {
   const mod10 = n % 10
   const mod100 = n % 100

@@ -13,13 +13,14 @@ from app.schemas.booking import (
     ExecutorReject,
     ExecutorReplace,
     ExecutorResult,
+    NormOut,
     PoolShort,
     ProblemTransitionIn,
     ProblemTransitionOut,
     ReplacementOut,
 )
 from app.schemas.vm import ExecutorVmOut, ExecutorVmReject
-from app.services import builds
+from app.services import builds, norms
 from app.services import executor as service
 from app.services.bookings import get_booking, push_to_insight
 
@@ -50,6 +51,12 @@ async def reject_order(
     if data.reason == FAULTY_REASON:
         tasks.add_task(service.send_diagnose_request, booking.computer_id, user.id)
     return await service.order_out(session, booking)
+
+
+@router.get("/norms", response_model=list[NormOut])
+async def norms_snapshot(_: ExecutorUser, session: DB) -> list[NormOut]:
+    """Нормативы открытых задач исполнителя: потрачено, остаток, просрочка (без записи в Jira)."""
+    return await norms.snapshot(session)
 
 
 @router.get("/problems", response_model=list[ExecutorProblemOut])

@@ -6,7 +6,7 @@ import { ExecutorOrdersPage } from './ExecutorOrdersPage'
 import { toast } from 'sonner'
 import { api, ApiError } from '@/lib/api'
 import { failGetOnce, makeExecutorOrder, renderWithProviders } from '@/test/helpers'
-import type { ExecutorOrder } from '@/lib/types'
+import type { ExecutorOrder, NormInfo } from '@/lib/types'
 
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -15,6 +15,7 @@ vi.mock('@/lib/api', async (orig) => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+let norms: NormInfo[]
 let orders: ExecutorOrder[]
 let returns: ExecutorOrder[]
 
@@ -33,6 +34,7 @@ beforeEach(() => {
     makeExecutorOrder({ id: 8, order_number: 1043, computer: { ...makeExecutorOrder().computer, name: 'A065' }, prepared_at: '2026-10-21T10:00:00Z' }),
   ]
   returns = []
+  norms = []
   vi.mocked(api.get).mockReset()
   vi.mocked(api.post).mockReset()
   vi.mocked(toast.success).mockReset()
@@ -42,8 +44,52 @@ beforeEach(() => {
     if (path === '/executor/returns') return returns
     if (path === '/executor/vms') return []
     if (path === '/executor/builds') return []
+    if (path === '/executor/norms') return norms
     if (path === '/executor/diagnostics') return []
     throw new Error(`неожиданный GET ${path}`)
+  })
+})
+
+const norm = (over: Partial<NormInfo> = {}): NormInfo => ({
+  issue_key: 'DR-501', spent_seconds: 3 * 3600, limit_seconds: 8 * 3600, limit_name: '1 рабочий день', state: 'ok',
+  frozen: false, taken: true, not_taken_late: false, ...over,
+})
+
+describe('ExecutorOrdersPage: нормативы', () => {
+  const rowWithKey = async () => (await screen.findByRole('link', { name: 'DR-501' })).closest('tr') as HTMLElement
+
+  it('под ссылкой на задачу — сколько рабочих часов потрачено из положенных', async () => {
+    orders = [makeExecutorOrder({ request_key: 'DR-501', request_url: 'https://jira.test/browse/DR-501' })]
+    norms = [norm({ spent_seconds: 12600 })]
+    mount()
+    expect(await within(await rowWithKey()).findByText('Норматив: 3,5 из 8 ч')).toBeInTheDocument()
+  })
+
+  it('просроченная задача и не взятая за срок помечены, в заголовке — число просрочек', async () => {
+    orders = [makeExecutorOrder({ request_key: 'DR-501', request_url: 'https://jira.test/browse/DR-501' })]
+    norms = [norm({ state: 'overdue', spent_seconds: 9 * 3600, not_taken_late: true, taken: false })]
+    mount()
+    const row = within(await rowWithKey())
+    expect(await row.findByText('Просрочено: 9 из 8 ч')).toBeInTheDocument()
+    expect(row.getByText('Не взята')).toBeInTheDocument()
+    expect(screen.getByText(/просрочено по нормативу: 1/)).toBeInTheDocument()
+  })
+
+  it('на паузе — пометка заморозки, у вида задачи без норматива часов нет', async () => {
+    orders = [makeExecutorOrder({ request_key: 'DR-501', request_url: 'https://jira.test/browse/DR-501' })]
+    norms = [norm({ frozen: true, limit_seconds: null, limit_name: null })]
+    mount()
+    const row = within(await rowWithKey())
+    expect(await row.findByText('· пауза (Frozen)')).toBeInTheDocument()
+    expect(row.queryByText(/Норматив:/)).not.toBeInTheDocument()
+  })
+
+  it('нормативы не загрузились — страница работает без них', async () => {
+    orders = [makeExecutorOrder({ request_key: 'DR-501', request_url: 'https://jira.test/browse/DR-501' })]
+    failGetOnce(vi.mocked(api.get), '/executor/norms')
+    mount()
+    expect(await rowWithKey()).toBeInTheDocument()
+    expect(screen.queryByText(/просрочено по нормативу/)).not.toBeInTheDocument()
   })
 })
 

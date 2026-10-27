@@ -63,13 +63,16 @@ def _out(req: ServiceRequest) -> ExecutorBuildOut:
 
 
 async def list_builds(session: AsyncSession) -> list[ExecutorBuildOut]:
-    """Заказы на сборку, ждущие выдачи: давние выше (заявки без данных заказа, созданные до миграции, не показываются)."""
+    """Заказы на сборку, ждущие выдачи: сначала с желаемым сроком (раньше срок — выше), затем давние (заявки без данных
+    заказа, созданные до миграции, не показываются)."""
     rows = await session.scalars(
         select(ServiceRequest).where(ServiceRequest.kind == ServiceRequestKind.build.value,
                                      ServiceRequest.payload.is_not(None), ServiceRequest.portal_done_at.is_(None))
         .order_by(ServiceRequest.created_at, ServiceRequest.id).limit(LIST_LIMIT)
     )
-    return [_out(r) for r in rows.unique()]
+    # желаемый срок («нужен к») — раньше всех остальных, дальше по времени поступления (регламент, раздел 1)
+    return sorted((_out(r) for r in rows.unique()),
+                  key=lambda b: (b.wanted_by is None, b.wanted_by or date.max, b.created_at, b.id))
 
 
 async def list_pools(session: AsyncSession) -> list[PoolShort]:

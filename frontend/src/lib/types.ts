@@ -163,6 +163,18 @@ export interface ExecutorProblem {
   booking_id: number | null // у ПК — заказ со страницей исполнителя
 }
 
+/** Норматив открытой задачи исполнителя: потрачено рабочего времени (без заморозки), состояние, взята ли */
+export interface NormInfo {
+  issue_key: string
+  spent_seconds: number
+  limit_seconds: number | null // у вида задачи может не быть норматива выполнения
+  limit_name: string | null
+  state: 'ok' | 'warning' | 'overdue'
+  frozen: boolean
+  taken: boolean
+  not_taken_late: boolean
+}
+
 /** Свободный ПК, на который можно заменить неисправный в заказе */
 export interface Replacement {
   id: number

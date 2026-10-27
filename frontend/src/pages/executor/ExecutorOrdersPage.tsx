@@ -11,13 +11,14 @@ import { BuildsCard } from '@/features/executor/BuildsCard'
 import { VmChecksCard } from '@/features/executor/VmChecksCard'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useConfirmCleaned, useExecutorOrders, useExecutorReturns } from '@/lib/queries'
+import { useConfirmCleaned, useExecutorNorms, useExecutorOrders, useExecutorReturns } from '@/lib/queries'
 import type { ExecutorOrder } from '@/lib/types'
 import { computerSpecs, errorMessage, formatDate, formatDateTime, plural } from '@/lib/utils'
 
 /** Очередь исполнителя: выданные ПК, которые нужно подготовить; подготовленные убраны в «Архив заказов» */
 export function ExecutorOrdersPage() {
   const orders = useExecutorOrders()
+  const overdue = useExecutorNorms().data?.filter((n) => n.state === 'overdue').length ?? 0
   const [archiveOpen, setArchiveOpen] = useState(false)
   const waiting = orders.data?.filter((o) => !o.prepared_at) ?? []
   const archive = orders.data?.filter((o) => o.prepared_at) ?? []
@@ -27,11 +28,12 @@ export function ExecutorOrdersPage() {
       <PageHeader
         title="Задачи исполнителя"
         description={
-          orders.data
+          (orders.data
             ? waiting.length
               ? `Ждут подготовки: ${waiting.length} ${plural(waiting.length, ['заказ', 'заказа', 'заказов'])}`
               : 'Все выданные ПК подготовлены'
-            : 'Подготовка ПК, сборки, проверка ВМ, очистка и диагностика'
+            : 'Подготовка ПК, сборки, проверка ВМ, очистка и диагностика') +
+          (overdue ? ` · просрочено по нормативу: ${overdue}` : '')
         }
       />
       <Card>

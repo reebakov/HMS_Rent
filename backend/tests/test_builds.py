@@ -99,6 +99,17 @@ async def test_pools_are_published_only_by_name(client, api, env, make_pool):  #
     assert [p["name"] for p in (await client.get(api("/executor/pools"))).json()] == ["Main", "Альфа", "Бета"]
 
 
+# ---------- порядок очереди ----------
+
+async def test_builds_with_wanted_date_go_first_then_oldest(client, api, env, session, sd):  # noqa: F811
+    older = await add_build(session, env, issue_key="DR-50", payload={"order_number": 2050})
+    soon = await add_build(session, env, issue_key="DR-51", payload={"order_number": 2051, "wanted_by": "2026-11-05"})
+    later = await add_build(session, env, issue_key="DR-52", payload={"order_number": 2052, "wanted_by": "2026-11-20"})
+    newer = await add_build(session, env, issue_key="DR-53", payload={"order_number": 2053})
+    rows = (await client.get(api("/executor/builds"))).json()
+    assert [r["id"] for r in rows] == [soon.id, later.id, older.id, newer.id]
+
+
 # ---------- выдача ----------
 
 async def test_issue_creates_booking_with_order_data_and_puts_pc_in_pool(client, api, env, session, make_computer, make_pool, sd):  # noqa: F811

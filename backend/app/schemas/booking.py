@@ -114,6 +114,19 @@ class ExecutorBuildOut(ORMModel):
     request_done: bool = False
 
 
+class NormOut(BaseModel):
+    """Норматив открытой задачи для интерфейса исполнителя: сколько рабочего времени потрачено и что с нормативом."""
+
+    issue_key: str
+    spent_seconds: int  # рабочие секунды без времени заморозки
+    limit_seconds: int | None  # None — у вида задачи норматива выполнения нет
+    limit_name: str | None  # «1 рабочий день», «3 рабочих дня»…
+    state: Literal["ok", "warning", "overdue"]  # warning — израсходовано 75% норматива и больше
+    frozen: bool  # на паузе (Frozen)
+    taken: bool  # задачу взяли в работу
+    not_taken_late: bool  # не взята дольше срока на взятие
+
+
 class ExecutorBuildReject(InputModel):
     reason: Literal[*BUILD_REJECT_REASONS]
     comment: str = Field(min_length=1, max_length=2000)
