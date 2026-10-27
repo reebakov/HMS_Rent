@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.integrations.notify import notify
 from app.integrations.servicedesk import agent_url
 from app.models import ServiceRequest, ServiceRequestKind
+from app.schemas.booking import NormOut
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,13 @@ def norm(req: ServiceRequest) -> tuple[int, str] | None:
     if req.kind == ServiceRequestKind.build:
         return 3 * workdays.WORK_DAY, "3 рабочих дня"
     return None
+
+
+def _spent(req: ServiceRequest, cal: workdays.WorkCalendar, now: datetime) -> tuple[int, int]:
+    """Рабочие секунды с создания задачи и из них потраченные на работу (без заморозки)."""
+    elapsed = cal.working_seconds(req.created_at, now)
+    paused = (req.frozen_work_seconds or 0) + (cal.working_seconds(req.frozen_since, now) if req.frozen_since else 0)
+    return elapsed, elapsed - paused
 
 
 def _hours(seconds: int) -> str:
@@ -72,10 +80,39 @@ async def check(session: AsyncSession) -> None:
             await notify(f"⏰ Задача {_link(req)} не взята за {take_name}")
         limit = norm(req)
         if limit and req.norm_alerted_at is None:
-            paused = (req.frozen_work_seconds or 0) + (cal.working_seconds(req.frozen_since, now) if req.frozen_since else 0)
-            spent = elapsed - paused
+            spent = _spent(req, cal, now)[1]
             if spent > limit[0]:
                 req.norm_alerted_at = now
                 await notify(f"🚨 Нарушен норматив по задаче {_link(req)}: норматив {limit[1]}, "
                              f"прошло {_hours(spent)} рабочих ч (время заморозки не считается)")
     await session.commit()
+
+
+WARNING_SHARE = 0.75  # с этой доли норматива в интерфейсе задача «на исходе»
+
+
+async def snapshot(session: AsyncSession) -> list[NormOut]:
+    """Нормативы открытых задач для интерфейса исполнителя («Задачи исполнителя»): те же правила, что у `check`."""
+    rows = (await session.scalars(
+        select(ServiceRequest).where(
+            ServiceRequest.issue_key.is_not(None), func.coalesce(ServiceRequest.status_category, "") != "done",
+            ServiceRequest.kind.in_([k.value for k in TAKE_KINDS]),
+        ).order_by(ServiceRequest.id).limit(BATCH)
+    )).unique().all()
+    cal, now = workdays.load(), datetime.now(timezone.utc)
+    result = []
+    for req in rows:
+        elapsed, spent = _spent(req, cal, now)
+        limit = norm(req)
+        taken = req.workflow_status not in NOT_TAKEN
+        state = "ok"
+        if limit and spent > limit[0]:
+            state = "overdue"
+        elif limit and spent >= limit[0] * WARNING_SHARE:
+            state = "warning"
+        result.append(NormOut(
+            issue_key=req.issue_key, spent_seconds=max(spent, 0), limit_seconds=limit[0] if limit else None,
+            limit_name=limit[1] if limit else None, state=state, frozen=req.workflow_status == "Frozen", taken=taken,
+            not_taken_late=not taken and elapsed > take_limit(req)[0],
+        ))
+    return result

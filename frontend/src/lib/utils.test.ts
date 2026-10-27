@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addDays, addMonths, cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal } from './utils'
+import { addDays, addMonths, cn, computerSpecs, errorMessage, formatDate, formatDateTime, formatDuration, formatRelative, initials, isOverdue, plural, todayLocal, workHours } from './utils'
 
 const DAYS: [string, string, string] = ['день', 'дня', 'дней']
 
@@ -154,5 +154,12 @@ describe('addMonths', () => {
     ['2026-03-15', 0, '2026-03-15'],
   ])('%s + %i мес. = %s', (date, months, expected) => {
     expect(addMonths(date, months)).toBe(expected)
+  })
+})
+
+
+describe('workHours', () => {
+  it.each([[0, '0'], [3600, '1'], [12600, '3,5'], [28800, '8'], [4500, '1,3']])('%i с → %s ч', (seconds, expected) => {
+    expect(workHours(seconds)).toBe(expected)
   })
 })

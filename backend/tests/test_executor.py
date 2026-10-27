@@ -735,3 +735,16 @@ async def test_waiting_list_keeps_latest_return_per_pc_and_filters_by_age(sessio
     assert [b.id for b in rows] == [second.id]  # последний возврат этого ПК
     assert [b.id for b in await cleaning.list_waiting(session, older_than=timedelta(days=2))] == []
     assert [b.id for b in await cleaning.list_waiting(session, older_than=timedelta(days=1))] == [second.id]
+
+
+# ---------- нормативы для интерфейса ----------
+
+async def test_norms_endpoint_for_executor_and_closed_for_customer(client, api, env, session, login, sd):  # noqa: F811
+    req = ServiceRequest(kind="prepare", user_id=env.owner.id, booking_id=env.early.id, summary="s", description="d",
+                         issue_key="DR-9", status="Backlog", status_category="new")
+    session.add(req)
+    await session.commit()
+    rows = (await client.get(api("/executor/norms"))).json()
+    assert [(r["issue_key"], r["limit_name"], r["taken"]) for r in rows] == [("DR-9", "1 рабочий день", False)]
+    login(env.owner)
+    assert (await client.get(api("/executor/norms"))).status_code == 403

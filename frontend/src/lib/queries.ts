@@ -6,7 +6,7 @@ import type {
   Booking, BookingCreate, BookingExtend, Computer, ComputerDetail, ComputerHistory, Department, DepartmentUsage,
   AdminUserRow, AppSettings, AuthConfig, InventoryPage, InventoryRow, Pool, PoolAssignResult, Stats, SyncInfo, SyncRun,
   Tier, TierSummary, Vm, VmCreate, VmOptions, ServiceRequest, OverdueItem, SyncRunDetails, EventPage, ExtensionOut, RequestDetail, VsphereCheck, TermRequestOut, OrderOptions, BuildCreate,
-  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorBuild, ExecutorBuildIssue, ExternalRental, PoolShort, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
+  ClusterCapacity, IdleServers, VmNumbers, NotificationList, ExecutorBuild, ExecutorBuildIssue, ExternalRental, NormInfo, PoolShort, ExecutorDiagnostic, ExecutorOrder, ExecutorProblem, ExecutorReject, ExecutorResult, ExecutorVm, ExecutorVmReject, ProblemTransition, Replacement,
 } from './types'
 
 export interface ComputerFilters {
@@ -536,6 +536,10 @@ export function useMoveProblem() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['executor'] }),
   })
 }
+
+/** Нормативы открытых задач исполнителя: по ключу задачи Jira */
+export const useExecutorNorms = () =>
+  useQuery({ queryKey: ['executor', 'norms'], queryFn: () => api.get<NormInfo[]>('/executor/norms'), refetchInterval: 60_000 })
 
 /** Заказы на сборку, ждущие выдачи собранного ПК */
 export const useExecutorBuilds = () =>
