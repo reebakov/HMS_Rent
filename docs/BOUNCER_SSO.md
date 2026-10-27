@@ -29,6 +29,7 @@ BOUNCER_TOKEN_URL=
 BOUNCER_CLIENT_ID=
 BOUNCER_CLIENT_SECRET=
 # BOUNCER_ISSUER=      # необязательно: ожидаемый iss в id_token, пусто — не проверять
+# BOUNCER_JWKS_URL=    # необязательно: ключи Bouncer; задан — подпись id_token проверяется
 COOKIE_SECURE=true
 ```
 
@@ -49,9 +50,11 @@ COOKIE_SECURE=true
 Имя для отображения — claim `name`, затем `given_name`, иначе часть логина до `@`. Фото профиля портал не получает,
 поэтому показываются инициалы.
 
-Подпись `id_token` портал не проверяет: токен приходит напрямую от token endpoint по защищённому каналу
-(back-channel), как допускает OpenID Connect для code flow. Проверяются срок действия (`exp`), `nonce`, получатель
-токена `aud` и, если задан `BOUNCER_ISSUER`, издатель `iss`:
+Подпись `id_token`: если задан `BOUNCER_JWKS_URL` (`https://idp.bouncer.deeplay.io/jwks`), портал проверяет её
+ключами Bouncer (RS256 и PS256; ключи кэшируются, при неизвестном `kid` перечитываются, ротация подхватывается). Без
+`BOUNCER_JWKS_URL` подпись не проверяется: токен приходит напрямую от token endpoint по защищённому каналу
+(back-channel), как допускает OpenID Connect для code flow. В обоих случаях проверяются срок действия (`exp`), `nonce`,
+получатель токена `aud` и, если задан `BOUNCER_ISSUER`, издатель `iss` (у Bouncer `https://idp.bouncer.deeplay.io`):
 
 - `aud` (строка или список) должен содержать `BOUNCER_CLIENT_ID`; без этого claim вход невозможен;
 - `BOUNCER_ISSUER` необязателен: пусто — `iss` не проверяется, иначе должен совпасть с токеном буква в букву.

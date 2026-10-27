@@ -1,5 +1,6 @@
 """Bouncer (OIDC): ссылка авторизации, обмен кода на токен (respx), разбор claims и сквозной вход через /auth/bouncer/*.
 Базовые ветки роутов уже в test_api_auth.py — здесь реальный exchange_code и граничные случаи."""
+import json
 import os
 import time
 from itertools import count
@@ -330,3 +331,122 @@ async def test_login_flow_bouncer_down_redirects_to_login(client, api, respx_moc
     respx_mock.post(TOKEN_URL).mock(side_effect=httpx.ConnectError("down"))
     r = await _callback(client, api, saved)
     assert r.headers["location"].startswith("/login?error=")
+
+
+# ---------- подпись id_token (BOUNCER_JWKS_URL) ----------
+
+JWKS_URL = "https://sso.example/jwks"
+
+
+def rsa_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def jwks_of(*keys_by_kid: tuple[str, object]) -> dict:
+    out = []
+    for kid, key in keys_by_kid:
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
+        out.append({**jwk, "kid": kid, "use": "sig", "alg": "RS256"})
+    return {"keys": out}
+
+
+def signed_token(key, kid="k1", alg="RS256", **claims) -> str:
+    body = {"exp": time.time() + 600, "aud": "cid", "nonce": NONCE, **claims, "email": "ivan@corp.io"}
+    return jwt.encode(body, key, algorithm=alg, headers={"kid": kid})
+
+
+@pytest.fixture
+def jwks(monkeypatch):
+    """Ключи Bouncer: jwks.set(...) — что отдаёт JWKS; jwks.calls — сколько раз его читали."""
+    monkeypatch.setattr(settings, "bouncer_jwks_url", JWKS_URL)
+    bouncer._jwk_client.cache_clear()
+
+    class Box:
+        data: dict | Exception = {"keys": []}
+        calls = 0
+
+        def set(self, data):
+            self.data = data
+
+    box = Box()
+
+    def fetch(self):
+        box.calls += 1
+        if isinstance(box.data, Exception):
+            raise box.data
+        return box.data
+    monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", fetch)
+    yield box
+    bouncer._jwk_client.cache_clear()
+
+
+@pytest.mark.parametrize("alg", ["RS256", "PS256"])
+async def test_signed_id_token_is_accepted(token_endpoint, jwks, alg):
+    key = rsa_key()
+    jwks.set(jwks_of(("k1", key)))
+    token_endpoint(json={"id_token": signed_token(key, alg=alg)})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "ivan@corp.io"
+
+
+async def test_token_signed_by_another_key_is_rejected(token_endpoint, jwks, caplog):
+    jwks.set(jwks_of(("k1", rsa_key())))
+    token_endpoint(json={"id_token": signed_token(rsa_key())})  # подпись чужим ключом под тем же kid
+    with pytest.raises(AuthError, match="Сессия входа некорректна"):
+        await bouncer.exchange_code("c", NONCE)
+    assert "подпись не проверена" in caplog.text
+
+
+async def test_forged_hs256_and_unsigned_tokens_are_rejected(token_endpoint, jwks):
+    jwks.set(jwks_of(("k1", rsa_key())))
+    for token in (jwt.encode({"exp": time.time() + 600, "aud": "cid", "nonce": NONCE, "email": "a@b.c"}, "secret", algorithm="HS256",
+                             headers={"kid": "k1"}),
+                  jwt.encode({"exp": time.time() + 600, "aud": "cid", "nonce": NONCE, "email": "a@b.c"}, None, algorithm="none",
+                             headers={"kid": "k1"})):
+        token_endpoint(json={"id_token": token})
+        with pytest.raises(AuthError):
+            await bouncer.exchange_code("c", NONCE)
+
+
+async def test_unknown_kid_refreshes_keys_once_then_rejects(token_endpoint, jwks):
+    key = rsa_key()
+    jwks.set(jwks_of(("old", rsa_key())))
+    token_endpoint(json={"id_token": signed_token(key, kid="new")})
+    with pytest.raises(AuthError):
+        await bouncer.exchange_code("c", NONCE)
+    assert jwks.calls == 2  # первое чтение и одно обновление: ротацию ключей подхватываем, бесконечного опроса нет
+
+
+async def test_key_rotation_is_picked_up(token_endpoint, jwks):
+    old, new = rsa_key(), rsa_key()
+    jwks.set(jwks_of(("old", old)))
+    token_endpoint(json={"id_token": signed_token(old, kid="old")})
+    await bouncer.exchange_code("c", NONCE)
+    jwks.set(jwks_of(("old", old), ("new", new)))  # Bouncer выпустил новый ключ
+    token_endpoint(json={"id_token": signed_token(new, kid="new")})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "ivan@corp.io"
+
+
+async def test_unreachable_jwks_is_reported_as_bouncer_unavailable(token_endpoint, jwks, caplog):
+    jwks.set(jwt.PyJWKClientConnectionError("timeout"))
+    token_endpoint(json={"id_token": signed_token(rsa_key())})
+    with pytest.raises(AuthError, match="Bouncer.*недоступен"):
+        await bouncer.exchange_code("c", NONCE)
+    assert "недоступны" in caplog.text and JWKS_URL in caplog.text
+
+
+async def test_signature_is_not_checked_without_jwks_url(token_endpoint):
+    """Прежнее поведение: BOUNCER_JWKS_URL пуст — токен принимается без проверки подписи (aud, iss, nonce проверяются)."""
+    token_endpoint(json={"id_token": id_token(email="ivan@corp.io")})
+    assert (await bouncer.exchange_code("c", NONCE)).username == "ivan@corp.io"
+
+
+async def test_valid_signature_does_not_replace_other_checks(token_endpoint, jwks):
+    key = rsa_key()
+    jwks.set(jwks_of(("k1", key)))
+    token_endpoint(json={"id_token": signed_token(key, aud="someone-else")})
+    with pytest.raises(AuthError):
+        await bouncer.exchange_code("c", NONCE)
+    token_endpoint(json={"id_token": signed_token(key, nonce="other")})
+    with pytest.raises(AuthError, match="устарела"):
+        await bouncer.exchange_code("c", NONCE)

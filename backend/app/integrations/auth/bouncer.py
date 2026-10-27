@@ -1,6 +1,8 @@
 """Вход через корпоративный SSO (Bouncer) по стандарту OpenID Connect."""
+import asyncio
 import logging
 import time
+from functools import lru_cache
 from urllib.parse import urlencode
 
 import httpx
@@ -29,11 +31,35 @@ def authorization_url(state: str, nonce: str) -> str:
     }
     return f"{settings.bouncer_authorize_url}?{urlencode(params)}"
 
+SIGNING_ALGORITHMS = ["RS256", "PS256"]  # id_token_signing_alg_values_supported у Bouncer
+
+
+@lru_cache(maxsize=2)
+def _jwk_client(url: str) -> jwt.PyJWKClient:
+    return jwt.PyJWKClient(url, cache_keys=True, timeout=10)  # при неизвестном kid ключи перечитываются сами (ротация)
+
+
+async def _claims(id_token: str) -> dict:
+    """Утверждения id_token. Задан BOUNCER_JWKS_URL — подпись проверяется ключами Bouncer, иначе токену верим как
+    пришедшему прямым TLS-запросом с token endpoint (aud и iss всё равно проверяются)."""
+    if not settings.bouncer_jwks_url:
+        return jwt.decode(id_token, options={"verify_signature": False})
+    try:
+        key = await asyncio.to_thread(_jwk_client(settings.bouncer_jwks_url).get_signing_key_from_jwt, id_token)
+        return jwt.decode(id_token, key.key, algorithms=SIGNING_ALGORITHMS, options={"verify_aud": False, "verify_exp": False})
+    except jwt.PyJWKClientConnectionError as exc:
+        log.warning("Ключи Bouncer (%s) недоступны: %s", settings.bouncer_jwks_url, exc)
+        raise AuthError("Сервер авторизации (Bouncer) недоступен, попробуйте позже") from exc
+    except jwt.PyJWTError as exc:  # подпись не сошлась, неизвестный kid, чужой алгоритм
+        log.warning("id_token отклонён: подпись не проверена (%s)", exc)
+        raise AuthError(_INVALID_SESSION) from exc
+
+
 def _check_audience_and_issuer(claims: dict) -> None:
     """Токен выписан для нашего клиента (aud) и, если задано, нужным издателем (iss).
 
-    Подпись не проверяется (токен пришёл прямым TLS-запросом с token endpoint), но aud и iss защищают от настройки
-    с чужим client_id и от токена другого клиента. Пользователю — общий текст, причина и claims — в лог (без токена).
+    aud и iss защищают от настройки с чужим client_id и от токена другого клиента. Пользователю — общий текст,
+    причина и claims — в лог (без токена).
     """
     aud = claims.get("aud")
     audiences = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
@@ -69,7 +95,7 @@ async def exchange_code(code: str, nonce: str) -> AuthResult:
         raise AuthError("Bouncer не вернул id_token")
 
     try:
-        claims = jwt.decode(data["id_token"], options={"verify_signature": False})
+        claims = await _claims(data["id_token"])
     except jwt.PyJWTError as exc:
         raise AuthError("Bouncer вернул некорректный id_token") from exc
     
