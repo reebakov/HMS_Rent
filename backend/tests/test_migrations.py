@@ -74,6 +74,12 @@ async def test_upgrade_is_idempotent_at_head():
     assert _alembic("upgrade", "head").returncode == 0
 
 
+def test_dockerfile_hands_pid1_to_uvicorn():
+    """Без exec PID 1 остаётся sh и не передаёт SIGTERM: docker stop ждёт 10 с и убивает backend, выкатка дольше."""
+    cmd = next(line for line in (Path(__file__).parents[1] / "Dockerfile").read_text().splitlines() if line.startswith("CMD"))
+    assert "alembic upgrade head && exec uvicorn" in cmd
+
+
 async def test_models_match_migrations():
     def diff(sync_conn):
         ctx = MigrationContext.configure(sync_conn, opts={"compare_type": True})  # те же опции, что в alembic/env.py
