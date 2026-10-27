@@ -9,6 +9,7 @@ import respx
 
 from app.core.config import settings
 from app.core.errors import DomainError
+from app.integrations import servicedesk as sd
 from app.services import service_requests as svc
 
 from .test_service_requests import add_req, env, fresh, rows  # noqa: F401  (env — фикстура)
@@ -31,7 +32,11 @@ def jira():
 
 
 @pytest.mark.parametrize("exc", [httpx.ConnectError("refused"), httpx.ReadTimeout("")], ids=["connect", "timeout"])
-async def test_create_problem_jira_down_is_domain_error(session, env, jira, exc):  # noqa: F811
+async def test_create_problem_jira_down_is_domain_error(session, env, jira, exc, monkeypatch):  # noqa: F811
+    async def no_wait(seconds):
+        return None
+    monkeypatch.setattr(sd, "_pause", no_wait)  # таймаут создания: задачу ищут по метке, паузы между поисками не нужны
+    jira.get("https://jira.test/rest/api/2/search").respond(200, json={"issues": []})
     jira.post(f"{API}/request").mock(side_effect=exc)
     with pytest.raises(DomainError, match="Не удалось создать заявку: Service Desk недоступен"):
         await svc.create_problem(session, env.owner, booking_id=env.booking.id, vm_id=None, message="не включается")

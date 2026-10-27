@@ -2,7 +2,9 @@
 
 REST: /rest/servicedeskapi. Портал HMS Rent ходит туда от сервисной учётки-агента.
 """
+import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 
 import httpx
@@ -110,27 +112,87 @@ def _created(resp: httpx.Response) -> tuple[str, SdStatus]:
     return key, _status(data)
 
 
+MARKER_PREFIX = "hmsreq"  # метка заявки в описании: по ней находим задачу, если ответ Jira на создание потерялся
+FIND_ATTEMPTS = 3  # поиск после неоднозначного отказа: индекс Jira отстаёт на секунды
+FIND_DELAY_SEC = 2
+
+
+async def _pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)  # отдельная функция — в тестах подменяется, чтобы не ждать по-настоящему
+
+
+async def find_by_marker(marker: str) -> tuple[str, SdStatus] | None:
+    """Задача с такой меткой в описании (REST Jira, полнотекстовый поиск) или None. Сбой поиска — тоже None."""
+    try:
+        async with _client(JIRA_API) as http:
+            for attempt in range(FIND_ATTEMPTS):
+                resp = await _send(http, "GET", "/search", params={"jql": f'text ~ "{marker}"', "fields": "status", "maxResults": 1})
+                issues = (_json_object(resp).get("issues") or []) if resp.status_code < 400 else []
+                if issues:
+                    status = (issues[0].get("fields") or {}).get("status") or {}
+                    category = (status.get("statusCategory") or {}).get("key")
+                    return issues[0]["key"], _status({"currentStatus": {"status": status.get("name"), "statusCategory": category}})
+                if attempt + 1 < FIND_ATTEMPTS:
+                    await _pause(FIND_DELAY_SEC)
+    except ServiceDeskError as exc:
+        log.warning("Поиск заявки по метке %s не удался: %s", marker, exc)
+    return None
+
+
+async def _post_request(http: httpx.AsyncClient, body: dict, marker: str) -> tuple[tuple[str, SdStatus] | None, ServiceDeskError | None, bool]:
+    """POST /request. Возвращает (заявка, ошибка, определённый_ли_отказ). Исход неоднозначен (нет ответа после отправки,
+    5xx, ответ без ключа), когда Jira могла создать задачу, не успев ответить: тогда ищем её по метке, а не создаём вторую."""
+    try:
+        resp = await _send(http, "POST", "/request", json=body)
+    except ServiceDeskUnavailable as exc:
+        refused = isinstance(exc.__cause__, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))  # запрос не ушёл
+        return await _resolve(marker, exc, definite=refused)
+    if resp.status_code >= 500:
+        return await _resolve(marker, ServiceDeskError(_error(resp)), definite=False)
+    if resp.status_code >= 400:
+        return None, ServiceDeskError(_error(resp)), True
+    try:
+        return _created(resp), None, True
+    except ServiceDeskError as exc:  # 2xx без ключа или не JSON
+        return await _resolve(marker, exc, definite=False)
+
+
+async def _resolve(marker: str, error: ServiceDeskError, *, definite: bool):
+    if definite:
+        return None, error, True
+    found = await find_by_marker(marker)
+    if found:
+        log.warning("Ответ Jira на создание заявки потерян (%s): задача %s найдена по метке %s", error, found[0], marker)
+        return found, None, False
+    return None, error, False
+
+
 async def create_request(request_type_id: int, description: str,
                          on_behalf_of: str | None = None) -> tuple[str, SdStatus]:
     """Создаёт заявку с одним полем — описанием. Если сотрудника нет в Jira, создаёт от сервисной учётки (автор — в описании).
 
     Темы в форме типа «Прочее» нет (Jira ставит название типа), поэтому тему и шапку портал меняет после создания.
+    Идемпотентность: в описание добавляется метка заявки; если Jira могла создать задачу, но ответ потерялся (таймаут,
+    5xx), задачу ищут по метке и возвращают найденную, чтобы повтор не создал дубль.
     """
+    marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:12]}"
     payload = {
         "serviceDeskId": str(settings.sd_service_desk_id),
         "requestTypeId": str(request_type_id),
-        "requestFieldValues": {"description": description},
+        "requestFieldValues": {"description": f"{description}\n\nID заявки портала: {marker}"},
     }
     async with _client() as http:
         if on_behalf_of and settings.sd_raise_on_behalf:
-            resp = await _send(http, "POST", "/request", json={**payload, "raiseOnBehalfOf": on_behalf_of})
-            if resp.status_code < 400:
-                return _created(resp)
-            log.info("raiseOnBehalfOf=%s не принят (%s) — создаю от сервисной учётки", on_behalf_of, resp.status_code)
-        resp = await _send(http, "POST", "/request", json=payload)
-        if resp.status_code >= 400:
-            raise ServiceDeskError(_error(resp))
-        return _created(resp)
+            created, error, definite = await _post_request(http, {**payload, "raiseOnBehalfOf": on_behalf_of}, marker)
+            if created:
+                return created
+            if not definite or isinstance(error, ServiceDeskUnavailable):
+                raise error  # нет связи или исход неясен и задачи по метке нет: вторую не создаём, пользователь повторит
+            log.info("raiseOnBehalfOf=%s не принят (%s) — создаю от сервисной учётки", on_behalf_of, error)
+        created, error, _ = await _post_request(http, payload, marker)
+        if created:
+            return created
+        raise error
 
 
 async def get_status(issue_key: str) -> SdStatus:
