@@ -17,5 +17,6 @@ ENV APP_VERSION=$APP_VERSION
 
 EXPOSE 8000
 
-# Миграции применяются при каждом старте (идемпотентно), затем поднимается API
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+# Миграции применяются при каждом старте (идемпотентно), затем поднимается API. exec: uvicorn становится PID 1 и получает
+# SIGTERM от docker stop; иначе sh его глотает, остановка (выкатка) ждёт 10 с и убивает backend вместе с запросами
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
