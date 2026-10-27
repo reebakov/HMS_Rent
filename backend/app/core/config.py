@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     bouncer_client_id: str = ""
     bouncer_client_secret: str = ""
     bouncer_issuer: str = ""  # ожидаемый iss в id_token; пусто — не проверять
+    bouncer_jwks_url: str = ""  # публичные ключи Bouncer: задан — подпись id_token проверяется; пусто — не проверяется
     admins_file: str = "config/admins.txt"
     executors_file: str = "config/executors.txt"
     executors_department_code: str = "HMS"  # код отдела исполнителей: его сотрудники — исполнители и видят все опубликованные пулы
