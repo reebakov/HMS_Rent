@@ -124,6 +124,8 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Ruff (статический анализ)
         run: ruff check .
+      - name: Mypy (типы backend; модули baseline перечислены в mypy.ini)
+        run: mypy
       - name: Тесты (покрытие не ниже fail_under из .coveragerc)
         run: python -m pytest --cov=app --cov-report=term-missing
 
