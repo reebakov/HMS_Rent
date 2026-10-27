@@ -49,8 +49,8 @@ def executor_emails() -> frozenset[str]:
 
 
 def is_admin_email(email: str | None) -> bool:
-    return bool(email) and email.lower() in admin_emails()
+    return bool(email and email.lower() in admin_emails())
 
 
 def is_executor_email(email: str | None) -> bool:
-    return bool(email) and email.lower() in executor_emails()
+    return bool(email and email.lower() in executor_emails())

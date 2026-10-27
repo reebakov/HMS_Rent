@@ -40,7 +40,8 @@ async def add_user(session: AsyncSession, data: UserCreate) -> UserAdminOut:
                 auth_source="microsoft", department_id=data.department_id)
     session.add(user)
     await session.commit()
-    return _out(await session.get(User, user.id, populate_existing=True))
+    await session.refresh(user)
+    return _out(user)
 
 
 async def update_user(session: AsyncSession, admin: User, user_id: int, data: UserUpdate) -> UserAdminOut:
@@ -57,4 +58,5 @@ async def update_user(session: AsyncSession, admin: User, user_id: int, data: Us
             raise Conflict("Нельзя заблокировать самого себя")
         user.is_active = bool(changes["is_active"])
     await session.commit()
-    return _out(await session.get(User, user.id, populate_existing=True))
+    await session.refresh(user)
+    return _out(user)

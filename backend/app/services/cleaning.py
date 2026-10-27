@@ -26,5 +26,5 @@ async def list_waiting(session: AsyncSession, *, older_than: timedelta | None = 
     rows = sorted(latest.values(), key=lambda b: (b.returned_at, b.id))
     if older_than is not None:
         border = datetime.now(timezone.utc) - older_than
-        rows = [b for b in rows if b.returned_at < border]
+        rows = [b for b in rows if b.returned_at and b.returned_at < border]
     return rows[:LIMIT]

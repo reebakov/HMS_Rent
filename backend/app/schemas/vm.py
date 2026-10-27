@@ -110,5 +110,5 @@ class ExecutorVmOut(ORMModel):
 class ExecutorVmReject(InputModel):
     """Отклонение ВМ при проверке: основание из списка регламента и обязательный комментарий."""
 
-    reason: Literal[*VM_REJECT_REASONS]
+    reason: Literal[*VM_REJECT_REASONS]  # type: ignore[valid-type]  # mypy не понимает распаковку в Literal
     comment: str = Field(min_length=1, max_length=2000)

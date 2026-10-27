@@ -43,8 +43,8 @@ def register_failure(username: str, ip: str) -> None:
         window = settings.login_lock_minutes * 60
         for key in list(_failed):
             _recent(_failed, key, window)
-        for key in list(_failed_by_user):
-            _recent(_failed_by_user, key, window)
+        for user in list(_failed_by_user):
+            _recent(_failed_by_user, user, window)
 
 
 def reset(username: str, ip: str) -> None:
