@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HelpButton, SHORTCUTS } from './Help'
 import { CUSTOMER_TOUR } from '@/features/help/customerTour'
+import { tourSeenKey } from '@/lib/storage'
 import { renderWithProviders } from '@/test/helpers'
 
 let versions = { APP_RELEASE: '1.69.0', APP_VERSION: '4ca2db5f0c1e2d3a4b5c6d7e8f9a0b1c2d3e4f5a' }
@@ -93,5 +94,45 @@ describe('HelpButton', () => {
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Обучение' })).not.toBeInTheDocument())
     expect(opener()).toHaveFocus()
+  })
+
+  describe('автозапуск обучения', () => {
+    const KEY = tourSeenKey('i.ivanov')
+
+    it('при первом открытии запускает обучение и запоминает это', async () => {
+      renderWithProviders(<HelpButton firstVisitKey={KEY} />)
+      expect(await screen.findByRole('dialog', { name: 'Обучение' })).toBeInTheDocument()
+      expect(localStorage.getItem(KEY)).toBe('1')
+    })
+
+    it('после того как обучение показывали, не запускается; по кнопке — запускается', async () => {
+      localStorage.setItem(KEY, '1')
+      renderWithProviders(<HelpButton firstVisitKey={KEY} />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      await userEvent.click(opener())
+      await userEvent.click(screen.getByRole('button', { name: 'Пройти обучение' }))
+      expect(await screen.findByRole('dialog', { name: 'Обучение' })).toBeInTheDocument()
+    })
+
+    it('без ключа само не запускается', () => {
+      renderWithProviders(<HelpButton />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('закрытое обучение при следующей загрузке не возвращается', async () => {
+      const first = renderWithProviders(<HelpButton firstVisitKey={KEY} />)
+      await screen.findByRole('dialog', { name: 'Обучение' })
+      await userEvent.keyboard('{Escape}')
+      first.unmount()
+      renderWithProviders(<HelpButton firstVisitKey={KEY} />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('если браузер не хранит метку, само не запускается (иначе выскакивало бы при каждой загрузке)', () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(null)
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
+      renderWithProviders(<HelpButton firstVisitKey={KEY} />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
   })
 })

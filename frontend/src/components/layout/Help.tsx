@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CircleHelp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { useHotkey } from '@/lib/hooks'
+import { safeStorage } from '@/lib/storage'
 import { APP_RELEASE, APP_VERSION } from '@/lib/version'
 import { CUSTOMER_TOUR } from '@/features/help/customerTour'
 import { Tour } from './Tour'
@@ -19,12 +20,22 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['←', '→', 'Home', 'End'], action: 'Переключить вкладки в карточке компьютера' },
 ]
 
-/** «?» в шапке: версия сервиса, обучение и горячие клавиши; клавиша «?» открывает справку из любого места */
-export function HelpButton() {
+/**
+ * «?» в шапке: версия сервиса, обучение и горячие клавиши; клавиша «?» открывает справку из любого места.
+ * С firstVisitKey обучение запускается само один раз: когда метки с этим ключом ещё нет в браузере.
+ */
+export function HelpButton({ firstVisitKey }: { firstVisitKey?: string }) {
   const [open, setOpen] = useState(false)
   const [touring, setTouring] = useState(false)
   const opener = useRef<HTMLButtonElement>(null)
   useHotkey('?', () => !touring && setOpen(true))
+
+  useEffect(() => {
+    if (!firstVisitKey || safeStorage.get(firstVisitKey)) return
+    safeStorage.set(firstVisitKey, '1')
+    // без доступа к хранилищу метку не запомнить, и обучение выскакивало бы при каждой загрузке: тогда только по кнопке
+    if (safeStorage.get(firstVisitKey) === '1') setTouring(true)
+  }, [firstVisitKey])
 
   const startTour = () => {
     setOpen(false)

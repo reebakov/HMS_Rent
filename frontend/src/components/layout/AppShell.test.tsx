@@ -5,6 +5,7 @@ import { Route, Routes } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { ThemeToggle } from './ThemeToggle'
 import { api } from '@/lib/api'
+import { tourSeenKey } from '@/lib/storage'
 import { makeSession, renderWithProviders } from '@/test/helpers'
 import type { ExecutorOrder, ExtensionOut, OverdueItem, Session, TermRequestOut } from '@/lib/types'
 
@@ -57,6 +58,7 @@ let executorVms: { id: number }[]
 
 beforeEach(() => {
   localStorage.clear()
+  localStorage.setItem(tourSeenKey('i.ivanov'), '1') // обучение уже показано: иначе оно перекрыло бы страницу в каждом тесте
   session = makeSession()
   overdue = []
   extensions = []
@@ -479,6 +481,19 @@ describe('AppShell: «Сроки аренды»', () => {
     expect(banner).toHaveTextContent('Режим просмотра: вы видите портал глазами Иван Иванов. Действия недоступны.')
     await userEvent.click(within(banner).getByRole('button', { name: 'Выйти из режима' }))
     expect(stopViewAs).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['сотрудник', 'user', false, true],
+    ['исполнитель', 'executor', false, false],
+    ['администратор', 'admin', false, false],
+    ['администратор в режиме просмотра за сотрудника', 'user', true, false],
+  ] as const)('обучение при первом входе: %s — %s', async (_, role, viewAs, expected) => {
+    localStorage.clear()
+    session = { ...makeSession({ role }), ...(viewAs ? { view_as_by: { id: 9, display_name: 'Босс' } } : {}) }
+    mountShell()
+    await waitFor(() => expect(!!screen.queryByRole('dialog', { name: 'Обучение' })).toBe(expected))
+    expect(localStorage.getItem(tourSeenKey('i.ivanov'))).toBe(expected ? '1' : null)
   })
 
   it('без режима просмотра плашки нет', async () => {
