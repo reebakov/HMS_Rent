@@ -48,8 +48,11 @@ async def test_create_request_success(jira):
     key, status = await sd.create_request(1248, "Описание", "ivanov")
     assert key == "HMS-7" and status == sd.SdStatus("В работе", "indeterminate")
     assert route.call_count == 1
-    assert sent(route) == {"serviceDeskId": "54", "requestTypeId": "1248", "raiseOnBehalfOf": "ivanov",
-                           "requestFieldValues": {"description": "Описание"}}  # темы в форме «Прочее» нет: ей Jira ставит название типа
+    body = sent(route)
+    description = body["requestFieldValues"].pop("description")
+    assert body == {"serviceDeskId": "54", "requestTypeId": "1248", "raiseOnBehalfOf": "ivanov",
+                    "requestFieldValues": {}}  # темы в форме «Прочее» нет: ей Jira ставит название типа
+    assert description.startswith("Описание\n\nID заявки портала: hmsreq")
 
 
 @pytest.mark.parametrize("behalf, switch", [(None, True), ("", True), ("ivanov", False)], ids=["no-login", "empty-login", "switch-off"])
@@ -72,7 +75,9 @@ async def test_create_request_unknown_jira_user_falls_back_to_service_account(ji
     assert route.call_count == 2
     assert sent(route, 0)["raiseOnBehalfOf"] == "ghost"
     assert "raiseOnBehalfOf" not in sent(route, 1)
-    assert sent(route, 1)["requestFieldValues"]["description"] == "Описание с автором"
+    assert sent(route, 1)["requestFieldValues"]["description"].startswith("Описание с автором\n\nID заявки портала: ")
+    # метка одна на обе попытки: найти можно любую из созданных
+    assert sent(route, 0)["requestFieldValues"]["description"] == sent(route, 1)["requestFieldValues"]["description"]
 
 
 async def test_create_request_both_attempts_fail(jira):
@@ -85,14 +90,98 @@ async def test_create_request_both_attempts_fail(jira):
     assert route.call_count == 2
 
 
+@pytest.fixture
+def no_wait(monkeypatch):
+    waits = []
+
+    async def pause(seconds):
+        waits.append(seconds)
+    monkeypatch.setattr(sd, "_pause", pause)
+    return waits
+
+
+def marker_of(route, n=0) -> str:
+    return sent(route, n)["requestFieldValues"]["description"].rsplit("ID заявки портала: ", 1)[1]
+
+
+def search_result(key="HMS-77", status="Ожидает поддержки", category="new") -> dict:
+    return {"issues": [{"key": key, "fields": {"status": {"name": status, "statusCategory": {"key": category}}}}]}
+
+
+# ---------- идемпотентность: ответ на создание потерялся ----------
+
+@pytest.mark.parametrize("failure", [
+    httpx.ReadTimeout("slow"), httpx.RemoteProtocolError("closed"),
+    httpx.Response(502, text="bad gateway"), httpx.Response(200, text="<html>login</html>"), httpx.Response(200, json={"x": 1}),
+], ids=["read-timeout", "dropped", "502", "html-200", "no-key"])
+async def test_lost_create_response_adopts_issue_found_by_marker(jira, no_wait, failure):
+    """Регрессия: при 5xx и таймауте Jira могла создать задачу; повтор создавал дубль."""
+    post = jira.post(f"{API}/request")
+    post.mock(side_effect=[failure] if isinstance(failure, Exception) else [failure])
+    search = jira.get(f"{BASE}/rest/api/2/search")
+    search.mock(side_effect=lambda request: httpx.Response(200, json=search_result("HMS-77", "В работе", "indeterminate")))
+    key, status = await sd.create_request(1248, "Описание", None)
+    assert (key, status) == ("HMS-77", sd.SdStatus("В работе", "indeterminate"))
+    assert post.call_count == 1  # вторую задачу не создавали
+    assert search.calls[0].request.url.params["jql"] == f'text ~ "{marker_of(post)}"'  # ищем ту самую метку
+
+
+async def test_lost_response_waits_for_jira_index_between_searches(jira, no_wait):
+    jira.post(f"{API}/request").respond(502, text="bad gateway")
+    search = jira.get(f"{BASE}/rest/api/2/search")
+    search.mock(side_effect=[httpx.Response(200, json={"issues": []}), httpx.Response(200, json=search_result("HMS-5"))])
+    assert (await sd.create_request(1248, "D", None))[0] == "HMS-5"
+    assert search.call_count == 2 and no_wait == [sd.FIND_DELAY_SEC]
+
+
+async def test_lost_response_and_nothing_found_raises_original_error(jira, no_wait):
+    post = jira.post(f"{API}/request").respond(503, text="down")
+    search = jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})
+    with pytest.raises(sd.ServiceDeskError, match="Service Desk 503: down"):
+        await sd.create_request(1248, "D", None)
+    assert post.call_count == 1 and search.call_count == sd.FIND_ATTEMPTS  # вторую не создаём: исход неясен
+
+
+async def test_failed_search_keeps_original_error(jira, no_wait):
+    jira.post(f"{API}/request").respond(500, text="boom")
+    jira.get(f"{BASE}/rest/api/2/search").respond(500, json={"errorMessages": ["index down"]})
+    with pytest.raises(sd.ServiceDeskError, match="Service Desk 500: boom"):
+        await sd.create_request(1248, "D", None)
+
+
+@pytest.mark.parametrize("failure", [httpx.ConnectError("refused"), httpx.ConnectTimeout("no route"), httpx.Response(400, json={"errorMessage": "bad"})],
+                         ids=["refused", "connect-timeout", "400"])
+async def test_definite_failure_does_not_search(jira, no_wait, failure):
+    """Запрос не дошёл до Jira или Jira его отклонила: задачи нет, искать незачем."""
+    jira.post(f"{API}/request").mock(side_effect=[failure])
+    search = jira.get(f"{BASE}/rest/api/2/search").respond(200, json=search_result())
+    with pytest.raises(sd.ServiceDeskError):
+        await sd.create_request(1248, "D", None)
+    assert search.call_count == 0
+
+
+async def test_on_behalf_attempt_with_lost_response_adopts_instead_of_creating_second(jira, no_wait):
+    """Регрессия: 5xx на первой попытке (от имени сотрудника) вёл ко второй попытке и дублю задачи."""
+    post = jira.post(f"{API}/request").mock(side_effect=[httpx.Response(502, text="bad gateway")])
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json=search_result("HMS-12"))
+    assert (await sd.create_request(1248, "D", "ivanov"))[0] == "HMS-12"
+    assert post.call_count == 1
+
+
+async def test_on_behalf_attempt_with_unknown_outcome_does_not_fall_back(jira, no_wait):
+    post = jira.post(f"{API}/request").mock(side_effect=[httpx.Response(502, text="bad gateway")])
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})
+    with pytest.raises(sd.ServiceDeskError, match="502"):
+        await sd.create_request(1248, "D", "ivanov")
+    assert post.call_count == 1  # вторая попытка от сервисной учётки могла бы создать дубль
+
+
 @pytest.mark.parametrize("resp, text", [
     (httpx.Response(400, json={"errorMessage": "Плохой тип"}), "Service Desk 400: Плохой тип"),
     (httpx.Response(403, json={"errorMessages": ["a", "b"]}), "Service Desk 403: a; b"),
     (httpx.Response(400, json={"errors": {"summary": "пусто", "x": "y"}}), "Service Desk 400: summary: пусто; x: y"),
-    (httpx.Response(500, text="Internal boom"), "Service Desk 500: Internal boom"),
-    (httpx.Response(502, text="x" * 500), "Service Desk 502: " + "x" * 200),  # длинный текст обрезается
     (httpx.Response(401, json={}), "Service Desk 401: {}"),
-], ids=["errorMessage", "errorMessages", "errors", "plain-text", "truncated", "empty-json"])
+], ids=["errorMessage", "errorMessages", "errors", "empty-json"])
 async def test_create_request_http_errors(jira, resp, text):
     jira.post(f"{API}/request").mock(return_value=resp)
     with pytest.raises(sd.ServiceDeskError) as e:
@@ -210,7 +299,8 @@ CALLS = {
 
 @pytest.mark.parametrize("code", [400, 401, 403, 404, 500, 503])
 @pytest.mark.parametrize("name", CALLS)
-async def test_every_call_maps_http_errors_to_servicedesk_error(jira, name, code):
+async def test_every_call_maps_http_errors_to_servicedesk_error(jira, no_wait, name, code):
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})  # после 5xx create ищет задачу по метке
     call, method, path = CALLS[name]
     getattr(jira, method)(f"{API}{path}").respond(code, json={"errorMessage": "нет доступа"})
     with pytest.raises(sd.ServiceDeskError, match=f"Service Desk {code}: нет доступа"):
@@ -302,7 +392,8 @@ async def test_client_has_timeout_and_base_url():
 
 @pytest.mark.parametrize("exc", [httpx.ConnectError("refused"), httpx.ReadTimeout("slow")], ids=["connect", "timeout"])
 @pytest.mark.parametrize("name", CALLS)
-async def test_network_errors_become_servicedesk_error(jira, name, exc):
+async def test_network_errors_become_servicedesk_error(jira, no_wait, name, exc):
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})
     call, method, path = CALLS[name]
     getattr(jira, method)(f"{API}{path}").mock(side_effect=exc)
     with pytest.raises(sd.ServiceDeskError):
@@ -310,14 +401,16 @@ async def test_network_errors_become_servicedesk_error(jira, name, exc):
 
 
 @pytest.mark.parametrize("name", ["create", "status", "comments", "fields"])
-async def test_non_json_success_becomes_servicedesk_error(jira, name):
+async def test_non_json_success_becomes_servicedesk_error(jira, no_wait, name):
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})
     call, method, path = CALLS[name]
     getattr(jira, method)(f"{API}{path}").respond(200, text="<html>login page</html>")
     with pytest.raises(sd.ServiceDeskError):
         await call()
 
 
-async def test_create_without_issue_key_becomes_servicedesk_error(jira):
+async def test_create_without_issue_key_becomes_servicedesk_error(jira, no_wait):
+    jira.get(f"{BASE}/rest/api/2/search").respond(200, json={"issues": []})
     jira.post(f"{API}/request").respond(201, json={"id": "1"})
     with pytest.raises(sd.ServiceDeskError):
         await sd.create_request(1248, "D", None)
