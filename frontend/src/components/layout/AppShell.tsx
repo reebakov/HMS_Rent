@@ -8,6 +8,7 @@ import { useAuth, useSession } from '@/auth/AuthProvider'
 import { NotificationBell } from './NotificationBell'
 import { HelpButton } from './Help'
 import { ThemeToggle } from './ThemeToggle'
+import { tourSeenKey } from '@/lib/storage'
 import { cn, initials } from '@/lib/utils'
 
 interface NavItem {
@@ -238,7 +239,8 @@ export function AppShell() {
           <span data-tour="bell">
             <NotificationBell />
           </span>
-          <HelpButton />
+          {/* заказчику обучение показывается само при первом входе; в режиме просмотра — нет: это не его вход */}
+          <HelpButton firstVisitKey={session.user.role === 'user' && !session.view_as_by ? tourSeenKey(session.user.username) : undefined} />
           <ThemeToggle />
         </header>
         </div>
